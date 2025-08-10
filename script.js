@@ -126,7 +126,7 @@ function setupEventListeners() {
     if (mainActionButtons) {
         const versionDisplay = document.createElement('div');
         versionDisplay.className = 'version-display';
-        versionDisplay.innerText = 'v11.1'; // Version mise à jour
+        versionDisplay.innerText = 'v11.2'; // Version mise à jour
         mainActionButtons.appendChild(versionDisplay);
     }
 
@@ -134,6 +134,7 @@ function setupEventListeners() {
 
     // Barre de recherche
     searchInput.addEventListener('input', () => {
+       selectedPelicanOACI = null;
         const rawSearch = searchInput.value;
         clearSearchBtn.style.display = rawSearch.length > 0 ? 'block' : 'none';
         let departmentFilter = null;
@@ -180,6 +181,7 @@ function setupEventListeners() {
 
     // Bouton pour vider la recherche
     clearSearchBtn.addEventListener('click', () => {
+        selectedPelicanOACI = null;
         searchInput.value = '';
         resultsList.style.display = 'none';
         clearSearchBtn.style.display = 'none';
