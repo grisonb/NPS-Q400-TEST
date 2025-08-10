@@ -577,3 +577,27 @@ html, body {
     color: white;
     border-color: #1a7431;
 }
+
+/* Couleurs pour les cellules de nombre de rotations */
+.result-line .value.rotation-value-default {
+    background-color: #e9f5ff; /* Fond bleu par défaut */
+    color: var(--text-color);
+}
+
+.result-line .value.rotation-value-green {
+    background-color: var(--success-color);
+    color: white;
+    font-weight: bold;
+}
+
+.result-line .value.rotation-value-yellow {
+    background-color: #ffc107; /* Jaune "Warning" standard */
+    color: #333; /* Texte foncé pour une meilleure lisibilité sur fond jaune */
+    font-weight: bold;
+}
+
+.result-line .value.rotation-value-red {
+    background-color: var(--secondary-color);
+    color: white;
+    font-weight: bold;
+}
