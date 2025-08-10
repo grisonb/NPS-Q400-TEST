@@ -90,6 +90,7 @@ function initMap() {
 
     map.on('contextmenu', (e) => {
     if (isDrawingMode) return;
+        selectedPelicanOACI = null;
     L.DomEvent.preventDefault(e.originalEvent);
     const pointName = findClosestCommuneName(e.latlng.lat, e.latlng.lng) || 'Feu manuel';
     const manualCommune = { nom_standard: pointName, latitude_mairie: e.latlng.lat, longitude_mairie: e.latlng.lng, isManual: true };
@@ -126,7 +127,7 @@ function setupEventListeners() {
     if (mainActionButtons) {
         const versionDisplay = document.createElement('div');
         versionDisplay.className = 'version-display';
-        versionDisplay.innerText = 'v11.2'; // Version mise à jour
+        versionDisplay.innerText = 'v11.3'; // Version mise à jour
         mainActionButtons.appendChild(versionDisplay);
     }
 
@@ -207,6 +208,7 @@ function setupEventListeners() {
             alert("La géolocalisation n'est pas supportée par votre navigateur.");
             return;
         }
+        selectedPelicanOACI = null;
         navigator.geolocation.getCurrentPosition(
             (pos) => {
                 const { latitude, longitude } = pos.coords;
