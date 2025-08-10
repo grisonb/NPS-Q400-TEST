@@ -127,7 +127,7 @@ function setupEventListeners() {
     if (mainActionButtons) {
         const versionDisplay = document.createElement('div');
         versionDisplay.className = 'version-display';
-        versionDisplay.innerText = 'v11.4'; // Version mise à jour
+        versionDisplay.innerText = 'v11.5'; // Version mise à jour
         mainActionButtons.appendChild(versionDisplay);
     }
 
@@ -832,8 +832,60 @@ function initializeCalculator() {
         
         const fuelSurFeu = parseNumeric(fuelSurFeuInput.value);
         const resultsContainer = document.getElementById('previ-rotation-results-container');
-        updateAndSortRotations(resultsContainer, { fuel: fuelSurFeu, time: heureSurFeu }, { bingoBase, bingoPelic, consoRotation, rotationTime, csFeuTime, tmdTime, limiteHDV, transitTime });
-    }
+        function updateAndSortRotations(container, current, params) {
+    const lines = container.querySelectorAll('.result-line');
+    const sortable = [];
+    
+    lines.forEach(line => {
+        const type = line.dataset.rotationType;
+        let value = null;
+        const valueCell = line.querySelector('.value'); // On récupère la cellule à colorer
+
+        if (type === 'base' && current.fuel && params.consoRotation > 0) {
+            value = ((current.fuel - params.bingoBase) / params.consoRotation) + 1;
+        }
+        if (type === 'pelic' && current.fuel && params.consoRotation > 0) {
+            value = ((current.fuel - params.bingoPelic) / params.consoRotation) + 1;
+        }
+        if (type === 'cs' && params.csFeuTime !== null && current.time !== null && params.rotationTime > 0) {
+            value = (params.csFeuTime - current.time) / params.rotationTime;
+        }
+        if (type === 'tmd' && params.tmdTime !== null && current.time !== null && params.rotationTime > 0) {
+            value = (params.tmdTime - current.time) / params.rotationTime;
+        }
+        if (type === 'hdv' && params.limiteHDV !== null && params.rotationTime > 0) {
+            const hdvOnSite = params.limiteHDV - (params.transitTime || 0);
+            value = hdvOnSite / params.rotationTime;
+        }
+
+        // --- NOUVELLE LOGIQUE DE COLORATION ---
+        // 1. On retire toutes les anciennes classes de couleur
+        valueCell.classList.remove(
+            'rotation-value-default',
+            'rotation-value-green',
+            'rotation-value-yellow',
+            'rotation-value-red'
+        );
+
+        // 2. On ajoute la bonne classe en fonction de la valeur
+        if (value > 1.5) {
+            valueCell.classList.add('rotation-value-green');
+        } else if (value >= 1.1) { // De 1.1 à 1.5 inclus
+            valueCell.classList.add('rotation-value-yellow');
+        } else if (value > 0) { // De 0.01 à 1.09
+            valueCell.classList.add('rotation-value-red');
+        } else { // Pour 0, ou si le calcul n'est pas possible
+            valueCell.classList.add('rotation-value-default');
+        }
+        // --- FIN DE LA NOUVELLE LOGIQUE ---
+        
+        valueCell.textContent = value !== null && value > 0 ? value.toFixed(2) : '0.00';
+        sortable.push({ value: value !== null ? value : Infinity, element: line });
+    });
+    
+    sortable.sort((a, b) => a.value - b.value);
+    sortable.forEach(item => container.appendChild(item.element));
+}
     
     function updateSuiviTab() {
         const bingoBase = calculateBingo(CALCULATOR_DATA.distBaseFeu);
