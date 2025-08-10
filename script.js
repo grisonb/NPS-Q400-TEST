@@ -127,7 +127,7 @@ function setupEventListeners() {
     if (mainActionButtons) {
         const versionDisplay = document.createElement('div');
         versionDisplay.className = 'version-display';
-        versionDisplay.innerText = 'v11.5'; // Version mise à jour
+        versionDisplay.innerText = 'v11.6'; // Version mise à jour
         mainActionButtons.appendChild(versionDisplay);
     }
 
@@ -762,6 +762,53 @@ const calculateRotationTime = (dist) => (dist <= 50) ? (20 + (dist / 3.5)) : (20
 // Déclaration globale pour que la fonction soit accessible
 let masterRecalculate = () => {};
 
+// Cette fonction est maintenant en dehors de initializeCalculator pour être globale
+function updateAndSortRotations(container, current, params) {
+    const lines = container.querySelectorAll('.result-line');
+    const sortable = [];
+    
+    lines.forEach(line => {
+        const type = line.dataset.rotationType;
+        let value = null;
+        const valueCell = line.querySelector('.value');
+
+        if (type === 'base' && current.fuel && params.consoRotation > 0) {
+            value = ((current.fuel - params.bingoBase) / params.consoRotation) + 1;
+        }
+        if (type === 'pelic' && current.fuel && params.consoRotation > 0) {
+            value = ((current.fuel - params.bingoPelic) / params.consoRotation) + 1;
+        }
+        if (type === 'cs' && params.csFeuTime !== null && current.time !== null && params.rotationTime > 0) {
+            value = (params.csFeuTime - current.time) / params.rotationTime;
+        }
+        if (type === 'tmd' && params.tmdTime !== null && current.time !== null && params.rotationTime > 0) {
+            value = (params.tmdTime - current.time) / params.rotationTime;
+        }
+        if (type === 'hdv' && params.limiteHDV !== null && params.rotationTime > 0) {
+            const hdvOnSite = params.limiteHDV - (params.transitTime || 0);
+            value = hdvOnSite / params.rotationTime;
+        }
+
+        valueCell.classList.remove('rotation-value-default', 'rotation-value-green', 'rotation-value-yellow', 'rotation-value-red');
+
+        if (value > 1.5) {
+            valueCell.classList.add('rotation-value-green');
+        } else if (value >= 1.1) {
+            valueCell.classList.add('rotation-value-yellow');
+        } else if (value > 0) {
+            valueCell.classList.add('rotation-value-red');
+        } else {
+            valueCell.classList.add('rotation-value-default');
+        }
+        
+        valueCell.textContent = value !== null && value > 0 ? value.toFixed(2) : '0.00';
+        sortable.push({ value: value !== null ? value : Infinity, element: line });
+    });
+    
+    sortable.sort((a, b) => a.value - b.value);
+    sortable.forEach(item => container.appendChild(item.element));
+}
+
 function initializeCalculator() {
     let isFuelSurFeuManual = false; let isSuiviConsoManual = false; let isSuiviDureeManual = false;
     
@@ -832,60 +879,8 @@ function initializeCalculator() {
         
         const fuelSurFeu = parseNumeric(fuelSurFeuInput.value);
         const resultsContainer = document.getElementById('previ-rotation-results-container');
-        function updateAndSortRotations(container, current, params) {
-    const lines = container.querySelectorAll('.result-line');
-    const sortable = [];
-    
-    lines.forEach(line => {
-        const type = line.dataset.rotationType;
-        let value = null;
-        const valueCell = line.querySelector('.value'); // On récupère la cellule à colorer
-
-        if (type === 'base' && current.fuel && params.consoRotation > 0) {
-            value = ((current.fuel - params.bingoBase) / params.consoRotation) + 1;
-        }
-        if (type === 'pelic' && current.fuel && params.consoRotation > 0) {
-            value = ((current.fuel - params.bingoPelic) / params.consoRotation) + 1;
-        }
-        if (type === 'cs' && params.csFeuTime !== null && current.time !== null && params.rotationTime > 0) {
-            value = (params.csFeuTime - current.time) / params.rotationTime;
-        }
-        if (type === 'tmd' && params.tmdTime !== null && current.time !== null && params.rotationTime > 0) {
-            value = (params.tmdTime - current.time) / params.rotationTime;
-        }
-        if (type === 'hdv' && params.limiteHDV !== null && params.rotationTime > 0) {
-            const hdvOnSite = params.limiteHDV - (params.transitTime || 0);
-            value = hdvOnSite / params.rotationTime;
-        }
-
-        // --- NOUVELLE LOGIQUE DE COLORATION ---
-        // 1. On retire toutes les anciennes classes de couleur
-        valueCell.classList.remove(
-            'rotation-value-default',
-            'rotation-value-green',
-            'rotation-value-yellow',
-            'rotation-value-red'
-        );
-
-        // 2. On ajoute la bonne classe en fonction de la valeur
-        if (value > 1.5) {
-            valueCell.classList.add('rotation-value-green');
-        } else if (value >= 1.1) { // De 1.1 à 1.5 inclus
-            valueCell.classList.add('rotation-value-yellow');
-        } else if (value > 0) { // De 0.01 à 1.09
-            valueCell.classList.add('rotation-value-red');
-        } else { // Pour 0, ou si le calcul n'est pas possible
-            valueCell.classList.add('rotation-value-default');
-        }
-        // --- FIN DE LA NOUVELLE LOGIQUE ---
-        
-        valueCell.textContent = value !== null && value > 0 ? value.toFixed(2) : '0.00';
-        sortable.push({ value: value !== null ? value : Infinity, element: line });
-    });
-    
-    sortable.sort((a, b) => a.value - b.value);
-    sortable.forEach(item => container.appendChild(item.element));
-}
+        updateAndSortRotations(resultsContainer, { fuel: fuelSurFeu, time: heureSurFeu }, { bingoBase, bingoPelic, consoRotation, rotationTime, csFeuTime, tmdTime, limiteHDV, transitTime });
+    }
     
     function updateSuiviTab() {
         const bingoBase = calculateBingo(CALCULATOR_DATA.distBaseFeu);
@@ -962,8 +957,6 @@ function initializeCalculator() {
         const resultsContainer = document.getElementById('derout-rotation-results-container');
         updateAndSortRotations(resultsContainer, { fuel: currentFuel, time: currentTime }, { bingoBase, bingoPelic, consoRotation, rotationTime, csFeuTime, tmdTime, limiteHDV, transitTime: transitTimeFromGps });
     }
-    
-    function updateAndSortRotations(container, current, params) { const lines = container.querySelectorAll('.result-line'); const sortable = []; lines.forEach(line => { const type = line.dataset.rotationType; let value = null; if (type === 'base' && current.fuel && params.consoRotation > 0) { value = ((current.fuel - params.bingoBase) / params.consoRotation) + 1; } if (type === 'pelic' && current.fuel && params.consoRotation > 0) { value = ((current.fuel - params.bingoPelic) / params.consoRotation) + 1; } if (type === 'cs' && params.csFeuTime !== null && current.time !== null && params.rotationTime > 0) { value = (params.csFeuTime - current.time) / params.rotationTime; } if (type === 'tmd' && params.tmdTime !== null && current.time !== null && params.rotationTime > 0) { value = (params.tmdTime - current.time) / params.rotationTime; } if (type === 'hdv' && params.limiteHDV !== null && params.rotationTime > 0) { const hdvOnSite = params.limiteHDV - (params.transitTime || 0); value = hdvOnSite / params.rotationTime; } line.querySelector('.value').textContent = value !== null && value > 0 ? value.toFixed(2) : '0.00'; sortable.push({ value: value !== null ? value : Infinity, element: line }); }); sortable.sort((a, b) => a.value - b.value); sortable.forEach(item => container.appendChild(item.element)); }
     
     function recalculateBlocFuel() { const blocDepart = parseTime(document.querySelector('#bloc-depart .display-input').value); const fuelDepart = parseNumeric(document.querySelector('#fuel-depart .display-input').value); const limiteHDV = parseTime(document.querySelector('#limite-hdv .display-input').value); let previousBlocArrivee = blocDepart; let previousFuelPelic = fuelDepart; let cumulativeTpsVol = 0; const tableRows = document.querySelectorAll('#bloc-fuel tbody tr'); tableRows.forEach((row) => { const blocArrivee = parseTime(row.querySelector('.time-input-wrapper .display-input').value); const fuelPelic = parseNumeric(row.querySelector('.numeric-input-wrapper .display-input').value); let dureeRotation = null; if (blocArrivee !== null && previousBlocArrivee !== null) { dureeRotation = blocArrivee - previousBlocArrivee; } let fuelRotation = null; if (fuelPelic !== null && previousFuelPelic !== null) { fuelRotation = previousFuelPelic - fuelPelic; } if (dureeRotation !== null && dureeRotation > 0) { cumulativeTpsVol += dureeRotation; } let tpsVolRestant = null; if (limiteHDV !== null) { tpsVolRestant = limiteHDV - cumulativeTpsVol; } if(blocArrivee === null && fuelPelic === null) { row.querySelector('.duree-rotation-cell').textContent = ''; row.querySelector('.fuel-rotation-cell').textContent = ''; row.querySelector('.tps-vol-cell').textContent = ''; row.querySelector('.tps-vol-restant-cell').textContent = ''; } else { row.querySelector('.duree-rotation-cell').textContent = formatTime(dureeRotation); row.querySelector('.fuel-rotation-cell').textContent = fuelRotation === null ? '' : fuelRotation; row.querySelector('.tps-vol-cell').textContent = formatTime(cumulativeTpsVol) || (blocDepart !== null ? '00:00' : ''); row.querySelector('.tps-vol-restant-cell').textContent = formatTime(tpsVolRestant); } if (blocArrivee !== null) previousBlocArrivee = blocArrivee; if (fuelPelic !== null) previousFuelPelic = fuelPelic; }); const lastRow = tableRows[tableRows.length - 1]; if (lastRow) { const lastBloc = parseTime(lastRow.querySelector('.time-input-wrapper .display-input').value); const lastFuel = parseNumeric(lastRow.querySelector('.numeric-input-wrapper .display-input').value); if (lastBloc !== null || lastFuel !== null) { addNewRow(); } } }
     
