@@ -127,7 +127,7 @@ function setupEventListeners() {
     if (mainActionButtons) {
         const versionDisplay = document.createElement('div');
         versionDisplay.className = 'version-display';
-        versionDisplay.innerText = 'v11.3'; // Version mise à jour
+        versionDisplay.innerText = 'v11.4'; // Version mise à jour
         mainActionButtons.appendChild(versionDisplay);
     }
 
@@ -192,6 +192,7 @@ function setupEventListeners() {
         drawPermanentAirportMarkers();
         currentCommune = null;
         localStorage.removeItem('currentCommune');
+        updateCalculatorData();
         document.getElementById('commune-info-display').style.display = 'none';
         navigator.geolocation.getCurrentPosition(updateUserPosition);
         map.setView([46.6, 2.2], 5.5);
@@ -699,46 +700,47 @@ function saveGaarCircuits() {
 }
 
 function updateCalculatorData() {
-    if (!currentCommune) return; // Pas de commune, pas de calcul
+    if (!currentCommune) {
+        // Pas de commune, on réinitialise les données du calculateur
+        CALCULATOR_DATA = { distBaseFeu: 0, distPelicFeu: 0, csFeu: '--:--', distGpsFeu: 0 };
+    } else {
+        // Il y a une commune, on calcule les vraies valeurs
+        const lftw = airports.find(ap => ap.oaci === 'LFTW');
+        const selectedPelican = airports.find(ap => ap.oaci === selectedPelicanOACI);
+        const { latitude_mairie: feuLat, longitude_mairie: feuLon } = currentCommune;
 
-    const lftw = airports.find(ap => ap.oaci === 'LFTW');
-    const selectedPelican = airports.find(ap => ap.oaci === selectedPelicanOACI);
-    const { latitude_mairie: feuLat, longitude_mairie: feuLon } = currentCommune;
+        let distBaseFeu = 0;
+        if (lftw) {
+            distBaseFeu = calculateDistanceInNm(lftw.lat, lftw.lon, feuLat, feuLon);
+        }
 
-    let distBaseFeu = 0;
-    if (lftw) {
-        distBaseFeu = calculateDistanceInNm(lftw.lat, lftw.lon, feuLat, feuLon);
+        let distPelicFeu = 0;
+        if (selectedPelican) {
+            distPelicFeu = calculateDistanceInNm(selectedPelican.lat, selectedPelican.lon, feuLat, feuLon);
+        }
+
+        let csFeu = '--:--';
+        if (typeof SunCalc !== 'undefined') {
+            try {
+                const now = new Date();
+                const times = SunCalc.getTimes(now, feuLat, feuLon);
+                csFeu = times.sunset.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Paris' });
+            } catch (e) { /* ignore */ }
+        }
+        
+        let distGpsFeu = 0;
+        if (userMarker && userMarker.getLatLng()) {
+            const userLatLng = userMarker.getLatLng();
+            distGpsFeu = calculateDistanceInNm(userLatLng.lat, userLatLng.lng, feuLat, feuLon);
+        }
+
+        CALCULATOR_DATA.distBaseFeu = Math.round(distBaseFeu);
+        CALCULATOR_DATA.distPelicFeu = Math.round(distPelicFeu);
+        CALCULATOR_DATA.csFeu = csFeu;
+        CALCULATOR_DATA.distGpsFeu = Math.round(distGpsFeu);
     }
 
-    let distPelicFeu = 0;
-    if (selectedPelican) {
-        distPelicFeu = calculateDistanceInNm(selectedPelican.lat, selectedPelican.lon, feuLat, feuLon);
-    }
-
-    let csFeu = '--:--';
-    if (typeof SunCalc !== 'undefined') {
-        try {
-            const now = new Date();
-            const times = SunCalc.getTimes(now, feuLat, feuLon);
-            csFeu = times.sunset.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Paris' });
-        } catch (e) { /* ignore */ }
-    }
-    
-    let distGpsFeu = 0;
-    if (userMarker && userMarker.getLatLng()) {
-        const userLatLng = userMarker.getLatLng();
-        distGpsFeu = calculateDistanceInNm(userLatLng.lat, userLatLng.lng, feuLat, feuLon);
-    }
-
-    // Mettre à jour la variable globale du calculateur
-    CALCULATOR_DATA.distBaseFeu = Math.round(distBaseFeu);
-    CALCULATOR_DATA.distPelicFeu = Math.round(distPelicFeu);
-    CALCULATOR_DATA.csFeu = csFeu;
-    CALCULATOR_DATA.distGpsFeu = Math.round(distGpsFeu);
-
-    console.log("Données du calculateur mises à jour :", CALCULATOR_DATA);
-
-    // Rafraîchir l'affichage du calculateur
+    // Rafraîchir l'affichage du calculateur dans tous les cas
     if (typeof masterRecalculate === 'function') {
         masterRecalculate();
     }
