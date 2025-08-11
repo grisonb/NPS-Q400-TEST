@@ -119,7 +119,7 @@ function setupEventListeners() {
     if (mainActionButtons) {
         const versionDisplay = document.createElement('div');
         versionDisplay.className = 'version-display';
-        versionDisplay.innerText = 'v12.2';
+        versionDisplay.innerText = 'v12.3';
         mainActionButtons.appendChild(versionDisplay);
     }
 
@@ -612,6 +612,10 @@ const calculateRotationTime = (dist) => (dist <= 50) ? (20 + (dist / 3.5)) : (20
 let masterRecalculate = () => {};
 let isFuelSurFeuManual = false, isSuiviConsoManual = false, isSuiviDureeManual = false;
 
+const parseTime = (timeString) => { if (!timeString || !timeString.includes(':')) return null; const parts = timeString.split(':'); return parseInt(parts[0], 10) * 60 + parseInt(parts[1], 10); };
+const formatTime = (totalMinutes) => { if (totalMinutes === null || isNaN(totalMinutes) || totalMinutes < 0) return ''; const roundedMinutes = Math.round(totalMinutes); const hours = Math.floor(roundedMinutes / 60); const minutes = roundedMinutes % 60; return `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}`; };
+const parseNumeric = (numericString) => { if (!numericString) return null; const value = parseInt(numericString.replace(/[^0-9]/g, ''), 10); return isNaN(value) ? null : value; };
+
 function updateAndSortRotations(container, current, params) {
     const lines = container.querySelectorAll('.result-line');
     const sortable = [];
@@ -628,26 +632,15 @@ function updateAndSortRotations(container, current, params) {
         valueCell.textContent = value !== null && value > 0 ? value.toFixed(2) : '0.00';
         
         valueCell.classList.remove('rotation-value-default', 'rotation-value-green', 'rotation-value-yellow', 'rotation-value-red');
-
-        if (valueCell.textContent === '0.00' || valueCell.textContent === '--' || current.fuel === null) {
-             valueCell.classList.add('rotation-value-default');
-        } else if (value > 1.5) {
-            valueCell.classList.add('rotation-value-green');
-        } else if (value >= 1.1) {
-            valueCell.classList.add('rotation-value-yellow');
-        } else {
-            valueCell.classList.add('rotation-value-red');
-        }
-        
+        if (valueCell.textContent === '0.00' || valueCell.textContent === '--' || current.fuel === null || value === null) { valueCell.classList.add('rotation-value-default'); } 
+        else if (value > 1.5) { valueCell.classList.add('rotation-value-green'); } 
+        else if (value >= 1.1) { valueCell.classList.add('rotation-value-yellow'); } 
+        else { valueCell.classList.add('rotation-value-red'); }
         sortable.push({ value: value !== null ? value : Infinity, element: line });
     });
     sortable.sort((a, b) => a.value - b.value);
     sortable.forEach(item => container.appendChild(item.element));
 }
-
-const parseTime = (timeString) => { if (!timeString || !timeString.includes(':')) return null; const parts = timeString.split(':'); return parseInt(parts[0], 10) * 60 + parseInt(parts[1], 10); };
-const formatTime = (totalMinutes) => { if (totalMinutes === null || isNaN(totalMinutes) || totalMinutes < 0) return ''; const roundedMinutes = Math.round(totalMinutes); const hours = Math.floor(roundedMinutes / 60); const minutes = roundedMinutes % 60; return `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}`; };
-const parseNumeric = (numericString) => { if (!numericString) return null; const value = parseInt(numericString.replace(/[^0-9]/g, ''), 10); return isNaN(value) ? null : value; };
 
 function recalculateBlocFuel() {
     const blocDepart = parseTime(document.getElementById('bloc-depart').querySelector('.display-input').value);
@@ -671,7 +664,7 @@ function recalculateBlocFuel() {
 }
 
 function updatePreviTab() {
-    if (!currentCommune) { document.getElementById('previ-bingo-base').innerHTML = '-- kg'; document.getElementById('previ-bingo-pelic').innerHTML = '-- kg'; document.querySelectorAll('#previ-rotation-results-container .value').forEach(el => el.textContent = '--'); document.getElementById('heure-sur-feu').textContent = '--:--'; document.getElementById('duree-transit').textContent = '--:--'; document.getElementById('conso-aller-feu').textContent = '-- kg'; return; }
+    if (!currentCommune) { document.getElementById('previ-bingo-base').innerHTML = '-- kg'; document.getElementById('previ-bingo-pelic').innerHTML = '-- kg'; document.querySelectorAll('#previ-rotation-results-container .value').forEach(el => {el.textContent = '--'; el.className = 'value rotation-value-default';}); document.getElementById('heure-sur-feu').textContent = '--:--'; document.getElementById('duree-transit').textContent = '--:--'; document.getElementById('conso-aller-feu').textContent = '-- kg'; return; }
     const bingoBase = calculateBingo(CALCULATOR_DATA.distBaseFeu); const bingoPelic = calculateBingo(CALCULATOR_DATA.distPelicFeu);
     const bingoBaseDisplay = document.getElementById('previ-bingo-base'); if (bingoBase === 700) { bingoBaseDisplay.innerHTML = '-- kg'; } else { bingoBaseDisplay.innerHTML = `${CALCULATOR_DATA.distBaseFeu} Nm / <b>${bingoBase} kg</b>`; }
     const bingoPelicDisplay = document.getElementById('previ-bingo-pelic'); if (bingoPelic === 700 || !selectedPelicanOACI) { bingoPelicDisplay.innerHTML = '-- kg'; } else { bingoPelicDisplay.innerHTML = `${selectedPelicanOACI} / ${CALCULATOR_DATA.distPelicFeu} Nm / <b>${bingoPelic} kg</b>`; }
@@ -682,14 +675,14 @@ function updatePreviTab() {
     const fuelSurFeu = parseNumeric(fuelSurFeuInput.value);
     updateAndSortRotations(document.getElementById('previ-rotation-results-container'), { fuel: fuelSurFeu, time: heureSurFeu }, { bingoBase, bingoPelic, consoRotation, rotationTime, csFeuTime, tmdTime, limiteHDV, transitTime });
 }
-    
+
 function updateSuiviTab() {
-    if (!currentCommune) { document.getElementById('suivi-bingo-base').innerHTML = '-- kg'; document.getElementById('suivi-bingo-pelic').innerHTML = '-- kg'; return; }
+    if (!currentCommune) { document.getElementById('suivi-bingo-base').innerHTML = '-- kg'; document.getElementById('suivi-bingo-pelic').innerHTML = '-- kg'; document.querySelectorAll('#suivi-rotation-results-container .value').forEach(el => {el.textContent = '--'; el.className = 'value rotation-value-default';}); return; }
     const bingoBase = calculateBingo(CALCULATOR_DATA.distBaseFeu); const bingoPelic = calculateBingo(CALCULATOR_DATA.distPelicFeu);
     const bingoBaseDisplay = document.getElementById('suivi-bingo-base'); if (bingoBase === 700) { bingoBaseDisplay.innerHTML = '-- kg'; } else { bingoBaseDisplay.innerHTML = `${CALCULATOR_DATA.distBaseFeu} Nm / <b>${bingoBase} kg</b>`; }
     const bingoPelicDisplay = document.getElementById('suivi-bingo-pelic'); if (bingoPelic === 700 || !selectedPelicanOACI) { bingoPelicDisplay.innerHTML = '-- kg'; } else { bingoPelicDisplay.innerHTML = `${selectedPelicanOACI} / ${CALCULATOR_DATA.distPelicFeu} Nm / <b>${bingoPelic} kg</b>`; }
     const allRows = document.querySelectorAll('#bloc-fuel tbody tr'); let lastFilledRow = null; allRows.forEach(row => { if (parseTime(row.querySelector('.time-input-wrapper .display-input').value) !== null || parseNumeric(row.querySelector('.numeric-input-wrapper .display-input').value) !== null) { lastFilledRow = row; } });
-    if (!lastFilledRow) { document.getElementById('suivi-fuel-actuel').textContent = '-- kg'; document.querySelectorAll('#suivi-rotation-results-container .value').forEach(el => el.textContent = '--'); } 
+    if (!lastFilledRow) { document.getElementById('suivi-fuel-actuel').textContent = '-- kg'; document.querySelectorAll('#suivi-rotation-results-container .value').forEach(el => {el.textContent = '--'; el.className = 'value rotation-value-default';}); } 
     else {
         const currentFuel = parseNumeric(lastFilledRow.querySelector('.numeric-input-wrapper .display-input').value); const currentTime = parseTime(lastFilledRow.querySelector('.time-input-wrapper .display-input').value); const currentHdv = parseTime(lastFilledRow.querySelector('.tps-vol-restant-cell').textContent);
         document.getElementById('suivi-fuel-actuel').textContent = currentFuel ? `${currentFuel} kg` : '--';
@@ -699,7 +692,7 @@ function updateSuiviTab() {
 }
 
 function updateDeroutementTab() {
-    if (!currentCommune) { document.getElementById('derout-bingo-base').innerHTML = '-- kg'; document.getElementById('derout-bingo-pelic').innerHTML = '-- kg'; document.querySelectorAll('#derout-rotation-results-container .value').forEach(el => el.textContent = '--'); document.getElementById('derout-fuel-mini-base').textContent = '-- kg'; document.getElementById('derout-fuel-mini-pelic').textContent = '-- kg'; return; }
+    if (!currentCommune) { document.getElementById('derout-bingo-base').innerHTML = '-- kg'; document.getElementById('derout-bingo-pelic').innerHTML = '-- kg'; document.querySelectorAll('#derout-rotation-results-container .value').forEach(el => {el.textContent = '--'; el.className = 'value rotation-value-default';}); document.getElementById('derout-fuel-mini-base').textContent = '-- kg'; document.getElementById('derout-fuel-mini-pelic').textContent = '-- kg'; return; }
     const bingoBase = calculateBingo(CALCULATOR_DATA.distBaseFeu); const bingoPelic = calculateBingo(CALCULATOR_DATA.distPelicFeu);
     const bingoBaseDisplay = document.getElementById('derout-bingo-base'); if (bingoBase === 700) { bingoBaseDisplay.innerHTML = '-- kg'; } else { bingoBaseDisplay.innerHTML = `${CALCULATOR_DATA.distBaseFeu} Nm / <b>${bingoBase} kg</b>`; }
     const bingoPelicDisplay = document.getElementById('derout-bingo-pelic'); if (bingoPelic === 700 || !selectedPelicanOACI) { bingoPelicDisplay.innerHTML = '-- kg'; } else { bingoPelicDisplay.innerHTML = `${selectedPelicanOACI} / ${CALCULATOR_DATA.distPelicFeu} Nm / <b>${bingoPelic} kg</b>`; }
@@ -710,105 +703,52 @@ function updateDeroutementTab() {
     const rotationTime = Math.round(calculateRotationTime(CALCULATOR_DATA.distPelicFeu)); const consoRotation = calculateConsoRotation(CALCULATOR_DATA.distPelicFeu); const csFeuTime = parseTime(CALCULATOR_DATA.csFeu); const tmdTime = parseTime(document.getElementById('tmd').querySelector('.display-input').value); const limiteHDV = parseTime(document.getElementById('limite-hdv').querySelector('.display-input').value); const transitTimeFromGps = Math.round(calculateTransitTime(CALCULATOR_DATA.distGpsFeu));
     updateAndSortRotations(document.getElementById('derout-rotation-results-container'), { fuel: currentFuel, time: currentTime }, { bingoBase, bingoPelic, consoRotation, rotationTime, csFeuTime, tmdTime, limiteHDV, transitTime: transitTimeFromGps });
 }
-    
+
 function initializeCalculator() {
     const resetButton = document.getElementById('reset-all-btn');
     const onglets = document.querySelectorAll('.onglet-bouton');
-    const panneaux = document.querySelectorAll('.onglet-panneau');
-    const csLftwDisplay = document.getElementById('cs-lftw-display').closest('.input-wrapper').querySelector('.display-input');
+    const csLftwDisplay = document.getElementById('cs-lftw-display');
     const lftwAirport = airports.find(ap => ap.oaci === 'LFTW');
 
-    function updateLftwSunset() {
-        if (lftwAirport && typeof SunCalc !== 'undefined') {
-            try {
-                const now = new Date();
-                const times = SunCalc.getTimes(now, lftwAirport.lat, lftwAirport.lon);
-                const sunsetString = times.sunset.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Paris' });
-                csLftwDisplay.value = sunsetString;
-            } catch (e) {
-                csLftwDisplay.value = '--:--';
-            }
-        }
-    }
-    updateLftwSunset();
-    setInterval(updateLftwSunset, 60000);
+    function updateLftwSunset() { if (lftwAirport && typeof SunCalc !== 'undefined') { try { const now = new Date(); const times = SunCalc.getTimes(now, lftwAirport.lat, lftwAirport.lon); const sunsetString = times.sunset.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Paris' }); csLftwDisplay.value = sunsetString; } catch (e) { csLftwDisplay.value = '--:--'; } } }
+    updateLftwSunset(); setInterval(updateLftwSunset, 60000);
 
-    onglets.forEach(onglet => {
-        onglet.addEventListener('click', () => {
-            onglets.forEach(btn => btn.classList.remove('active'));
-            panneaux.forEach(p => p.classList.remove('active'));
-            onglet.classList.add('active');
-            const activePanel = document.getElementById(onglet.dataset.onglet);
-            activePanel.classList.add('active');
-            resetButton.style.display = (onglet.dataset.onglet === 'bloc-fuel') ? 'flex' : 'none';
-        });
-    });
-
-    const allInputs = document.querySelectorAll('#calculator-modal input');
-    allInputs.forEach(input => {
-        input.addEventListener('change', () => { saveCalculatorState(); masterRecalculate(); });
-        input.addEventListener('blur', () => { saveCalculatorState(); masterRecalculate(); });
-        input.addEventListener('input', () => { masterRecalculate(); });
-    });
-     document.querySelectorAll('#calculator-modal .clear-btn, #calculator-modal .manual-btn').forEach(btn => {
-        btn.addEventListener('click', () => { setTimeout(() => { saveCalculatorState(); masterRecalculate(); }, 50); });
-    });
-
+    onglets.forEach(onglet => { onglet.addEventListener('click', () => { document.querySelectorAll('.onglet-bouton').forEach(btn => btn.classList.remove('active')); document.querySelectorAll('.onglet-panneau').forEach(p => p.classList.remove('active')); onglet.classList.add('active'); document.getElementById(onglet.dataset.onglet).classList.add('active'); resetButton.style.display = (onglet.dataset.onglet === 'bloc-fuel') ? 'flex' : 'none'; }); });
+    
     function saveCalculatorState() {
         const state = {};
-        document.querySelectorAll('#calculator-modal input.display-input[id]').forEach(el => {
-            state[el.id] = el.value;
-        });
+        document.querySelectorAll('#calculator-modal input.display-input[id]').forEach(el => { state[el.id] = el.value; });
         const tableData = [];
-        document.querySelectorAll('#bloc-fuel tbody tr').forEach(row => {
-            tableData.push({
-                time: row.querySelector('.time-input-wrapper .display-input').value,
-                fuel: row.querySelector('.numeric-input-wrapper .display-input').value
-            });
-        });
+        document.querySelectorAll('#bloc-fuel tbody tr').forEach(row => { tableData.push({ time: row.querySelector('.time-input-wrapper .display-input').value, fuel: row.querySelector('.numeric-input-wrapper .display-input').value }); });
         state.calculator_table_data = tableData;
         localStorage.setItem('calculator_state', JSON.stringify(state));
     }
 
     function loadCalculatorState() {
+        const tableBody = document.querySelector('#bloc-fuel tbody'); tableBody.innerHTML = '';
         const savedStateJSON = localStorage.getItem('calculator_state');
-        const tableBody = document.querySelector('#bloc-fuel tbody');
-        tableBody.innerHTML = ''; 
-        if (!savedStateJSON) {
-            for (let i = 0; i < 6; i++) { addNewRow(tableBody); }
-            return;
-        }
+        if (!savedStateJSON) { for (let i = 0; i < 6; i++) { addNewRow(tableBody); } return; }
         const state = JSON.parse(savedStateJSON);
-        document.querySelectorAll('#calculator-modal input.display-input[id]').forEach(el => {
-            if (state[el.id]) {
-                el.value = state[el.id];
-            }
-        });
+        document.querySelectorAll('#calculator-modal input.display-input[id]').forEach(el => { if (state[el.id]) el.value = state[el.id]; });
         const tableData = state.calculator_table_data || [];
-        const rowsToCreate = Math.max(6, tableData.length + (tableData.length > 0 && (tableData[tableData.length-1].time || tableData[tableData.length-1].fuel) ? 1 : 0) );
-        for (let i = 0; i < rowsToCreate; i++) {
-            addNewRow(tableBody, tableData[i]);
-        }
+        const rowsToCreate = Math.max(6, tableData.length + (tableData.length > 0 && (tableData[tableData.length - 1].time || tableData[tableData.length - 1].fuel) ? 1 : 0));
+        for (let i = 0; i < rowsToCreate; i++) { addNewRow(tableBody, tableData[i]); }
     }
 
     function initializeTimeInput(wrapper, initialValue = '') {
-        const displayInput = wrapper.querySelector('.display-input');
-        const engineInput = wrapper.querySelector('.engine-input');
-        const clearBtn = wrapper.querySelector('.clear-btn');
+        const displayInput = wrapper.querySelector('.display-input'); const engineInput = wrapper.querySelector('.engine-input'); const clearBtn = wrapper.querySelector('.clear-btn');
         displayInput.value = initialValue;
-        displayInput.addEventListener('dblclick', (e) => { e.preventDefault(); const now = new Date(); displayInput.value = `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}`; engineInput.value = displayInput.value; masterRecalculate(); });
-        engineInput.addEventListener('input', () => { if (engineInput.value) { displayInput.value = engineInput.value; masterRecalculate(); } });
-        if (clearBtn) { clearBtn.addEventListener('click', () => { displayInput.value = ''; engineInput.value = ''; masterRecalculate(); }); }
+        displayInput.addEventListener('dblclick', (e) => { e.preventDefault(); const now = new Date(); displayInput.value = `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}`; engineInput.value = displayInput.value; masterRecalculate(); saveCalculatorState(); });
+        engineInput.addEventListener('input', () => { if (engineInput.value) { displayInput.value = engineInput.value; masterRecalculate(); saveCalculatorState(); } });
+        if (clearBtn) { clearBtn.addEventListener('click', () => { displayInput.value = ''; engineInput.value = ''; masterRecalculate(); saveCalculatorState(); }); }
     }
 
     function initializeNumericInput(wrapper, initialValue = '') {
-        const displayInput = wrapper.querySelector('.display-input');
-        const clearBtn = wrapper.querySelector('.clear-btn');
-        const unit = wrapper.dataset.unit || '';
+        const displayInput = wrapper.querySelector('.display-input'); const clearBtn = wrapper.querySelector('.clear-btn'); const unit = wrapper.dataset.unit || '';
         displayInput.value = initialValue;
         displayInput.addEventListener('focus', () => { if (displayInput.readOnly) return; displayInput.value = displayInput.value.replace(/[^0-9]/g, ''); });
-        displayInput.addEventListener('blur', () => { if (displayInput.readOnly) return; let v = displayInput.value.replace(/[^0-9]/g, ''); if(v) { displayInput.value = `${v} ${unit}`; } else { displayInput.value = ''; } masterRecalculate(); });
-        if (clearBtn) { clearBtn.addEventListener('click', () => { displayInput.value = ''; masterRecalculate(); }); }
+        displayInput.addEventListener('blur', () => { if (displayInput.readOnly) return; let v = displayInput.value.replace(/[^0-9]/g, ''); if (v) { displayInput.value = `${v} ${unit}`; } else { displayInput.value = ''; } masterRecalculate(); saveCalculatorState(); });
+        if (clearBtn) { clearBtn.addEventListener('click', () => { displayInput.value = ''; masterRecalculate(); saveCalculatorState(); }); }
     }
 
     const addNewRow = (tableBody, data) => {
@@ -822,32 +762,18 @@ function initializeCalculator() {
     loadCalculatorState();
     
     function setupManualButton(btnId, wrapperId, flagSetter) {
-        const btn = document.getElementById(btnId);
-        const input = document.getElementById(wrapperId).querySelector('.display-input');
-        btn.addEventListener('click', () => {
-            const isManual = flagSetter();
-            if (isManual) { btn.textContent = 'MANUEL'; btn.classList.add('active'); input.readOnly = false; }
-            else { btn.textContent = 'AUTO'; btn.classList.remove('active'); input.readOnly = true; }
-            masterRecalculate();
-        });
+        const btn = document.getElementById(btnId); const input = document.getElementById(wrapperId).querySelector('.display-input');
+        btn.addEventListener('click', () => { const isManual = flagSetter(); if (isManual) { btn.textContent = 'MANUEL'; btn.classList.add('active'); input.readOnly = false; } else { btn.textContent = 'AUTO'; btn.classList.remove('active'); input.readOnly = true; } masterRecalculate(); });
     }
     setupManualButton('fuel-sur-feu-manual-btn', 'fuel-sur-feu-wrapper', () => isFuelSurFeuManual = !isFuelSurFeuManual);
     setupManualButton('suivi-conso-rotation-manual-btn', 'suivi-conso-rotation-wrapper', () => isSuiviConsoManual = !isSuiviConsoManual);
     setupManualButton('suivi-duree-rotation-manual-btn', 'suivi-duree-rotation-wrapper', () => isSuiviDureeManual = !isSuiviDureeManual);
 
-    resetButton.addEventListener('click', () => {
-        if (confirm("Voulez-vous vraiment remettre tout le tableau à zéro ?")) {
-            localStorage.removeItem('calculator_state');
-            window.location.reload();
-        }
-    });
+    resetButton.addEventListener('click', () => { if (confirm("Voulez-vous vraiment remettre tout le tableau à zéro ?")) { localStorage.removeItem('calculator_state'); window.location.reload(); } });
     
-    masterRecalculate = () => {
-        recalculateBlocFuel();
-        updatePreviTab();
-        updateSuiviTab();
-        updateDeroutementTab();
-    };
+    masterRecalculate = () => { recalculateBlocFuel(); updatePreviTab(); updateSuiviTab(); updateDeroutementTab(); };
     
+    document.querySelector('#calculator-modal').addEventListener('input', masterRecalculate);
+
     masterRecalculate();
 }
