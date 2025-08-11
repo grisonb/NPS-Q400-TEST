@@ -118,7 +118,7 @@ function setupEventListeners() {
     if (mainActionButtons) {
         const versionDisplay = document.createElement('div');
         versionDisplay.className = 'version-display';
-        versionDisplay.innerText = 'v40.1';
+        versionDisplay.innerText = 'v40.2';
         mainActionButtons.appendChild(versionDisplay);
     }
 
@@ -577,17 +577,29 @@ function initializeCalculator() {
         checkAndAddNewRow();
     }
 
-    function initializeTimeInput(wrapper, initialValue = '') {
+   function initializeTimeInput(wrapper, initialValue = '') {
     const displayInput = wrapper.querySelector('.display-input');
     const engineInput = wrapper.querySelector('.engine-input');
     const clearBtn = wrapper.querySelector('.clear-btn');
     displayInput.value = initialValue;
 
+    // Événement pour pré-remplir l'horloge au clic si le champ est vide
+    if (engineInput) {
+        displayInput.addEventListener('click', () => {
+            if (!displayInput.value) { // Seulement si le champ est vide
+                if (wrapper.id === 'tmd') {
+                    engineInput.value = '21:30';
+                } else if (wrapper.id === 'limite-hdv') {
+                    engineInput.value = '08:00';
+                }
+            }
+        });
+    }
+    
+    // Le double clic met directement la valeur, sans ouvrir l'horloge
     displayInput.addEventListener('dblclick', (e) => {
         e.preventDefault();
         let timeString;
-        
-        // --- NOUVELLE LOGIQUE POUR LES VALEURS PAR DÉFAUT ---
         if (wrapper.id === 'tmd') {
             timeString = '21:30';
         } else if (wrapper.id === 'limite-hdv') {
@@ -596,14 +608,13 @@ function initializeCalculator() {
             const now = new Date();
             timeString = `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}`;
         }
-        // --- FIN DE LA NOUVELLE LOGIQUE ---
-
         displayInput.value = timeString;
         if(engineInput) engineInput.value = timeString;
         masterRecalculate();
         saveCalculatorState();
         checkAndAddNewRow();
     });
+    
     if (engineInput) {
         engineInput.addEventListener('input', () => {
             if (engineInput.value) {
@@ -614,6 +625,7 @@ function initializeCalculator() {
             }
         });
     }
+
     if (clearBtn) {
         clearBtn.addEventListener('click', () => {
             displayInput.value = wrapper.id === 'tmd' ? '21:30' : wrapper.id === 'limite-hdv' ? '08:00' : '';
