@@ -1,8 +1,6 @@
-// --- FICHIER sw.js SANS TÉLÉCHARGEMENT DE MASSE ---
-
-const APP_CACHE_NAME = 'communes-app-cache-v201'; // Version 10.0
-const DATA_CACHE_NAME = 'communes-data-cache-v200';
-const TILE_CACHE_NAME = 'communes-tile-cache-v200';
+const APP_CACHE_NAME = 'communes-app-cache-v300'; // Version 30.0
+const DATA_CACHE_NAME = 'communes-data-cache-v300';
+const TILE_CACHE_NAME = 'communes-tile-cache-v300';
 
 const APP_SHELL_URLS = [
     './',
@@ -64,7 +62,7 @@ self.addEventListener('fetch', event => {
     event.respondWith(
         caches.match(event.request)
             .then(cachedResponse => {
-                return cachedResponse || fetch(event.request).catch(error => {
+                return cachedResponse || fetch(event.request).catch(() => {
                     if (event.request.mode === 'navigate') {
                         return caches.match('./index.html');
                     }
