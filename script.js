@@ -118,7 +118,7 @@ function setupEventListeners() {
     if (mainActionButtons) {
         const versionDisplay = document.createElement('div');
         versionDisplay.className = 'version-display';
-        versionDisplay.innerText = 'v30.2';
+        versionDisplay.innerText = 'v30.3';
         mainActionButtons.appendChild(versionDisplay);
     }
 
@@ -185,10 +185,10 @@ function setupEventListeners() {
     });
 
     airportCountInput.addEventListener('change', () => {
-        if (currentCommune) {
-            displayCommuneDetails(currentCommune, false);
-        }
-    });
+    if (currentCommune) {
+        displayCommuneDetails(currentCommune, false);
+    }
+});
 
     gpsFeuButton.addEventListener('click', () => {
         if (!navigator.geolocation) { alert("La géolocalisation n'est pas supportée par votre navigateur."); return; }
@@ -689,15 +689,35 @@ function updateDeroutementTab() {
 }
     
 function initializeCalculator() {
+    let isFuelSurFeuManual = false, isSuiviConsoManual = false, isSuiviDureeManual = false;
+    
     const resetButton = document.getElementById('reset-all-btn');
     const onglets = document.querySelectorAll('.onglet-bouton');
     const csLftwDisplay = document.getElementById('cs-lftw-display');
     const lftwAirport = airports.find(ap => ap.oaci === 'LFTW');
 
-    function updateLftwSunset() { if (lftwAirport && typeof SunCalc !== 'undefined') { try { const now = new Date(); const times = SunCalc.getTimes(now, lftwAirport.lat, lftwAirport.lon); const sunsetString = times.sunset.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Paris' }); csLftwDisplay.value = sunsetString; } catch (e) { csLftwDisplay.value = '--:--'; } } }
-    updateLftwSunset(); setInterval(updateLftwSunset, 60000);
+    function updateLftwSunset() {
+        if (lftwAirport && typeof SunCalc !== 'undefined') {
+            try {
+                const now = new Date();
+                const times = SunCalc.getTimes(now, lftwAirport.lat, lftwAirport.lon);
+                const sunsetString = times.sunset.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Paris' });
+                csLftwDisplay.value = sunsetString;
+            } catch (e) { csLftwDisplay.value = '--:--'; }
+        }
+    }
+    updateLftwSunset();
+    setInterval(updateLftwSunset, 60000);
 
-    onglets.forEach(onglet => { onglet.addEventListener('click', () => { document.querySelectorAll('.onglet-bouton').forEach(btn => btn.classList.remove('active')); document.querySelectorAll('.onglet-panneau').forEach(p => p.classList.remove('active')); onglet.classList.add('active'); document.getElementById(onglet.dataset.onglet).classList.add('active'); resetButton.style.display = (onglet.dataset.onglet === 'bloc-fuel') ? 'flex' : 'none'; }); });
+    onglets.forEach(onglet => {
+        onglet.addEventListener('click', () => {
+            document.querySelectorAll('.onglet-bouton').forEach(btn => btn.classList.remove('active'));
+            document.querySelectorAll('.onglet-panneau').forEach(p => p.classList.remove('active'));
+            onglet.classList.add('active');
+            document.getElementById(onglet.dataset.onglet).classList.add('active');
+            resetButton.style.display = (onglet.dataset.onglet === 'bloc-fuel') ? 'flex' : 'none';
+        });
+    });
     
     function saveCalculatorState() {
         const state = {};
@@ -717,30 +737,141 @@ function initializeCalculator() {
         localStorage.setItem('calculator_state', JSON.stringify(state));
     }
 
+    function initializeTimeInput(wrapper, initialValue = '') {
+    const displayInput = wrapper.querySelector('.display-input');
+    const engineInput = wrapper.querySelector('.engine-input');
+    const clearBtn = wrapper.querySelector('.clear-btn');
+    displayInput.value = initialValue;
+
+    displayInput.addEventListener('dblclick', (e) => {
+        e.preventDefault();
+        const now = new Date();
+        const timeString = `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}`;
+        displayInput.value = timeString;
+        engineInput.value = timeString;
+        masterRecalculate();
+        saveCalculatorState();
+    });
+
+    engineInput.addEventListener('input', () => {
+        if (engineInput.value) {
+            displayInput.value = engineInput.value;
+            masterRecalculate();
+            saveCalculatorState();
+        }
+    });
+
+    if (clearBtn) {
+        clearBtn.addEventListener('click', () => {
+            displayInput.value = wrapper.id === 'tmd' ? '21:30' : wrapper.id === 'limite-hdv' ? '08:00' : '';
+            engineInput.value = '';
+            masterRecalculate();
+            saveCalculatorState();
+        });
+    }
+}
+
+        engineInput.addEventListener('input', () => {
+            if (engineInput.value) {
+                displayInput.value = engineInput.value;
+                masterRecalculate();
+                saveCalculatorState();
+            }
+        });
+
+        if (clearBtn) {
+            clearBtn.addEventListener('click', () => {
+                displayInput.value = wrapper.id === 'tmd' ? '21:30' : wrapper.id === 'limite-hdv' ? '08:00' : '';
+                engineInput.value = '';
+                masterRecalculate();
+                saveCalculatorState();
+            });
+        }
+    }
+
+    function initializeNumericInput(wrapper, initialValue = '') {
+    const displayInput = wrapper.querySelector('.display-input');
+    const clearBtn = wrapper.querySelector('.clear-btn');
+    const unit = wrapper.dataset.unit || '';
+    let shouldClearOnNextInput = false;
+    displayInput.value = initialValue;
+
+    displayInput.addEventListener('focus', () => {
+        if (displayInput.readOnly) return;
+        if (displayInput.value) {
+            shouldClearOnNextInput = true;
+        }
+        displayInput.value = displayInput.value.replace(/[^0-9]/g, '');
+    });
+
+    displayInput.addEventListener('blur', () => {
+        if (displayInput.readOnly) return;
+        shouldClearOnNextInput = false;
+        let v = displayInput.value.replace(/[^0-9]/g, '');
+        if (v) {
+            displayInput.value = `${v} ${unit}`;
+        } else {
+            displayInput.value = '';
+        }
+        masterRecalculate();
+        saveCalculatorState();
+    });
+    
+    displayInput.addEventListener('input', (e) => {
+         if (displayInput.readOnly) return;
+         // Si l'utilisateur tape un chiffre alors que le champ est plein, on efface d'abord
+         if (shouldClearOnNextInput && e.data) {
+            displayInput.value = e.data.replace(/[^0-9]/g, '');
+            shouldClearOnNextInput = false;
+         } else {
+            displayInput.value = displayInput.value.replace(/[^0-9]/g, '');
+         }
+         masterRecalculate();
+    });
+
+    displayInput.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') {
+            e.preventDefault();
+            displayInput.blur(); // Simule la perte de focus pour formater
+        }
+    });
+
+    if (clearBtn) {
+        clearBtn.addEventListener('click', () => {
+            displayInput.value = '';
+            masterRecalculate();
+            saveCalculatorState();
+        });
+    }
+}
+
+    const addNewRow = (tableBody, data) => {
+        const row = document.createElement('tr');
+        row.innerHTML = `<td><div class="input-wrapper time-input-wrapper"><input type="text" class="display-input" readonly placeholder="--:--"><span class="clear-btn">&times;</span><span class="clock-icon">🕒</span><input type="time" class="engine-input"></div></td><td><div class="input-wrapper numeric-input-wrapper" data-unit="kg"><input type="text" class="display-input" inputmode="numeric" placeholder="[valeur]"><span class="clear-btn">&times;</span></div></td><td class="duree-rotation-cell"></td><td class="fuel-rotation-cell"></td><td class="tps-vol-cell"></td><td class="tps-vol-restant-cell"></td>`;
+        tableBody.appendChild(row);
+        initializeTimeInput(row.querySelector('.time-input-wrapper'), data ? data.time : '');
+        initializeNumericInput(row.querySelector('.numeric-input-wrapper'), data ? data.fuel : '');
+    };
+
     function loadCalculatorState() {
         const tableBody = document.querySelector('#bloc-fuel tbody');
         tableBody.innerHTML = '';
         const savedStateJSON = localStorage.getItem('calculator_state');
-        let state;
+        
+        let state = {};
         if (savedStateJSON) {
             state = JSON.parse(savedStateJSON);
-        } else {
-            state = {}; // Crée un état vide si aucune sauvegarde n'existe
         }
-        
-        document.querySelectorAll('#calculator-modal .input-wrapper').forEach(wrapper => {
-            if (wrapper.id && state[wrapper.id]) {
-                wrapper.querySelector('.display-input').value = state[wrapper.id];
-            }
-        });
 
-        // Appliquer les valeurs par défaut pour TMD et Limite HDV si elles sont vides
-        if(!document.getElementById('tmd').querySelector('.display-input').value) {
-            document.getElementById('tmd').querySelector('.display-input').value = '21:30';
-        }
-        if(!document.getElementById('limite-hdv').querySelector('.display-input').value) {
-            document.getElementById('limite-hdv').querySelector('.display-input').value = '08:00';
-        }
+        initializeTimeInput(document.getElementById('bloc-depart'), state['bloc-depart']);
+        initializeNumericInput(document.getElementById('fuel-depart'), state['fuel-depart']);
+        initializeTimeInput(document.getElementById('tmd'), state['tmd'] || '21:30');
+        initializeTimeInput(document.getElementById('limite-hdv'), state['limite-hdv'] || '08:00');
+        initializeTimeInput(document.getElementById('deroutement-heure-wrapper'), state['deroutement-heure-wrapper']);
+        initializeNumericInput(document.getElementById('deroutement-fuel-wrapper'), state['deroutement-fuel-wrapper']);
+        initializeNumericInput(document.getElementById('fuel-sur-feu-wrapper'), state['fuel-sur-feu-wrapper']);
+        initializeNumericInput(document.getElementById('suivi-conso-rotation-wrapper'), state['suivi-conso-rotation-wrapper']);
+        initializeTimeInput(document.getElementById('suivi-duree-rotation-wrapper'), state['suivi-duree-rotation-wrapper']);
 
         const tableData = state.calculator_table_data || [];
         const rowsToCreate = Math.max(6, tableData.length + (tableData.length > 0 && (tableData[tableData.length - 1].time || tableData[tableData.length - 1].fuel) ? 1 : 0));
@@ -748,38 +879,7 @@ function initializeCalculator() {
             addNewRow(tableBody, tableData[i]);
         }
     }
-
-    function initializeTimeInput(wrapper) {
-        const displayInput = wrapper.querySelector('.display-input');
-        const engineInput = wrapper.querySelector('.engine-input');
-        const clearBtn = wrapper.querySelector('.clear-btn');
-        displayInput.addEventListener('dblclick', (e) => { e.preventDefault(); const now = new Date(); displayInput.value = `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}`; engineInput.value = displayInput.value; masterRecalculate(); saveCalculatorState(); });
-        engineInput.addEventListener('input', () => { if (engineInput.value) { displayInput.value = engineInput.value; masterRecalculate(); saveCalculatorState(); } });
-        if (clearBtn) { clearBtn.addEventListener('click', () => { displayInput.value = wrapper.id === 'tmd' ? '21:30' : wrapper.id === 'limite-hdv' ? '08:00' : ''; engineInput.value = ''; masterRecalculate(); saveCalculatorState(); }); }
-    }
-
-    function initializeNumericInput(wrapper) {
-        const displayInput = wrapper.querySelector('.display-input');
-        const clearBtn = wrapper.querySelector('.clear-btn');
-        const unit = wrapper.dataset.unit || '';
-        displayInput.addEventListener('focus', () => { if (displayInput.readOnly) return; displayInput.value = displayInput.value.replace(/[^0-9]/g, ''); });
-        displayInput.addEventListener('blur', () => { if (displayInput.readOnly) return; let v = displayInput.value.replace(/[^0-9]/g, ''); if (v) { displayInput.value = `${v} ${unit}`; } else { displayInput.value = ''; } masterRecalculate(); saveCalculatorState(); });
-        displayInput.addEventListener('input', masterRecalculate);
-        if (clearBtn) { clearBtn.addEventListener('click', () => { displayInput.value = ''; masterRecalculate(); saveCalculatorState(); }); }
-    }
-
-    const addNewRow = (tableBody, data) => {
-        const row = document.createElement('tr');
-        row.innerHTML = `<td><div class="input-wrapper time-input-wrapper"><input type="text" class="display-input" readonly placeholder="--:--"><span class="clear-btn">&times;</span><span class="clock-icon">🕒</span><input type="time" class="engine-input"></div></td><td><div class="input-wrapper numeric-input-wrapper" data-unit="kg"><input type="text" class="display-input" inputmode="numeric" placeholder="[valeur]"><span class="clear-btn">&times;</span></div></td><td class="duree-rotation-cell"></td><td class="fuel-rotation-cell"></td><td class="tps-vol-cell"></td><td class="tps-vol-restant-cell"></td>`;
-        tableBody.appendChild(row);
-        initializeTimeInput(row.querySelector('.time-input-wrapper'));
-        initializeNumericInput(row.querySelector('.numeric-input-wrapper'));
-        if (data) {
-            row.querySelector('.time-input-wrapper .display-input').value = data.time || '';
-            row.querySelector('.numeric-input-wrapper .display-input').value = data.fuel || '';
-        }
-    };
-
+    
     loadCalculatorState();
     
     function setupManualButton(btnId, wrapperId, flagSetter) {
