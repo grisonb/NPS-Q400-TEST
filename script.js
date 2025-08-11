@@ -738,38 +738,20 @@ function initializeCalculator() {
     }
 
     function initializeTimeInput(wrapper, initialValue = '') {
-    const displayInput = wrapper.querySelector('.display-input');
-    const engineInput = wrapper.querySelector('.engine-input');
-    const clearBtn = wrapper.querySelector('.clear-btn');
-    displayInput.value = initialValue;
+        const displayInput = wrapper.querySelector('.display-input');
+        const engineInput = wrapper.querySelector('.engine-input');
+        const clearBtn = wrapper.querySelector('.clear-btn');
+        displayInput.value = initialValue;
 
-    displayInput.addEventListener('dblclick', (e) => {
-        e.preventDefault();
-        const now = new Date();
-        const timeString = `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}`;
-        displayInput.value = timeString;
-        engineInput.value = timeString;
-        masterRecalculate();
-        saveCalculatorState();
-    });
-
-    engineInput.addEventListener('input', () => {
-        if (engineInput.value) {
-            displayInput.value = engineInput.value;
-            masterRecalculate();
-            saveCalculatorState();
-        }
-    });
-
-    if (clearBtn) {
-        clearBtn.addEventListener('click', () => {
-            displayInput.value = wrapper.id === 'tmd' ? '21:30' : wrapper.id === 'limite-hdv' ? '08:00' : '';
-            engineInput.value = '';
+        displayInput.addEventListener('dblclick', (e) => {
+            e.preventDefault();
+            const now = new Date();
+            const timeString = `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}`;
+            displayInput.value = timeString;
+            engineInput.value = timeString;
             masterRecalculate();
             saveCalculatorState();
         });
-    }
-}
 
         engineInput.addEventListener('input', () => {
             if (engineInput.value) {
@@ -790,61 +772,60 @@ function initializeCalculator() {
     }
 
     function initializeNumericInput(wrapper, initialValue = '') {
-    const displayInput = wrapper.querySelector('.display-input');
-    const clearBtn = wrapper.querySelector('.clear-btn');
-    const unit = wrapper.dataset.unit || '';
-    let shouldClearOnNextInput = false;
-    displayInput.value = initialValue;
+        const displayInput = wrapper.querySelector('.display-input');
+        const clearBtn = wrapper.querySelector('.clear-btn');
+        const unit = wrapper.dataset.unit || '';
+        let shouldClearOnNextInput = false;
+        displayInput.value = initialValue;
 
-    displayInput.addEventListener('focus', () => {
-        if (displayInput.readOnly) return;
-        if (displayInput.value) {
-            shouldClearOnNextInput = true;
-        }
-        displayInput.value = displayInput.value.replace(/[^0-9]/g, '');
-    });
-
-    displayInput.addEventListener('blur', () => {
-        if (displayInput.readOnly) return;
-        shouldClearOnNextInput = false;
-        let v = displayInput.value.replace(/[^0-9]/g, '');
-        if (v) {
-            displayInput.value = `${v} ${unit}`;
-        } else {
-            displayInput.value = '';
-        }
-        masterRecalculate();
-        saveCalculatorState();
-    });
-    
-    displayInput.addEventListener('input', (e) => {
-         if (displayInput.readOnly) return;
-         // Si l'utilisateur tape un chiffre alors que le champ est plein, on efface d'abord
-         if (shouldClearOnNextInput && e.data) {
-            displayInput.value = e.data.replace(/[^0-9]/g, '');
-            shouldClearOnNextInput = false;
-         } else {
+        displayInput.addEventListener('focus', () => {
+            if (displayInput.readOnly) return;
+            if (displayInput.value) {
+                shouldClearOnNextInput = true;
+            }
             displayInput.value = displayInput.value.replace(/[^0-9]/g, '');
-         }
-         masterRecalculate();
-    });
+        });
 
-    displayInput.addEventListener('keydown', (e) => {
-        if (e.key === 'Enter') {
-            e.preventDefault();
-            displayInput.blur(); // Simule la perte de focus pour formater
-        }
-    });
-
-    if (clearBtn) {
-        clearBtn.addEventListener('click', () => {
-            displayInput.value = '';
+        displayInput.addEventListener('blur', () => {
+            if (displayInput.readOnly) return;
+            shouldClearOnNextInput = false;
+            let v = displayInput.value.replace(/[^0-9]/g, '');
+            if (v) {
+                displayInput.value = `${v} ${unit}`;
+            } else {
+                displayInput.value = '';
+            }
             masterRecalculate();
             saveCalculatorState();
         });
-    }
-}
+        
+        displayInput.addEventListener('input', (e) => {
+             if (displayInput.readOnly) return;
+             if (shouldClearOnNextInput && e.data) {
+                displayInput.value = e.data.replace(/[^0-9]/g, '');
+                shouldClearOnNextInput = false;
+             } else {
+                displayInput.value = displayInput.value.replace(/[^0-9]/g, '');
+             }
+             masterRecalculate();
+        });
 
+        displayInput.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                displayInput.blur();
+            }
+        });
+
+        if (clearBtn) {
+            clearBtn.addEventListener('click', () => {
+                displayInput.value = '';
+                masterRecalculate();
+                saveCalculatorState();
+            });
+        }
+    }
+    
     const addNewRow = (tableBody, data) => {
         const row = document.createElement('tr');
         row.innerHTML = `<td><div class="input-wrapper time-input-wrapper"><input type="text" class="display-input" readonly placeholder="--:--"><span class="clear-btn">&times;</span><span class="clock-icon">🕒</span><input type="time" class="engine-input"></div></td><td><div class="input-wrapper numeric-input-wrapper" data-unit="kg"><input type="text" class="display-input" inputmode="numeric" placeholder="[valeur]"><span class="clear-btn">&times;</span></div></td><td class="duree-rotation-cell"></td><td class="fuel-rotation-cell"></td><td class="tps-vol-cell"></td><td class="tps-vol-restant-cell"></td>`;
@@ -852,7 +833,7 @@ function initializeCalculator() {
         initializeTimeInput(row.querySelector('.time-input-wrapper'), data ? data.time : '');
         initializeNumericInput(row.querySelector('.numeric-input-wrapper'), data ? data.fuel : '');
     };
-
+    
     function loadCalculatorState() {
         const tableBody = document.querySelector('#bloc-fuel tbody');
         tableBody.innerHTML = '';
@@ -879,7 +860,7 @@ function initializeCalculator() {
             addNewRow(tableBody, tableData[i]);
         }
     }
-    
+
     loadCalculatorState();
     
     function setupManualButton(btnId, wrapperId, flagSetter) {
