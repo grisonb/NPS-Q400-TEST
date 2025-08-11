@@ -118,7 +118,7 @@ function setupEventListeners() {
     if (mainActionButtons) {
         const versionDisplay = document.createElement('div');
         versionDisplay.className = 'version-display';
-        versionDisplay.innerText = 'v30.8';
+        versionDisplay.innerText = 'v30.9';
         mainActionButtons.appendChild(versionDisplay);
     }
 
@@ -551,10 +551,13 @@ function updateSuiviTab() { if (!currentCommune) { document.getElementById('suiv
 function updateDeroutementTab() { if (!currentCommune) { document.getElementById('derout-bingo-base').innerHTML = '-- kg'; document.getElementById('derout-bingo-pelic').innerHTML = '-- kg'; document.querySelectorAll('#derout-rotation-results-container .value').forEach(el => {el.textContent = '--'; el.className = 'value rotation-value-default';}); document.getElementById('derout-fuel-mini-base').textContent = '-- kg'; document.getElementById('derout-fuel-mini-pelic').textContent = '-- kg'; return; } const bingoBase = calculateBingo(CALCULATOR_DATA.distBaseFeu); const bingoPelic = calculateBingo(CALCULATOR_DATA.distPelicFeu); const bingoBaseDisplay = document.getElementById('derout-bingo-base'); if (bingoBase === 700) { bingoBaseDisplay.innerHTML = '-- kg'; } else { bingoBaseDisplay.innerHTML = `${CALCULATOR_DATA.distBaseFeu} Nm / <b>${bingoBase} kg</b>`; } const bingoPelicDisplay = document.getElementById('derout-bingo-pelic'); if (bingoPelic === 700 || !selectedPelicanOACI) { bingoPelicDisplay.innerHTML = '-- kg'; } else { bingoPelicDisplay.innerHTML = `${selectedPelicanOACI} / ${CALCULATOR_DATA.distPelicFeu} Nm / <b>${bingoPelic} kg</b>`; } const fuelForGpsTransit = calculateFuelToGo(CALCULATOR_DATA.distGpsFeu); const fuelMiniBase = fuelForGpsTransit + bingoBase + 250; const fuelMiniPelic = fuelForGpsTransit + bingoPelic + 250; document.getElementById('derout-fuel-mini-base').textContent = fuelMiniBase === 950 ? '-- kg' : `${fuelMiniBase} kg`; document.getElementById('derout-fuel-mini-pelic').textContent = fuelMiniPelic === 950 ? '-- kg' : `${fuelMiniPelic} kg`; const currentFuel = parseNumeric(document.getElementById('deroutement-fuel-wrapper').querySelector('.display-input').value); const currentTime = parseTime(document.getElementById('deroutement-heure-wrapper').querySelector('.display-input').value); const rotationTime = Math.round(calculateRotationTime(CALCULATOR_DATA.distPelicFeu)); const consoRotation = calculateConsoRotation(CALCULATOR_DATA.distPelicFeu); const csFeuTime = parseTime(CALCULATOR_DATA.csFeu); const tmdTime = parseTime(document.getElementById('tmd').querySelector('.display-input').value); const limiteHDV = parseTime(document.getElementById('limite-hdv').querySelector('.display-input').value); const transitTimeFromGps = Math.round(calculateTransitTime(CALCULATOR_DATA.distGpsFeu)); updateAndSortRotations(document.getElementById('derout-rotation-results-container'), { fuel: currentFuel, time: currentTime }, { bingoBase, bingoPelic, consoRotation, rotationTime, csFeuTime, tmdTime, limiteHDV, transitTime: transitTimeFromGps }); }
     
 function initializeCalculator() {
+    let isFuelSurFeuManual = false, isSuiviConsoManual = false, isSuiviDureeManual = false;
+    
     const resetButton = document.getElementById('reset-all-btn');
     const onglets = document.querySelectorAll('.onglet-bouton');
     const csLftwDisplay = document.getElementById('cs-lftw-display');
     const lftwAirport = airports.find(ap => ap.oaci === 'LFTW');
+    const tableBody = document.querySelector('#bloc-fuel tbody');
 
     function updateLftwSunset() { if (lftwAirport && typeof SunCalc !== 'undefined') { try { const now = new Date(); const times = SunCalc.getTimes(now, lftwAirport.lat, lftwAirport.lon); const sunsetString = times.sunset.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Paris' }); csLftwDisplay.value = sunsetString; } catch (e) { csLftwDisplay.value = '--:--'; } } }
     updateLftwSunset(); setInterval(updateLftwSunset, 60000);
@@ -575,8 +578,20 @@ function initializeCalculator() {
                 fuel: row.querySelector('.numeric-input-wrapper .display-input').value
             });
         });
-        state.calculator_table_data = tableData;
+        state.calculator_table_data = tableData.filter(d => d.time || d.fuel); // Ne sauvegarde que les lignes non-vides
         localStorage.setItem('calculator_state', JSON.stringify(state));
+    }
+
+    function checkAndAddNewRow() {
+        const tableRows = tableBody.querySelectorAll('tr');
+        const lastRow = tableRows[tableRows.length - 1];
+        if (lastRow) {
+            const lastTimeInput = lastRow.querySelector('.time-input-wrapper .display-input').value;
+            const lastFuelInput = lastRow.querySelector('.numeric-input-wrapper .display-input').value;
+            if (lastTimeInput || lastFuelInput) {
+                addNewRow(tableBody);
+            }
+        }
     }
 
     function initializeTimeInput(wrapper, initialValue = '') {
@@ -584,8 +599,9 @@ function initializeCalculator() {
         const engineInput = wrapper.querySelector('.engine-input');
         const clearBtn = wrapper.querySelector('.clear-btn');
         displayInput.value = initialValue;
-        displayInput.addEventListener('dblclick', (e) => { e.preventDefault(); const now = new Date(); const timeString = `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}`; displayInput.value = timeString; if(engineInput) engineInput.value = timeString; masterRecalculate(); saveCalculatorState(); });
-        if (engineInput) { engineInput.addEventListener('input', () => { if (engineInput.value) { displayInput.value = engineInput.value; masterRecalculate(); saveCalculatorState(); } }); }
+
+        displayInput.addEventListener('dblclick', (e) => { e.preventDefault(); const now = new Date(); const timeString = `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}`; displayInput.value = timeString; if(engineInput) engineInput.value = timeString; masterRecalculate(); saveCalculatorState(); checkAndAddNewRow(); });
+        if (engineInput) { engineInput.addEventListener('input', () => { if (engineInput.value) { displayInput.value = engineInput.value; masterRecalculate(); saveCalculatorState(); checkAndAddNewRow(); } }); }
         if (clearBtn) { clearBtn.addEventListener('click', () => { displayInput.value = wrapper.id === 'tmd' ? '21:30' : wrapper.id === 'limite-hdv' ? '08:00' : ''; if(engineInput) engineInput.value = ''; masterRecalculate(); saveCalculatorState(); }); }
     }
 
@@ -595,8 +611,9 @@ function initializeCalculator() {
         const unit = wrapper.dataset.unit || '';
         let shouldClearOnNextInput = false;
         displayInput.value = initialValue;
+
         displayInput.addEventListener('focus', () => { if (displayInput.readOnly) return; if (displayInput.value) { shouldClearOnNextInput = true; } displayInput.value = displayInput.value.replace(/[^0-9]/g, ''); });
-        displayInput.addEventListener('blur', () => { if (displayInput.readOnly) return; shouldClearOnNextInput = false; let v = displayInput.value.replace(/[^0-9]/g, ''); if (v) { displayInput.value = `${v} ${unit}`; } else { displayInput.value = ''; } masterRecalculate(); saveCalculatorState(); });
+        displayInput.addEventListener('blur', () => { if (displayInput.readOnly) return; shouldClearOnNextInput = false; let v = displayInput.value.replace(/[^0-9]/g, ''); if (v) { displayInput.value = `${v} ${unit}`; } else { displayInput.value = ''; } masterRecalculate(); saveCalculatorState(); checkAndAddNewRow(); });
         displayInput.addEventListener('input', (e) => { if (displayInput.readOnly) return; if (shouldClearOnNextInput && e.data) { displayInput.value = e.data.replace(/[^0-9]/g, ''); shouldClearOnNextInput = false; } else { displayInput.value = displayInput.value.replace(/[^0-9]/g, ''); } masterRecalculate(); });
         displayInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); displayInput.blur(); } });
         if (clearBtn) { clearBtn.addEventListener('click', () => { displayInput.value = ''; masterRecalculate(); saveCalculatorState(); }); }
@@ -611,11 +628,11 @@ function initializeCalculator() {
     };
 
     function loadCalculatorState() {
-        const tableBody = document.querySelector('#bloc-fuel tbody');
         tableBody.innerHTML = '';
         const savedStateJSON = localStorage.getItem('calculator_state');
         let state = {};
         if (savedStateJSON) { state = JSON.parse(savedStateJSON); }
+
         initializeTimeInput(document.getElementById('bloc-depart'), state['bloc-depart']);
         initializeNumericInput(document.getElementById('fuel-depart'), state['fuel-depart']);
         initializeTimeInput(document.getElementById('tmd'), state['tmd'] || '21:30');
@@ -625,17 +642,18 @@ function initializeCalculator() {
         initializeNumericInput(document.getElementById('fuel-sur-feu-wrapper'), state['fuel-sur-feu-wrapper']);
         initializeNumericInput(document.getElementById('suivi-conso-rotation-wrapper'), state['suivi-conso-rotation-wrapper']);
         initializeTimeInput(document.getElementById('suivi-duree-rotation-wrapper'), state['suivi-duree-rotation-wrapper']);
+
         const tableData = state.calculator_table_data || [];
-        const rowsToCreate = Math.max(6, tableData.length + (tableData.length > 0 && (tableData[tableData.length - 1].time || tableData[tableData.length - 1].fuel) ? 1 : 0));
-        for (let i = 0; i < rowsToCreate; i++) { addNewRow(tableBody, tableData[i]); }
+        const rowsToCreate = Math.max(6, tableData.length);
+        for (let i = 0; i < rowsToCreate; i++) {
+            addNewRow(tableBody, tableData[i]);
+        }
+        addNewRow(tableBody); // Assure qu'il y a toujours une ligne vide à la fin
     }
 
     loadCalculatorState();
     
-    function setupManualButton(btnId, wrapperId, flagSetter) {
-        const btn = document.getElementById(btnId); const input = document.getElementById(wrapperId).querySelector('.display-input');
-        btn.addEventListener('click', () => { const isManual = flagSetter(); if (isManual) { btn.textContent = 'MANUEL'; btn.classList.add('active'); input.readOnly = false; } else { btn.textContent = 'AUTO'; btn.classList.remove('active'); input.readOnly = true; } masterRecalculate(); });
-    }
+    function setupManualButton(btnId, wrapperId, flagSetter) { const btn = document.getElementById(btnId); const input = document.getElementById(wrapperId).querySelector('.display-input'); btn.addEventListener('click', () => { const isManual = flagSetter(); if (isManual) { btn.textContent = 'MANUEL'; btn.classList.add('active'); input.readOnly = false; } else { btn.textContent = 'AUTO'; btn.classList.remove('active'); input.readOnly = true; } masterRecalculate(); }); }
     setupManualButton('fuel-sur-feu-manual-btn', 'fuel-sur-feu-wrapper', () => isFuelSurFeuManual = !isFuelSurFeuManual);
     setupManualButton('suivi-conso-rotation-manual-btn', 'suivi-conso-rotation-wrapper', () => isSuiviConsoManual = !isSuiviConsoManual);
     setupManualButton('suivi-duree-rotation-manual-btn', 'suivi-duree-rotation-wrapper', () => isSuiviDureeManual = !isSuiviDureeManual);
