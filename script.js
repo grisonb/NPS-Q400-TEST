@@ -118,7 +118,7 @@ function setupEventListeners() {
     if (mainActionButtons) {
         const versionDisplay = document.createElement('div');
         versionDisplay.className = 'version-display';
-        versionDisplay.innerText = 'v30.0';
+        versionDisplay.innerText = 'v30.1';
         mainActionButtons.appendChild(versionDisplay);
     }
 
@@ -391,22 +391,178 @@ const saveState = () => { localStorage.setItem('disabled_airports', JSON.stringi
 window.toggleAirport = oaci => { disabledAirports.has(oaci) ? disabledAirports.delete(oaci) : (disabledAirports.add(oaci), waterAirports.delete(oaci)), saveState(), refreshUI() };
 window.toggleWater = oaci => { waterAirports.has(oaci) ? waterAirports.delete(oaci) : (waterAirports.add(oaci), disabledAirports.delete(oaci)), saveState(), refreshUI() };
 
-function toggleLiveGps() { /* ... Contenu inchangé ... */ }
-function updateUserPosition(pos) { /* ... Contenu inchangé ... */ }
-function findClosestCommuneName(lat, lon) { /* ... Contenu inchangé ... */ }
-function toggleLftwRoute() { /* ... Contenu inchangé ... */ }
-function updateLftwButtonState() { /* ... Contenu inchangé ... */ }
-function drawLftwRoute() { /* ... Contenu inchangé ... */ }
-function toggleGaarVisibility() { /* ... Contenu inchangé ... */ }
-function updateGaarButtonState() { /* ... Contenu inchangé ... */ }
-function toggleGaarDrawingMode() { /* ... Contenu inchangé ... */ }
-async function handleGaarMapClick(e) { /* ... Contenu inchangé ... */ }
-async function reverseGeocode(latlng) { /* ... Contenu inchangé ... */ }
-function redrawGaarCircuits() { /* ... Contenu inchangé ... */ }
-window.updateGaarPoint = function(circuitIndex, pointIndex) { /* ... Contenu inchangé ... */ };
-window.deleteGaarPoint = function(circuitIndex, pointIndex) { /* ... Contenu inchangé ... */ };
-function clearAllGaarCircuits() { /* ... Contenu inchangé ... */ }
-function saveGaarCircuits() { /* ... Contenu inchangé ... */ }
+function toggleLiveGps() {
+    const liveGpsButton = document.getElementById('live-gps-button');
+    if (watchId) {
+        navigator.geolocation.clearWatch(watchId);
+        watchId = null;
+        liveGpsButton.classList.remove('active');
+        localStorage.setItem('liveGpsActive', 'false');
+    } else {
+        if (!navigator.geolocation) { alert("La géolocalisation n'est pas supportée."); return; }
+        watchId = navigator.geolocation.watchPosition(
+            updateUserPosition, 
+            (error) => { console.error("Erreur de suivi GPS:", error); alert("Impossible d'activer le suivi GPS. Vérifiez les autorisations."); if (watchId) toggleLiveGps(); }, 
+            { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+        );
+        liveGpsButton.classList.add('active');
+        localStorage.setItem('liveGpsActive', 'true');
+    }
+}
+
+function updateUserPosition(pos) {
+    const { latitude: userLat, longitude: userLon } = pos.coords;
+    if (!userMarker) {
+        const userIcon = L.divIcon({ className: 'custom-marker-icon user-marker', html: '👤' });
+        userMarker = L.marker([userLat, userLon], { icon: userIcon }).bindPopup('Votre position').addTo(map);
+    } else {
+        userMarker.setLatLng([userLat, userLon]);
+    }
+    userToTargetLayer.clearLayers();
+    if (currentCommune) {
+        const { latitude_mairie: lat, longitude_mairie: lon } = currentCommune;
+        if (lat.toFixed(6) !== userLat.toFixed(6) || lon.toFixed(6) !== userLon.toFixed(6)) {
+            const trueBearing = calculateBearing(userLat, userLon, lat, lon);
+            const magneticBearing = (trueBearing - MAGNETIC_DECLINATION + 360) % 360;
+            drawRoute([userLat, userLon], [lat, lon], { isUser: true, magneticBearing: magneticBearing });
+        }
+    }
+}
+
+function findClosestCommuneName(lat, lon) {
+    if (!allCommunes || allCommunes.length === 0) return null;
+    let closestCommune = null; let minDistance = Infinity;
+    for (const commune of allCommunes) {
+        const distance = calculateDistanceInNm(lat, lon, commune.latitude_mairie, commune.longitude_mairie);
+        if (distance < minDistance) { minDistance = distance; closestCommune = commune; }
+    }
+    if (closestCommune && minDistance < 27) { return closestCommune.nom_standard; }
+    return null;
+}
+
+function toggleLftwRoute() {
+    showLftwRoute = !showLftwRoute;
+    localStorage.setItem('showLftwRoute', showLftwRoute);
+    updateLftwButtonState();
+    if(currentCommune) { displayCommuneDetails(currentCommune, false); }
+}
+
+function updateLftwButtonState() {
+    const lftwRouteButton = document.getElementById('lftw-route-button');
+    lftwRouteButton.classList.toggle('active', showLftwRoute);
+}
+
+function drawLftwRoute() {
+    lftwRouteLayer.clearLayers();
+    if (!showLftwRoute || !currentCommune) return;
+    const lftwAirport = airports.find(ap => ap.oaci === 'LFTW');
+    if (!lftwAirport) return;
+    const { latitude_mairie: lat, longitude_mairie: lon } = currentCommune;
+    const { lat: lftwLat, lon: lftwLon } = lftwAirport;
+    const trueBearing = calculateBearing(lat, lon, lftwLat, lftwLon);
+    const magneticBearing = (trueBearing - MAGNETIC_DECLINATION + 360) % 360;
+    drawRoute([lat, lon], [lftwLat, lftwLon], { isLftwRoute: true, magneticBearing: magneticBearing });
+}
+
+function toggleGaarVisibility() {
+    isGaarMode = !isGaarMode;
+    updateGaarButtonState();
+    if (isGaarMode) { redrawGaarCircuits(); } 
+    else { gaarLayer.clearLayers(); if (isDrawingMode) { toggleGaarDrawingMode(); } }
+}
+
+function updateGaarButtonState() {
+    const gaarButton = document.getElementById('gaar-mode-button');
+    const gaarControls = document.getElementById('gaar-controls');
+    gaarButton.classList.toggle('active', isGaarMode);
+    gaarControls.style.display = isGaarMode ? 'flex' : 'none';
+}
+
+function toggleGaarDrawingMode() {
+    const editButton = document.getElementById('edit-circuits-button');
+    const mapContainer = document.getElementById('map');
+    const status = document.getElementById('gaar-status');
+    isDrawingMode = !isDrawingMode;
+    editButton.classList.toggle('active', isDrawingMode);
+    mapContainer.classList.toggle('crosshair-cursor', isDrawingMode);
+    status.textContent = isDrawingMode ? 'Mode modification activé. Cliquez pour ajouter des points.' : '';
+}
+
+async function handleGaarMapClick(e) {
+    if (!isDrawingMode) return;
+    let targetCircuit = gaarCircuits.find(c => c && c.isManual && c.points.length < 3);
+    if (!targetCircuit) {
+        const manualCircuitsCount = gaarCircuits.filter(c => c && c.isManual).length;
+        targetCircuit = { points: [], color: manualCircuitColors[manualCircuitsCount % manualCircuitColors.length], isManual: true, };
+        gaarCircuits.push(targetCircuit);
+    }
+    const pointName = await reverseGeocode(e.latlng) || `Point Manuel`;
+    targetCircuit.points.push({ lat: e.latlng.lat, lng: e.latlng.lng, name: pointName });
+    redrawGaarCircuits();
+    saveGaarCircuits();
+}
+
+async function reverseGeocode(latlng) {
+    document.getElementById('gaar-status').textContent = 'Recherche du nom...';
+    try {
+        if (!navigator.onLine) { throw new Error("Application hors ligne."); }
+        const response = await fetch(`https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${latlng.lat}&lon=${latlng.lng}&zoom=10`);
+        if (!response.ok) throw new Error('La réponse du réseau n\'était pas OK.');
+        const data = await response.json();
+        const name = data.address.city || data.address.town || data.address.village || data.display_name.split(',')[0];
+        document.getElementById('gaar-status').textContent = `Point ajouté près de ${name}.`;
+        return name;
+    } catch (error) {
+        const closestCommuneName = findClosestCommuneName(latlng.lat, latlng.lng);
+        if (closestCommuneName) {
+            document.getElementById('gaar-status').textContent = `Point ajouté près de ${closestCommuneName} (hors-ligne).`;
+            return closestCommuneName;
+        } else {
+            document.getElementById('gaar-status').textContent = 'Nom non trouvé (hors-ligne).';
+            return null;
+        }
+    }
+}
+
+function redrawGaarCircuits() {
+    gaarLayer.clearLayers();
+    gaarCircuits.forEach((circuit, circuitIndex) => {
+        if (!circuit || circuit.points.length === 0) return;
+        const latlngs = circuit.points.map(p => [p.lat, p.lng]);
+        const styleOptions = { color: circuit.color, weight: 3, opacity: 0.6, fillColor: circuit.color, fillOpacity: 0.2 };
+        if (latlngs.length >= 3) { L.polygon(latlngs, styleOptions).addTo(gaarLayer); } 
+        else if (latlngs.length > 1) { L.polyline(latlngs, styleOptions).addTo(gaarLayer); }
+        circuit.points.forEach((point, pointIndex) => {
+            const marker = L.circleMarker([point.lat, point.lng], { radius: 8, fillColor: circuit.color, color: '#000', weight: 1, opacity: 1, fillOpacity: 0.8 }).addTo(gaarLayer);
+            marker.bindTooltip(`${pointIndex + 1}. ${point.name}`, { permanent: true, direction: 'top', className: 'gaar-point-label' });
+            const popupContent = `<div class="gaar-popup-form"><input type="text" id="gaar-input-${circuitIndex}-${pointIndex}" value="${point.name}"><button onclick="updateGaarPoint(${circuitIndex}, ${pointIndex})">OK</button><button class="delete-point-btn" onclick="deleteGaarPoint(${circuitIndex}, ${pointIndex})">Supprimer</button></div>`;
+            marker.bindPopup(popupContent);
+        });
+    });
+}
+
+window.updateGaarPoint = async function(circuitIndex, pointIndex) {
+    const input = document.getElementById(`gaar-input-${circuitIndex}-${pointIndex}`);
+    const newName = input.value.trim();
+    if (newName) {
+        gaarCircuits[circuitIndex].points[pointIndex].name = newName;
+        redrawGaarCircuits();
+        saveGaarCircuits();
+        map.closePopup();
+    }
+};
+
+window.deleteGaarPoint = function(circuitIndex, pointIndex) {
+    gaarCircuits[circuitIndex].points.splice(pointIndex, 1);
+    if (gaarCircuits[circuitIndex].points.length === 0) {
+        gaarCircuits.splice(circuitIndex, 1);
+    }
+    redrawGaarCircuits();
+    saveGaarCircuits();
+};
+
+function clearAllGaarCircuits() { gaarCircuits = []; gaarLayer.clearLayers(); saveGaarCircuits(); }
+function saveGaarCircuits() { localStorage.setItem('gaarCircuits', JSON.stringify(gaarCircuits)); }
 
 function updateCalculatorData() {
     if (!currentCommune) {
@@ -503,7 +659,7 @@ function updatePreviTab() {
     const fuelSurFeu = parseNumeric(fuelSurFeuInput.value);
     updateAndSortRotations(document.getElementById('previ-rotation-results-container'), { fuel: fuelSurFeu, time: heureSurFeu }, { bingoBase, bingoPelic, consoRotation, rotationTime, csFeuTime, tmdTime, limiteHDV, transitTime });
 }
-
+    
 function updateSuiviTab() {
     if (!currentCommune) { document.getElementById('suivi-bingo-base').innerHTML = '-- kg'; document.getElementById('suivi-bingo-pelic').innerHTML = '-- kg'; document.querySelectorAll('#suivi-rotation-results-container .value').forEach(el => {el.textContent = '--'; el.className = 'value rotation-value-default';}); return; }
     const bingoBase = calculateBingo(CALCULATOR_DATA.distBaseFeu); const bingoPelic = calculateBingo(CALCULATOR_DATA.distPelicFeu);
@@ -565,18 +721,27 @@ function initializeCalculator() {
         const tableBody = document.querySelector('#bloc-fuel tbody');
         tableBody.innerHTML = '';
         const savedStateJSON = localStorage.getItem('calculator_state');
-        if (!savedStateJSON) {
-            for (let i = 0; i < 6; i++) { addNewRow(tableBody); }
-            initializeTimeInput(document.getElementById('tmd'), '21:30');
-            initializeTimeInput(document.getElementById('limite-hdv'), '08:00');
-            return;
+        let state;
+        if (savedStateJSON) {
+            state = JSON.parse(savedStateJSON);
+        } else {
+            state = {}; // Crée un état vide si aucune sauvegarde n'existe
         }
-        const state = JSON.parse(savedStateJSON);
+        
         document.querySelectorAll('#calculator-modal .input-wrapper').forEach(wrapper => {
             if (wrapper.id && state[wrapper.id]) {
                 wrapper.querySelector('.display-input').value = state[wrapper.id];
             }
         });
+
+        // Appliquer les valeurs par défaut pour TMD et Limite HDV si elles sont vides
+        if(!document.getElementById('tmd').querySelector('.display-input').value) {
+            document.getElementById('tmd').querySelector('.display-input').value = '21:30';
+        }
+        if(!document.getElementById('limite-hdv').querySelector('.display-input').value) {
+            document.getElementById('limite-hdv').querySelector('.display-input').value = '08:00';
+        }
+
         const tableData = state.calculator_table_data || [];
         const rowsToCreate = Math.max(6, tableData.length + (tableData.length > 0 && (tableData[tableData.length - 1].time || tableData[tableData.length - 1].fuel) ? 1 : 0));
         for (let i = 0; i < rowsToCreate; i++) {
@@ -584,21 +749,19 @@ function initializeCalculator() {
         }
     }
 
-    function initializeTimeInput(wrapper, initialValue = '') {
+    function initializeTimeInput(wrapper) {
         const displayInput = wrapper.querySelector('.display-input');
         const engineInput = wrapper.querySelector('.engine-input');
         const clearBtn = wrapper.querySelector('.clear-btn');
-        displayInput.value = initialValue;
         displayInput.addEventListener('dblclick', (e) => { e.preventDefault(); const now = new Date(); displayInput.value = `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}`; engineInput.value = displayInput.value; masterRecalculate(); saveCalculatorState(); });
         engineInput.addEventListener('input', () => { if (engineInput.value) { displayInput.value = engineInput.value; masterRecalculate(); saveCalculatorState(); } });
         if (clearBtn) { clearBtn.addEventListener('click', () => { displayInput.value = wrapper.id === 'tmd' ? '21:30' : wrapper.id === 'limite-hdv' ? '08:00' : ''; engineInput.value = ''; masterRecalculate(); saveCalculatorState(); }); }
     }
 
-    function initializeNumericInput(wrapper, initialValue = '') {
+    function initializeNumericInput(wrapper) {
         const displayInput = wrapper.querySelector('.display-input');
         const clearBtn = wrapper.querySelector('.clear-btn');
         const unit = wrapper.dataset.unit || '';
-        displayInput.value = initialValue;
         displayInput.addEventListener('focus', () => { if (displayInput.readOnly) return; displayInput.value = displayInput.value.replace(/[^0-9]/g, ''); });
         displayInput.addEventListener('blur', () => { if (displayInput.readOnly) return; let v = displayInput.value.replace(/[^0-9]/g, ''); if (v) { displayInput.value = `${v} ${unit}`; } else { displayInput.value = ''; } masterRecalculate(); saveCalculatorState(); });
         displayInput.addEventListener('input', masterRecalculate);
@@ -609,8 +772,12 @@ function initializeCalculator() {
         const row = document.createElement('tr');
         row.innerHTML = `<td><div class="input-wrapper time-input-wrapper"><input type="text" class="display-input" readonly placeholder="--:--"><span class="clear-btn">&times;</span><span class="clock-icon">🕒</span><input type="time" class="engine-input"></div></td><td><div class="input-wrapper numeric-input-wrapper" data-unit="kg"><input type="text" class="display-input" inputmode="numeric" placeholder="[valeur]"><span class="clear-btn">&times;</span></div></td><td class="duree-rotation-cell"></td><td class="fuel-rotation-cell"></td><td class="tps-vol-cell"></td><td class="tps-vol-restant-cell"></td>`;
         tableBody.appendChild(row);
-        initializeTimeInput(row.querySelector('.time-input-wrapper'), data ? data.time : '');
-        initializeNumericInput(row.querySelector('.numeric-input-wrapper'), data ? data.fuel : '');
+        initializeTimeInput(row.querySelector('.time-input-wrapper'));
+        initializeNumericInput(row.querySelector('.numeric-input-wrapper'));
+        if (data) {
+            row.querySelector('.time-input-wrapper .display-input').value = data.time || '';
+            row.querySelector('.numeric-input-wrapper .display-input').value = data.fuel || '';
+        }
     };
 
     loadCalculatorState();
