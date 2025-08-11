@@ -240,7 +240,7 @@ html, body {
     font-size: 18px;
     font-weight: 500;
     white-space: nowrap;
-    max-width: calc(100vw - 130px); /* Ligne corrigée */
+    max-width: calc(100vw - 130px);
     overflow: hidden;
     color: var(--text-color);
     gap: 12px;
@@ -288,7 +288,7 @@ html, body {
     display: flex;
     flex-direction: column;
     gap: 15px;
-    align-items: center; /* Pour centrer le numéro de version */
+    align-items: center;
 }
 
 #toggle-search-button, #calculator-button, #gps-feu-button {
@@ -310,7 +310,6 @@ html, body {
     line-height: 1;
 }
 
-/* Style spécifique pour le bouton de recherche s'il est actif */
 #toggle-search-button.active {
     border-color: var(--primary-color);
     background-color: rgba(233, 245, 255, 0.9);
@@ -324,7 +323,7 @@ html, body {
     background-color: rgba(255, 255, 255, 0.6);
     padding: 2px 8px;
     border-radius: 6px;
-    margin-top: -5px; /* Pour le rapprocher du bouton au-dessus */
+    margin-top: -5px;
 }
 
 #live-gps-button.active {
@@ -436,6 +435,8 @@ html, body {
     border-color: var(--secondary-color);
 }
 
+/* --- STYLES POUR LA MODALE DU CALCULATEUR --- */
+
 #calculator-modal {
     position: fixed;
     top: 0;
@@ -446,7 +447,7 @@ html, body {
     backdrop-filter: blur(5px);
     -webkit-backdrop-filter: blur(5px);
     z-index: 2000;
-    display: flex; /* Géré par JS, mais flex est mieux que block */
+    display: none; /* Changé pour flex par JS */
     justify-content: center;
     align-items: center;
 }
@@ -470,8 +471,6 @@ html, body {
 #close-calculator-btn:hover {
     color: var(--secondary-color);
 }
-
-/* --- STYLES COPIÉS DE Calculateur.html --- */
 
 .main-container { width: 100%; max-width: 1000px; height: 100%; max-height: 95vh; background-color: #fff; border-radius: var(--border-radius); box-shadow: var(--shadow); overflow: hidden; display: flex; flex-direction: column; position: relative; }
 .onglets-navigation { display: flex; background-color: var(--background-color); border-bottom: 1px solid var(--border-color); }
@@ -515,7 +514,6 @@ html, body {
     padding: 25px;
     overflow-y: auto;
     flex-grow: 1;
-    /* AJOUTS POUR CORRIGER LE DÉPASSEMENT */
     height: 100%;
     box-sizing: border-box;
 }
@@ -538,11 +536,9 @@ html, body {
     justify-content: center;
     text-align: center;
     line-height: 1.2;
-    
-    /* --- MODIFICATIONS CLÉS --- */
-    white-space: nowrap;      /* Interdit le retour à la ligne automatique */
-    font-size: 17px;          /* Réduit légèrement la police */
-    padding: 10px 8px;        /* Réduit l'espace sur les côtés */
+    white-space: nowrap;
+    font-size: 17px;
+    padding: 10px 8px;
 }
 .analyse-separator { border: 0; height: 1px; background-color: var(--border-color); margin: 0 0 20px 0; }
 .manual-btn, #refresh-gps-btn { padding: 8px 12px; font-size: 14px; font-weight: bold; border: 1px solid var(--border-color); border-radius: 6px; background-color: #fff; cursor: pointer; }
@@ -554,7 +550,7 @@ html, body {
 .placeholder-message { text-align: center; padding: 40px; font-size: 18px; color: var(--light-text-color); }
 
 #reset-all-btn {
-    position: absolute; /* MODIFIÉ DE 'fixed' A 'absolute' */
+    position: absolute;
     bottom: 20px;
     right: 20px;
     width: 70px;
@@ -580,7 +576,7 @@ html, body {
 
 /* Couleurs pour les cellules de nombre de rotations */
 .result-line .value.rotation-value-default {
-    background-color: #e9f5ff; /* Fond bleu par défaut */
+    background-color: #e9f5ff;
     color: var(--text-color);
 }
 
@@ -591,13 +587,17 @@ html, body {
 }
 
 .result-line .value.rotation-value-yellow {
-    background-color: #ffc107; /* Jaune "Warning" standard */
-    color: #333; /* Texte foncé pour une meilleure lisibilité sur fond jaune */
+    background-color: #ffc107;
+    color: #333;
     font-weight: bold;
 }
 
 .result-line .value.rotation-value-red {
     background-color: var(--secondary-color);
     color: white;
+    font-weight: bold;
+}
+
+#tmd .display-input, #limite-hdv .display-input {
     font-weight: bold;
 }
