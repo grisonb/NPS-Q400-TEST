@@ -73,8 +73,8 @@ html, body {
 #calculator-modal { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background-color: rgba(0, 0, 0, 0.6); backdrop-filter: blur(5px); z-index: 2000; display: none; justify-content: center; align-items: center; }
 #close-calculator-btn {
     position: absolute;
-    top: -15px;
-    right: -15px;
+    top: -12px;   /* Un peu plus bas */
+    right: -12px;  /* Un peu plus à gauche */
     width: 40px;
     height: 40px;
     border-radius: 50%;
@@ -165,8 +165,8 @@ html, body {
 .result-line .value.rotation-value-red { background-color: var(--secondary-color); color: white; }
 #reset-all-btn {
     position: absolute;
-    bottom: 15px;
-    right: 15px;
+    bottom: 10px; /* Un peu plus bas */
+    right: 10px;  /* Un peu plus à droite */
     width: 60px;
     height: 60px;
     border-radius: 50%;
