@@ -21,7 +21,7 @@ let isDrawingMode = false;
 const manualCircuitColors = ['#ff00ff', '#00ffff', '#ff8c00', '#00ff00', '#ff1493'];
 let gaarLayer = null;
 const airports = [
-    { oaci: "LFLU", name: "Valence-Chabeuil", lat: 44.920, lon: 4.968 }, { oaci: "LFMU", name: "Béziers-Vias", lat: 43.323, lon: 3.354 }, { oaci: "LFJR", name: "Angers-Marcé", lat: 47.560, lon: -0.312 }, { oaci: "LFHO", name: "Aubenas-Ardèche Méridionale", lat: 44.545, lon: 4.385 }, { oaci: "LFLX", name: "Châteauroux-Déols", lat: 46.861, lon: 1.720 }, { oaci: "LFBM", name: "Mont-de-Marsan", lat: 43.894, lon: -0.509 }, { oaci: "LFBL", name: "Limoges-Bellegarde", lat: 45.862, lon: 1.180 }, { oaci: "LFAQ", name: "Albert-Bray", lat: 49.972, lon: 2.698 }, { oaci: "LFBP", name: "Pau-Pyrénées", lat: 43.380, lon: -0.418 }, { oaci: "LFTH", name: "Toulon-Hyères", lat: 43.097, lon: 6.146 }, { oaci: "LFSG", name: "Épinal-Mirecourt", lat: 48.325, lon: 6.068 }, { oaci: "LFKC", name: "Calvi-Sainte-Catherine", lat: 42.530, lon: 8.793 }, { oaci: "LFMD", name: "Cannes-Mandelieu", lat: 43.542, lon: 6.956 }, { oaci: "LFKB", name: "Bastia-Poretta", lat: 42.552, lon: 9.483 }, { oaci: "LFMH", name: "Saint-Étienne-Bouthéon", lat: 45.541, lon: 4.296 }, { oaci: "LFKF", name: "Figari-Sud-Corse", lat: 41.500, lon: 9.097 }, { oaci: "LFCC", name: "Cahors-Lalbenque", lat: 44.351, lon: 1.475 }, { oaci: "LFML", name: "Marseille-Provence", lat: 43.436, lon: 5.215 }, { oaci: "LFKJ", name: "Ajaccio-Napoléon-Bonaparte", lat: 41.923, lon: 8.802 }, { oaci: "LFMK", name: "Carcassonne-Salvaza", lat: 43.215, lon: 2.306 }, { oaci: "LFRV", name: "Vannes-Meucon", lat: 47.720, lon: -2.721 }, { oaci: "LFTW", name: "Nîmes-Garons", lat: 43.757, lon: 4.416 }, { oaci: "LFMP", name: "Perpignan-Rivesaltes", lat: 42.740, lon: 2.870 }, { oaci: "LFBD", name: "Bordeaux-Mérignac", lat: 44.828, lon: -0.691 }
+    { oaci: "LFLU", name: "alence-Chabeuil", lat: 44.920, lon: 4.968 }, { oaci: "LFMU", name: "Béziers-ias", lat: 43.323, lon: 3.354 }, { oaci: "LFJR", name: "Angers-Marcé", lat: 47.560, lon: -0.312 }, { oaci: "LFHO", name: "Aubenas-Ardèche Méridionale", lat: 44.545, lon: 4.385 }, { oaci: "LFLX", name: "Châteauroux-Déols", lat: 46.861, lon: 1.720 }, { oaci: "LFBM", name: "Mont-de-Marsan", lat: 43.894, lon: -0.509 }, { oaci: "LFBL", name: "Limoges-Bellegarde", lat: 45.862, lon: 1.180 }, { oaci: "LFAQ", name: "Albert-Bray", lat: 49.972, lon: 2.698 }, { oaci: "LFBP", name: "Pau-Pyrénées", lat: 43.380, lon: -0.418 }, { oaci: "LFTH", name: "Toulon-Hyères", lat: 43.097, lon: 6.146 }, { oaci: "LFSG", name: "Épinal-Mirecourt", lat: 48.325, lon: 6.068 }, { oaci: "LFKC", name: "Cali-Sainte-Catherine", lat: 42.530, lon: 8.793 }, { oaci: "LFMD", name: "Cannes-Mandelieu", lat: 43.542, lon: 6.956 }, { oaci: "LFKB", name: "Bastia-Poretta", lat: 42.552, lon: 9.483 }, { oaci: "LFMH", name: "Saint-Étienne-Bouthéon", lat: 45.541, lon: 4.296 }, { oaci: "LFKF", name: "Figari-Sud-Corse", lat: 41.500, lon: 9.097 }, { oaci: "LFCC", name: "Cahors-Lalbenque", lat: 44.351, lon: 1.475 }, { oaci: "LFML", name: "Marseille-Proence", lat: 43.436, lon: 5.215 }, { oaci: "LFKJ", name: "Ajaccio-Napoléon-Bonaparte", lat: 41.923, lon: 8.802 }, { oaci: "LFMK", name: "Carcassonne-Salvaza", lat: 43.215, lon: 2.306 }, { oaci: "LFRV", name: "Vannes-Meucon", lat: 47.720, lon: -2.721 }, { oaci: "LFTW", name: "Nîmes-Garons", lat: 43.757, lon: 4.416 }, { oaci: "LFMP", name: "Perpignan-Rivesaltes", lat: 42.740, lon: 2.870 }, { oaci: "LFBD", name: "Bordeaux-Mérignac", lat: 44.828, lon: -0.691 }
 ];
 
 // =========================================================================
@@ -118,7 +118,7 @@ function setupEventListeners() {
     if (mainActionButtons) {
         const versionDisplay = document.createElement('div');
         versionDisplay.className = 'version-display';
-        versionDisplay.innerText = 'v30.9';
+        versionDisplay.innerText = 'v40.0';
         mainActionButtons.appendChild(versionDisplay);
     }
 
@@ -516,12 +516,8 @@ function recalculateBlocFuel() {
     const blocDepart = parseTime(document.getElementById('bloc-depart').querySelector('.display-input').value);
     const fuelDepart = parseNumeric(document.getElementById('fuel-depart').querySelector('.display-input').value);
     const limiteHDV = parseTime(document.getElementById('limite-hdv').querySelector('.display-input').value);
-    let previousBlocArrivee = blocDepart;
-    let previousFuelPelic = fuelDepart;
-    let cumulativeTpsVol = 0;
-    const tableBody = document.querySelector('#bloc-fuel tbody');
-    const tableRows = tableBody.querySelectorAll('tr');
-
+    let previousBlocArrivee = blocDepart; let previousFuelPelic = fuelDepart; let cumulativeTpsVol = 0;
+    const tableRows = document.querySelectorAll('#bloc-fuel tbody tr');
     tableRows.forEach((row) => {
         const blocArrivee = parseTime(row.querySelector('.time-input-wrapper .display-input').value);
         const fuelPelic = parseNumeric(row.querySelector('.numeric-input-wrapper .display-input').value);
@@ -533,16 +529,10 @@ function recalculateBlocFuel() {
         row.querySelector('.fuel-rotation-cell').textContent = fuelRotation === null ? '' : fuelRotation;
         row.querySelector('.tps-vol-cell').textContent = formatTime(cumulativeTpsVol) || (blocDepart !== null ? '00:00' : '');
         row.querySelector('.tps-vol-restant-cell').textContent = formatTime(tpsVolRestant);
-        if (blocArrivee !== null) previousBlocArrivee = blocArrivee;
-        if (fuelPelic !== null) previousFuelPelic = fuelPelic;
+        if (blocArrivee !== null) previousBlocArrivee = blocArrivee; if (fuelPelic !== null) previousFuelPelic = fuelPelic;
     });
-
-    const lastRow = tableRows[tableRows.length - 1];
-    if (lastRow) {
-        const lastTimeInput = lastRow.querySelector('.time-input-wrapper .display-input').value;
-        const lastFuelInput = lastRow.querySelector('.numeric-input-wrapper .display-input').value;
-        if (lastTimeInput || lastFuelInput) {
-            addNewRow(tableBody);
+    checkAndAddNewRow();
+}
         }
     }
 }
@@ -559,10 +549,28 @@ function initializeCalculator() {
     const lftwAirport = airports.find(ap => ap.oaci === 'LFTW');
     const tableBody = document.querySelector('#bloc-fuel tbody');
 
-    function updateLftwSunset() { if (lftwAirport && typeof SunCalc !== 'undefined') { try { const now = new Date(); const times = SunCalc.getTimes(now, lftwAirport.lat, lftwAirport.lon); const sunsetString = times.sunset.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Paris' }); csLftwDisplay.value = sunsetString; } catch (e) { csLftwDisplay.value = '--:--'; } } }
-    updateLftwSunset(); setInterval(updateLftwSunset, 60000);
+    function updateLftwSunset() {
+        if (lftwAirport && typeof SunCalc !== 'undefined') {
+            try {
+                const now = new Date();
+                const times = SunCalc.getTimes(now, lftwAirport.lat, lftwAirport.lon);
+                const sunsetString = times.sunset.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Paris' });
+                csLftwDisplay.value = sunsetString;
+            } catch (e) { csLftwDisplay.value = '--:--'; }
+        }
+    }
+    updateLftwSunset();
+    setInterval(updateLftwSunset, 60000);
 
-    onglets.forEach(onglet => { onglet.addEventListener('click', () => { document.querySelectorAll('.onglet-bouton').forEach(btn => btn.classList.remove('active')); document.querySelectorAll('.onglet-panneau').forEach(p => p.classList.remove('active')); onglet.classList.add('active'); document.getElementById(onglet.dataset.onglet).classList.add('active'); resetButton.style.display = (onglet.dataset.onglet === 'bloc-fuel') ? 'flex' : 'none'; }); });
+    onglets.forEach(onglet => {
+        onglet.addEventListener('click', () => {
+            document.querySelectorAll('.onglet-bouton').forEach(btn => btn.classList.remove('active'));
+            document.querySelectorAll('.onglet-panneau').forEach(p => p.classList.remove('active'));
+            onglet.classList.add('active');
+            document.getElementById(onglet.dataset.onglet).classList.add('active');
+            resetButton.style.display = (onglet.dataset.onglet === 'bloc-fuel') ? 'flex' : 'none';
+        });
+    });
     
     function saveCalculatorState() {
         const state = {};
@@ -578,12 +586,16 @@ function initializeCalculator() {
                 fuel: row.querySelector('.numeric-input-wrapper .display-input').value
             });
         });
-        state.calculator_table_data = tableData.filter(d => d.time || d.fuel); // Ne sauvegarde que les lignes non-vides
+        state.calculator_table_data = tableData.filter(d => d.time || d.fuel);
         localStorage.setItem('calculator_state', JSON.stringify(state));
     }
 
     function checkAndAddNewRow() {
         const tableRows = tableBody.querySelectorAll('tr');
+        if (tableRows.length === 0) {
+            addNewRow(tableBody);
+            return;
+        }
         const lastRow = tableRows[tableRows.length - 1];
         if (lastRow) {
             const lastTimeInput = lastRow.querySelector('.time-input-wrapper .display-input').value;
@@ -600,9 +612,34 @@ function initializeCalculator() {
         const clearBtn = wrapper.querySelector('.clear-btn');
         displayInput.value = initialValue;
 
-        displayInput.addEventListener('dblclick', (e) => { e.preventDefault(); const now = new Date(); const timeString = `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}`; displayInput.value = timeString; if(engineInput) engineInput.value = timeString; masterRecalculate(); saveCalculatorState(); checkAndAddNewRow(); });
-        if (engineInput) { engineInput.addEventListener('input', () => { if (engineInput.value) { displayInput.value = engineInput.value; masterRecalculate(); saveCalculatorState(); checkAndAddNewRow(); } }); }
-        if (clearBtn) { clearBtn.addEventListener('click', () => { displayInput.value = wrapper.id === 'tmd' ? '21:30' : wrapper.id === 'limite-hdv' ? '08:00' : ''; if(engineInput) engineInput.value = ''; masterRecalculate(); saveCalculatorState(); }); }
+        displayInput.addEventListener('dblclick', (e) => {
+            e.preventDefault();
+            const now = new Date();
+            const timeString = `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}`;
+            displayInput.value = timeString;
+            if(engineInput) engineInput.value = timeString;
+            masterRecalculate();
+            saveCalculatorState();
+            checkAndAddNewRow();
+        });
+        if (engineInput) {
+            engineInput.addEventListener('input', () => {
+                if (engineInput.value) {
+                    displayInput.value = engineInput.value;
+                    masterRecalculate();
+                    saveCalculatorState();
+                    checkAndAddNewRow();
+                }
+            });
+        }
+        if (clearBtn) {
+            clearBtn.addEventListener('click', () => {
+                displayInput.value = wrapper.id === 'tmd' ? '21:30' : wrapper.id === 'limite-hdv' ? '08:00' : '';
+                if(engineInput) engineInput.value = '';
+                masterRecalculate();
+                saveCalculatorState();
+            });
+        }
     }
 
     function initializeNumericInput(wrapper, initialValue = '') {
@@ -612,11 +649,53 @@ function initializeCalculator() {
         let shouldClearOnNextInput = false;
         displayInput.value = initialValue;
 
-        displayInput.addEventListener('focus', () => { if (displayInput.readOnly) return; if (displayInput.value) { shouldClearOnNextInput = true; } displayInput.value = displayInput.value.replace(/[^0-9]/g, ''); });
-        displayInput.addEventListener('blur', () => { if (displayInput.readOnly) return; shouldClearOnNextInput = false; let v = displayInput.value.replace(/[^0-9]/g, ''); if (v) { displayInput.value = `${v} ${unit}`; } else { displayInput.value = ''; } masterRecalculate(); saveCalculatorState(); checkAndAddNewRow(); });
-        displayInput.addEventListener('input', (e) => { if (displayInput.readOnly) return; if (shouldClearOnNextInput && e.data) { displayInput.value = e.data.replace(/[^0-9]/g, ''); shouldClearOnNextInput = false; } else { displayInput.value = displayInput.value.replace(/[^0-9]/g, ''); } masterRecalculate(); });
-        displayInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); displayInput.blur(); } });
-        if (clearBtn) { clearBtn.addEventListener('click', () => { displayInput.value = ''; masterRecalculate(); saveCalculatorState(); }); }
+        displayInput.addEventListener('focus', () => {
+            if (displayInput.readOnly) return;
+            if (displayInput.value) {
+                shouldClearOnNextInput = true;
+            }
+            displayInput.value = displayInput.value.replace(/[^0-9]/g, '');
+        });
+
+        displayInput.addEventListener('blur', () => {
+            if (displayInput.readOnly) return;
+            shouldClearOnNextInput = false;
+            let v = displayInput.value.replace(/[^0-9]/g, '');
+            if (v) {
+                displayInput.value = `${v} ${unit}`;
+            } else {
+                displayInput.value = '';
+            }
+            masterRecalculate();
+            saveCalculatorState();
+            checkAndAddNewRow();
+        });
+        
+        displayInput.addEventListener('input', (e) => {
+             if (displayInput.readOnly) return;
+             if (shouldClearOnNextInput && e.data) {
+                displayInput.value = e.data.replace(/[^0-9]/g, '');
+                shouldClearOnNextInput = false;
+             } else {
+                displayInput.value = displayInput.value.replace(/[^0-9]/g, '');
+             }
+             masterRecalculate();
+        });
+
+        displayInput.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                displayInput.blur();
+            }
+        });
+
+        if (clearBtn) {
+            clearBtn.addEventListener('click', () => {
+                displayInput.value = '';
+                masterRecalculate();
+                saveCalculatorState();
+            });
+        }
     }
     
     const addNewRow = (tableBody, data) => {
@@ -630,11 +709,12 @@ function initializeCalculator() {
     function loadCalculatorState() {
         tableBody.innerHTML = '';
         const savedStateJSON = localStorage.getItem('calculator_state');
+        
         let state = {};
         if (savedStateJSON) { state = JSON.parse(savedStateJSON); }
 
         initializeTimeInput(document.getElementById('bloc-depart'), state['bloc-depart']);
-        initializeNumericInput(document.getElementById('fuel-depart'), state['fuel-depart']);
+        initializeNumericInput(document.getElementById('fuel-depart'), state['fuel-depart'] || '3400 kg');
         initializeTimeInput(document.getElementById('tmd'), state['tmd'] || '21:30');
         initializeTimeInput(document.getElementById('limite-hdv'), state['limite-hdv'] || '08:00');
         initializeTimeInput(document.getElementById('deroutement-heure-wrapper'), state['deroutement-heure-wrapper']);
@@ -648,7 +728,7 @@ function initializeCalculator() {
         for (let i = 0; i < rowsToCreate; i++) {
             addNewRow(tableBody, tableData[i]);
         }
-        addNewRow(tableBody); // Assure qu'il y a toujours une ligne vide à la fin
+        checkAndAddNewRow();
     }
 
     loadCalculatorState();
