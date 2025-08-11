@@ -118,7 +118,7 @@ function setupEventListeners() {
     if (mainActionButtons) {
         const versionDisplay = document.createElement('div');
         versionDisplay.className = 'version-display';
-        versionDisplay.innerText = 'v40.2';
+        versionDisplay.innerText = 'v40.3';
         mainActionButtons.appendChild(versionDisplay);
     }
 
@@ -583,39 +583,31 @@ function initializeCalculator() {
     const clearBtn = wrapper.querySelector('.clear-btn');
     displayInput.value = initialValue;
 
-    // Événement pour pré-remplir l'horloge au clic si le champ est vide
+    // Événement unique pour gérer le clic
     if (engineInput) {
         displayInput.addEventListener('click', () => {
-            if (!displayInput.value) { // Seulement si le champ est vide
+            // Si le champ est vide, on le pré-remplit avant que le sélecteur ne s'ouvre
+            if (!displayInput.value) {
+                let timeString;
                 if (wrapper.id === 'tmd') {
-                    engineInput.value = '21:30';
+                    timeString = '21:30';
                 } else if (wrapper.id === 'limite-hdv') {
-                    engineInput.value = '08:00';
+                    timeString = '08:00';
+                } else {
+                    // Pour les autres champs comme BLOC DEPART, on met l'heure actuelle
+                    const now = new Date();
+                    timeString = `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}`;
                 }
+                // On met à jour LES DEUX inputs
+                displayInput.value = timeString;
+                engineInput.value = timeString;
+                masterRecalculate();
+                saveCalculatorState();
+                checkAndAddNewRow();
             }
         });
-    }
-    
-    // Le double clic met directement la valeur, sans ouvrir l'horloge
-    displayInput.addEventListener('dblclick', (e) => {
-        e.preventDefault();
-        let timeString;
-        if (wrapper.id === 'tmd') {
-            timeString = '21:30';
-        } else if (wrapper.id === 'limite-hdv') {
-            timeString = '08:00';
-        } else {
-            const now = new Date();
-            timeString = `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}`;
-        }
-        displayInput.value = timeString;
-        if(engineInput) engineInput.value = timeString;
-        masterRecalculate();
-        saveCalculatorState();
-        checkAndAddNewRow();
-    });
-    
-    if (engineInput) {
+
+        // Gère la mise à jour si l'utilisateur change l'heure dans le sélecteur
         engineInput.addEventListener('input', () => {
             if (engineInput.value) {
                 displayInput.value = engineInput.value;
@@ -628,8 +620,9 @@ function initializeCalculator() {
 
     if (clearBtn) {
         clearBtn.addEventListener('click', () => {
+            // Le bouton clear remet la valeur par défaut
             displayInput.value = wrapper.id === 'tmd' ? '21:30' : wrapper.id === 'limite-hdv' ? '08:00' : '';
-            if(engineInput) engineInput.value = '';
+            if (engineInput) engineInput.value = '';
             masterRecalculate();
             saveCalculatorState();
         });
