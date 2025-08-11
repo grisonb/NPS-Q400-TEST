@@ -127,7 +127,7 @@ function setupEventListeners() {
     if (mainActionButtons) {
         const versionDisplay = document.createElement('div');
         versionDisplay.className = 'version-display';
-        versionDisplay.innerText = 'v11.8'; // Version mise à jour
+        versionDisplay.innerText = 'v11.9'; // Version mise à jour
         mainActionButtons.appendChild(versionDisplay);
     }
 
@@ -199,9 +199,11 @@ function setupEventListeners() {
     });
 
     // Nombre de pélicans
-    airportCountInput.addEventListener('input', () => {
-        if (currentCommune) displayCommuneDetails(currentCommune, false);
-    });
+    airportCountInput.addEventListener('change', () => {
+    if (currentCommune) {
+        displayCommuneDetails(currentCommune, false);
+    }
+});
 
     // Bouton GPS Feu (Cible)
     gpsFeuButton.addEventListener('click', () => {
@@ -811,7 +813,26 @@ function updateAndSortRotations(container, current, params) {
 
 function initializeCalculator() {
     let isFuelSurFeuManual = false; let isSuiviConsoManual = false; let isSuiviDureeManual = false;
-    
+
+    const csLftwDisplay = document.getElementById('cs-lftw-display');
+const lftwAirport = airports.find(ap => ap.oaci === 'LFTW');
+
+function updateLftwSunset() {
+    if (lftwAirport && typeof SunCalc !== 'undefined') {
+        try {
+            const now = new Date();
+            const times = SunCalc.getTimes(now, lftwAirport.lat, lftwAirport.lon);
+            const sunsetString = times.sunset.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Paris' });
+            csLftwDisplay.value = sunsetString;
+        } catch (e) {
+            csLftwDisplay.value = '--:--';
+        }
+    }
+}
+
+updateLftwSunset(); // Premier calcul au chargement
+setInterval(updateLftwSunset, 60000); // Mise à jour toutes les minutes
+// --- Fin du bloc CS LFTW ---
     const resetButton = document.getElementById('reset-all-btn');
     const onglets = document.querySelectorAll('.onglet-bouton');
     const panneaux = document.querySelectorAll('.onglet-panneau');
