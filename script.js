@@ -118,7 +118,7 @@ function setupEventListeners() {
     if (mainActionButtons) {
         const versionDisplay = document.createElement('div');
         versionDisplay.className = 'version-display';
-        versionDisplay.innerText = 'v30.3';
+        versionDisplay.innerText = 'v30.4';
         mainActionButtons.appendChild(versionDisplay);
     }
 
@@ -748,23 +748,25 @@ function initializeCalculator() {
             const now = new Date();
             const timeString = `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}`;
             displayInput.value = timeString;
-            engineInput.value = timeString;
+            if(engineInput) engineInput.value = timeString;
             masterRecalculate();
             saveCalculatorState();
         });
 
-        engineInput.addEventListener('input', () => {
-            if (engineInput.value) {
-                displayInput.value = engineInput.value;
-                masterRecalculate();
-                saveCalculatorState();
-            }
-        });
+        if (engineInput) {
+            engineInput.addEventListener('input', () => {
+                if (engineInput.value) {
+                    displayInput.value = engineInput.value;
+                    masterRecalculate();
+                    saveCalculatorState();
+                }
+            });
+        }
 
         if (clearBtn) {
             clearBtn.addEventListener('click', () => {
                 displayInput.value = wrapper.id === 'tmd' ? '21:30' : wrapper.id === 'limite-hdv' ? '08:00' : '';
-                engineInput.value = '';
+                if(engineInput) engineInput.value = '';
                 masterRecalculate();
                 saveCalculatorState();
             });
