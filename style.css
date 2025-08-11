@@ -111,7 +111,7 @@ html, body {
 .result-line .value.rotation-value-red { background-color: var(--secondary-color); color: white; }
 #reset-all-btn { position: absolute; bottom: 20px; right: 20px; width: 70px; height: 70px; border-radius: 50%; background-color: var(--secondary-color); color: white; font-size: 36px; border: none; cursor: pointer; box-shadow: 0 4px 10px rgba(0,0,0,0.3); z-index: 1050; display: flex; justify-content: center; align-items: center; }
 
-/* === STYLES POUR L'ERGONOMIE DES CHAMPS DE SAISIE === */
+/* --- STYLES POUR L'ERGONOMIE DES CHAMPS DE SAISIE --- */
 .input-wrapper { position: relative; width: 100%; }
 .input-wrapper.time-input-wrapper .display-input { padding-left: 45px; padding-right: 45px; }
 .input-wrapper .clear-btn { position: absolute; top: 50%; left: 12px; transform: translateY(-50%); font-size: 30px; font-weight: bold; color: var(--light-text-color); cursor: pointer; z-index: 2; }
