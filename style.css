@@ -86,10 +86,47 @@ html, body {
 .input-wrapper .display-input { width: 100%; padding: 12px; font-size: 19px; text-align: center; border: 1px solid var(--border-color); border-radius: 7px; box-sizing: border-box; background-color: #fff; user-select: none; -webkit-user-select: none; }
 .table-wrapper { flex-grow: 1; overflow-y: auto; }
 .table-section { width: 100%; border-collapse: collapse; }
-.table-section th { font-size: 17px; background-color: var(--background-color); text-transform: uppercase; position: sticky; top: 0; z-index: 5; }
+
+.table-section th, .table-section td {
+    padding: 14px 10px;
+    border-bottom: 1px solid var(--border-color);
+    vertical-align: middle; /* Aligne tout verticalement au centre */
+}
+
+.table-section th {
+    font-size: 17px;
+    background-color: var(--background-color);
+    text-transform: uppercase;
+    position: sticky;
+    top: 0;
+    z-index: 5;
+}
+
 .table-section td { font-size: 19px; }
+
+/* Définition des largeurs de colonnes */
+.table-section th:nth-child(1), .table-section td:nth-child(1) { width: 20%; } /* BLOC Arrivée */
+.table-section th:nth-child(2), .table-section td:nth-child(2) { width: 20%; } /* FUEL Pélic. */
+.table-section th:nth-child(3), .table-section td:nth-child(3) { width: 15%; } /* Durée Rotations */
+.table-section th:nth-child(4), .table-section td:nth-child(4) { width: 15%; } /* FUEL Rotations */
+.table-section th:nth-child(5), .table-section td:nth-child(5) { width: 15%; } /* Tps de Vol */
+.table-section th:nth-child(6), .table-section td:nth-child(6) { width: 15%; } /* Tps de Vol Restant */
+
+/* Centrage du contenu des cellules de résultat */
+.table-section td.duree-rotation-cell,
+.table-section td.fuel-rotation-cell,
+.table-section td.tps-vol-cell,
+.table-section td.tps-vol-restant-cell {
+    text-align: center;
+}
+
 .table-section td.duree-rotation-cell { font-weight: bold; color: #000080; font-size: 28px; }
 .table-section td.fuel-rotation-cell { font-weight: bold; color: #008000; font-size: 28px; }
+
+/* Alternance des couleurs de fond pour les lignes */
+#bloc-fuel .table-section tbody tr:nth-child(even) {
+    background-color: var(--background-color);
+}
 .analyse-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 30px 50px; padding: 25px; overflow-y: auto; flex-grow: 1; height: 100%; box-sizing: border-box; }
 .result-line { display: grid; grid-template-columns: 1fr auto; align-items: center; margin-bottom: 25px; font-size: 19px; }
 .result-line .label { font-weight: 500; text-align: left; }
