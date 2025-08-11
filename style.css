@@ -1,3 +1,4 @@
+      
 :root {
     --primary-color: #005a9c;
     --secondary-color: #e3001b;
@@ -388,23 +389,115 @@ html, body {
 .table-section td { font-size: 19px; }
 .table-section td.duree-rotation-cell { font-weight: bold; color: #000080; font-size: 28px; }
 .table-section td.fuel-rotation-cell { font-weight: bold; color: #008000; font-size: 28px; }
-
-/* === SECTION MISE EN PAGE CALCULATEUR RESTAURÉE === */
-.analyse-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 25px 50px; padding: 25px; overflow-y: auto; flex-grow: 1; height: 100%; box-sizing: border-box; }
-.result-line { display: grid; grid-template-columns: auto 1fr; align-items: center; gap: 15px; margin-bottom: 20px; font-size: 18px; }
-.result-line .label { font-weight: 500; text-align: right; }
-.result-line .value { font-weight: bold; background-color: #e9f5ff; padding: 10px 15px; border-radius: 8px; text-align: center; min-height: 25px; display: flex; align-items: center; justify-content: center; }
-.bingo-group .result-line .value { border: 2px solid var(--secondary-color); background-color: #fff0f3; margin-top: 5px; width: 100%; box-sizing: border-box; height: auto; min-height: 45px; display: flex; align-items: center; justify-content: center; text-align: center; line-height: 1.2; white-space: nowrap; font-size: 17px; padding: 10px 8px; }
-.manual-btn { margin-left: 10px; }
+.analyse-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 30px 50px; padding: 25px; overflow-y: auto; flex-grow: 1; height: 100%; box-sizing: border-box; }
+.result-line { display: grid; grid-template-columns: 1fr auto; align-items: center; margin-bottom: 25px; font-size: 19px; }
+.result-line .label { font-weight: 500; text-align: left; }
+.result-line .value { font-weight: bold; background-color: #e9f5ff; padding: 8px 15px; border-radius: 6px; text-align: right; }
 .result-line .input-wrapper { max-width: 180px; }
+.bingo-group { margin-bottom: 20px; }
+.bingo-group .result-line .label { font-size: 22px; font-weight: bold; }
+.bingo-group .result-line .value { border: 2px solid var(--secondary-color); background-color: #fff0f3; margin-top: 5px; width: 100%; box-sizing: border-box; height: auto; min-height: 45px; display: flex; align-items: center; justify-content: center; text-align: center; line-height: 1.2; white-space: nowrap; font-size: 17px; padding: 10px 8px; }
 .analyse-separator { border: 0; height: 1px; background-color: var(--border-color); margin: 0 0 20px 0; }
+.manual-btn, #refresh-gps-btn { padding: 8px 12px; font-size: 14px; font-weight: bold; border: 1px solid var(--border-color); border-radius: 6px; background-color: #fff; cursor: pointer; }
+.manual-btn { margin-left: 10px; }
+.manual-btn.active { background-color: var(--primary-color); color: #fff; border-color: var(--primary-color); }
 .analyse-col-title { font-size: 20px; font-weight: bold; color: var(--primary-color); text-transform: uppercase; margin-bottom: 15px; text-align: center; }
-/* === FIN SECTION MISE EN PAGE === */
-
-/* === SECTION FONCTIONNALITÉS RÉCENTES === */
 #tmd .display-input, #limite-hdv .display-input { font-weight: bold; }
 .leaflet-tooltip.route-tooltip-selected { background-color: var(--success-color); color: white; border-color: #1a7431; }
+.result-line .value.rotation-value-default { background-color: #e9f5ff; color: var(--text-color); }
 .result-line .value.rotation-value-green { background-color: var(--success-color); color: white; }
 .result-line .value.rotation-value-yellow { background-color: #ffc107; color: #333; }
 .result-line .value.rotation-value-red { background-color: var(--secondary-color); color: white; }
 #reset-all-btn { position: absolute; bottom: 20px; right: 20px; width: 70px; height: 70px; border-radius: 50%; background-color: var(--secondary-color); color: white; font-size: 36px; border: none; cursor: pointer; box-shadow: 0 4px 10px rgba(0,0,0,0.3); z-index: 1050; display: flex; justify-content: center; align-items: center; }
+
+    
+
+Étape 4 : Remplacer sw.js
+
+    Ouvrez votre fichier sw.js.
+
+    Supprimez la totalité de son contenu.
+
+    Copiez et collez le code ci-dessous à la place.
+
+code JavaScript
+IGNORE_WHEN_COPYING_START
+IGNORE_WHEN_COPYING_END
+
+      
+// --- FICHIER sw.js SANS TÉLÉCHARGEMENT DE MASSE ---
+
+const APP_CACHE_NAME = 'communes-app-cache-v300'; // Version 30.0
+const DATA_CACHE_NAME = 'communes-data-cache-v300';
+const TILE_CACHE_NAME = 'communes-tile-cache-v300';
+
+const APP_SHELL_URLS = [
+    './',
+    './index.html',
+    './style.css',
+    './script.js',
+    './leaflet.min.js',
+    './leaflet.css',
+    './manifest.json',
+    './suncalc.js'
+];
+
+const DATA_URLS = [
+    './communes.json'
+];
+
+self.addEventListener('install', event => {
+    console.log(`[SW] Installation ${APP_CACHE_NAME}`);
+    event.waitUntil(
+        Promise.all([
+            caches.open(APP_CACHE_NAME).then(cache => cache.addAll(APP_SHELL_URLS)),
+            caches.open(DATA_CACHE_NAME).then(cache => cache.addAll(DATA_URLS))
+        ]).then(() => self.skipWaiting())
+    );
+});
+
+self.addEventListener('activate', event => {
+    event.waitUntil(
+        caches.keys().then(cacheNames => Promise.all(
+            cacheNames.map(cacheName => {
+                if (cacheName !== APP_CACHE_NAME && cacheName !== DATA_CACHE_NAME && cacheName !== TILE_CACHE_NAME) {
+                    return caches.delete(cacheName);
+                }
+            })
+        )).then(() => self.clients.claim())
+    );
+});
+
+self.addEventListener('fetch', event => {
+    const requestUrl = new URL(event.request.url);
+
+    if (requestUrl.hostname.includes('tile.openstreetmap.org')) {
+        event.respondWith(
+            caches.open(TILE_CACHE_NAME).then(cache => {
+                return cache.match(event.request).then(cachedResponse => {
+                    const fetchPromise = fetch(event.request).then(networkResponse => {
+                        if (networkResponse.ok) {
+                            cache.put(event.request, networkResponse.clone());
+                        }
+                        return networkResponse;
+                    });
+                    return cachedResponse || fetchPromise;
+                });
+            })
+        );
+        return;
+    }
+    
+    event.respondWith(
+        caches.match(event.request)
+            .then(cachedResponse => {
+                return cachedResponse || fetch(event.request).catch(() => {
+                    if (event.request.mode === 'navigate') {
+                        return caches.match('./index.html');
+                    }
+                });
+            })
+    );
+});
+
+    
