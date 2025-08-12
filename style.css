@@ -73,8 +73,8 @@ html, body {
 #calculator-modal { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background-color: rgba(0, 0, 0, 0.6); backdrop-filter: blur(5px); z-index: 2000; display: none; justify-content: center; align-items: center; }
 #close-calculator-btn {
     position: absolute;
-    top: -15px;      /* Déplacé vers le haut */
-    right: -15px;     /* Déplacé vers la droite */
+    top: -12px;      /* Décalé un peu moins vers le haut */
+    right: -12px;     /* Décalé un peu moins vers la droite */
     width: 40px;
     height: 40px;
     background-color: var(--secondary-color); /* Fond rouge */
@@ -132,7 +132,7 @@ html, body {
 /* --- Contrôle de la largeur des colonnes --- */
 .table-section th:nth-child(1), .table-section td:nth-child(1),
 .table-section th:nth-child(2), .table-section td:nth-child(2) {
-    width: 135px; /* Largeur fixe ajustée pour les 2 premières colonnes */
+    width: 145px; /* Largeur fixe élargie pour les 2 premières colonnes */
 }
 
 /* Styles spécifiques aux cellules */
@@ -170,8 +170,8 @@ html, body {
 .result-line .value.rotation-value-red { background-color: var(--secondary-color); color: white; }
 #reset-all-btn {
     position: absolute;
-    bottom: -25px;    /* Déplacé vers le bas */
-    right: -25px;     /* Déplacé vers la droite */
+    bottom: -20px;    /* Décalé un peu moins vers le bas */
+    right: -20px;     /* Décalé un peu moins vers la droite */
     width: 70px;
     height: 70px;
     border-radius: 50%;
