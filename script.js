@@ -118,7 +118,7 @@ function setupEventListeners() {
     if (mainActionButtons) {
         const versionDisplay = document.createElement('div');
         versionDisplay.className = 'version-display';
-        versionDisplay.innerText = 'v50.0';
+        versionDisplay.innerText = 'v50.1';
         mainActionButtons.appendChild(versionDisplay);
     }
 
@@ -546,14 +546,52 @@ function initializeCalculator() {
         localStorage.setItem('calculator_state', JSON.stringify(state));
     }
 
-    function initializeTimeInput(wrapper, initialValue = '') {
+   function initializeTimeInput(wrapper, initialValue = '') {
         const displayInput = wrapper.querySelector('.display-input');
         const engineInput = wrapper.querySelector('.engine-input');
         const clearBtn = wrapper.querySelector('.clear-btn');
         displayInput.value = initialValue;
-        displayInput.addEventListener('dblclick', (e) => { e.preventDefault(); const now = new Date(); const timeString = `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}`; displayInput.value = timeString; if(engineInput) engineInput.value = timeString; masterRecalculate(); saveCalculatorState(); });
-        if (engineInput) { engineInput.addEventListener('input', () => { if (engineInput.value) { displayInput.value = engineInput.value; masterRecalculate(); saveCalculatorState(); } }); }
-        if (clearBtn) { clearBtn.addEventListener('click', () => { displayInput.value = wrapper.id === 'tmd' ? '21:30' : wrapper.id === 'limite-hdv' ? '08:00' : ''; if(engineInput) engineInput.value = ''; masterRecalculate(); saveCalculatorState(); }); }
+        
+        displayInput.addEventListener('dblclick', (e) => {
+            e.preventDefault();
+            let timeString;
+            if (wrapper.id === 'tmd') {
+                timeString = '21:30';
+            } else {
+                const now = new Date();
+                timeString = `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}`;
+            }
+            displayInput.value = timeString;
+            if (engineInput) engineInput.value = timeString;
+            masterRecalculate();
+            saveCalculatorState();
+        });
+
+        if (engineInput) {
+            // Prépare le sélecteur avec la valeur actuelle quand on clique dessus
+            engineInput.addEventListener('click', () => {
+                if (displayInput.value.match(/^\d{2}:\d{2}$/)) {
+                    engineInput.value = displayInput.value;
+                }
+            });
+            // Met à jour la valeur seulement après confirmation (événement 'change')
+            engineInput.addEventListener('change', () => {
+                if (engineInput.value) {
+                    displayInput.value = engineInput.value;
+                    masterRecalculate();
+                    saveCalculatorState();
+                }
+            });
+        }
+        
+        if (clearBtn) {
+            clearBtn.addEventListener('click', () => {
+                displayInput.value = wrapper.id === 'tmd' ? '21:30' : wrapper.id === 'limite-hdv' ? '08:00' : '';
+                if(engineInput) engineInput.value = '';
+                masterRecalculate();
+                saveCalculatorState();
+            });
+        }
     }
 
     function initializeNumericInput(wrapper, initialValue = '') {
