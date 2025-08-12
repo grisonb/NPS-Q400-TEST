@@ -748,7 +748,13 @@ function initializeCalculator() {
     setupManualButton('suivi-conso-rotation-manual-btn', 'suivi-conso-rotation-wrapper', () => isSuiviConsoManual = !isSuiviConsoManual);
     setupManualButton('suivi-duree-rotation-manual-btn', 'suivi-duree-rotation-wrapper', () => isSuiviDureeManual = !isSuiviDureeManual);
 
-    resetButton.addEventListener('click', () => { if (confirm("Voulez-vous vraiment remettre tout le tableau à zéro ?")) { localStorage.removeItem('calculator_state'); window.location.reload(); } });
+    resetButton.addEventListener('click', () => {
+        if (confirm("Voulez-vous vraiment remettre tout le tableau à zéro ?")) {
+            localStorage.removeItem('calculator_state');
+            loadCalculatorState(); // Recharge l'état du calculateur avec les valeurs par défaut
+            masterRecalculate();   // Recalcule tous les champs immédiatement
+        }
+    });
     
     masterRecalculate = () => { recalculateBlocFuel(); updatePreviTab(); updateSuiviTab(); updateDeroutementTab(); };
     
