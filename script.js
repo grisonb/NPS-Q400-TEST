@@ -118,7 +118,7 @@ function setupEventListeners() {
     if (mainActionButtons) {
         const versionDisplay = document.createElement('div');
         versionDisplay.className = 'version-display';
-        versionDisplay.innerText = 'v50.2';
+        versionDisplay.innerText = 'v50.3';
         mainActionButtons.appendChild(versionDisplay);
     }
 
@@ -564,19 +564,21 @@ function initializeCalculator() {
                 timeString = `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}`;
             }
             displayInput.value = timeString;
-            if (engineInput) engineInput.value = timeString;
             masterRecalculate();
             saveCalculatorState();
         });
 
         if (engineInput) {
-            // Prépare le sélecteur avec la valeur actuelle quand on clique dessus
-            engineInput.addEventListener('click', () => {
+            // Prépare le sélecteur AVANT son ouverture
+            engineInput.addEventListener('focus', () => {
                 if (displayInput.value.match(/^\d{2}:\d{2}$/)) {
                     engineInput.value = displayInput.value;
+                } else {
+                    engineInput.value = ''; // Empêche le défaut à l'heure courante si le champ est invalide
                 }
             });
-            // Met à jour la valeur seulement après confirmation (événement 'change')
+
+            // Met à jour la valeur seulement après confirmation par l'utilisateur
             engineInput.addEventListener('change', () => {
                 if (engineInput.value) {
                     displayInput.value = engineInput.value;
