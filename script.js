@@ -118,7 +118,7 @@ function setupEventListeners() {
     if (mainActionButtons) {
         const versionDisplay = document.createElement('div');
         versionDisplay.className = 'version-display';
-        versionDisplay.innerText = 'v40.3';
+        versionDisplay.innerText = 'v40.4';
         mainActionButtons.appendChild(versionDisplay);
     }
 
@@ -512,6 +512,8 @@ const formatTime = (totalMinutes) => { if (totalMinutes === null || isNaN(totalM
 const parseNumeric = (numericString) => { if (!numericString) return null; const value = parseInt(numericString.replace(/[^0-9]/g, ''), 10); return isNaN(value) ? null : value; };
 
 function initializeCalculator() {
+    let isFuelSurFeuManual = false, isSuiviConsoManual = false, isSuiviDureeManual = false;
+    
     const resetButton = document.getElementById('reset-all-btn');
     const onglets = document.querySelectorAll('.onglet-bouton');
     const csLftwDisplay = document.getElementById('cs-lftw-display');
@@ -553,81 +555,65 @@ function initializeCalculator() {
             }
         }
     }
-    
-    function recalculateBlocFuel() {
-        const blocDepart = parseTime(document.getElementById('bloc-depart').querySelector('.display-input').value);
-        const fuelDepart = parseNumeric(document.getElementById('fuel-depart').querySelector('.display-input').value);
-        const limiteHDV = parseTime(document.getElementById('limite-hdv').querySelector('.display-input').value);
-        let previousBlocArrivee = blocDepart; let previousFuelPelic = fuelDepart; let cumulativeTpsVol = 0;
-        const tableRows = tableBody.querySelectorAll('tr');
-        tableRows.forEach((row) => {
-            const blocArrivee = parseTime(row.querySelector('.time-input-wrapper .display-input').value);
-            const fuelPelic = parseNumeric(row.querySelector('.numeric-input-wrapper .display-input').value);
-            let dureeRotation = null; if (blocArrivee !== null && previousBlocArrivee !== null) { dureeRotation = blocArrivee - previousBlocArrivee; }
-            let fuelRotation = null; if (fuelPelic !== null && previousFuelPelic !== null) { fuelRotation = previousFuelPelic - fuelPelic; }
-            if (dureeRotation !== null && dureeRotation > 0) { cumulativeTpsVol += dureeRotation; }
-            let tpsVolRestant = null; if (limiteHDV !== null) { tpsVolRestant = limiteHDV - cumulativeTpsVol; }
-            row.querySelector('.duree-rotation-cell').textContent = formatTime(dureeRotation);
-            row.querySelector('.fuel-rotation-cell').textContent = fuelRotation === null ? '' : fuelRotation;
-            row.querySelector('.tps-vol-cell').textContent = formatTime(cumulativeTpsVol) || (blocDepart !== null ? '00:00' : '');
-            row.querySelector('.tps-vol-restant-cell').textContent = formatTime(tpsVolRestant);
-            if (blocArrivee !== null) previousBlocArrivee = blocArrivee;
-            if (fuelPelic !== null) previousFuelPelic = fuelPelic;
-        });
-        checkAndAddNewRow();
-    }
 
-   function initializeTimeInput(wrapper, initialValue = '') {
-    const displayInput = wrapper.querySelector('.display-input');
-    const engineInput = wrapper.querySelector('.engine-input');
-    const clearBtn = wrapper.querySelector('.clear-btn');
-    displayInput.value = initialValue;
+    function initializeTimeInput(wrapper, initialValue = '') {
+        const displayInput = wrapper.querySelector('.display-input');
+        const engineInput = wrapper.querySelector('.engine-input');
+        const clearBtn = wrapper.querySelector('.clear-btn');
+        displayInput.value = initialValue;
 
-    // Événement unique pour gérer le clic
-    if (engineInput) {
-        displayInput.addEventListener('click', () => {
-            // Si le champ est vide, on le pré-remplit avant que le sélecteur ne s'ouvre
-            if (!displayInput.value) {
-                let timeString;
-                if (wrapper.id === 'tmd') {
-                    timeString = '21:30';
-                } else if (wrapper.id === 'limite-hdv') {
-                    timeString = '08:00';
+        if (engineInput) {
+            displayInput.addEventListener('click', () => {
+                if (!displayInput.value) {
+                    if (wrapper.id === 'tmd') {
+                        engineInput.value = '21:30';
+                    } else if (wrapper.id === 'limite-hdv') {
+                        engineInput.value = '08:00';
+                    }
                 } else {
-                    // Pour les autres champs comme BLOC DEPART, on met l'heure actuelle
-                    const now = new Date();
-                    timeString = `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}`;
+                    engineInput.value = displayInput.value;
                 }
-                // On met à jour LES DEUX inputs
-                displayInput.value = timeString;
-                engineInput.value = timeString;
-                masterRecalculate();
-                saveCalculatorState();
-                checkAndAddNewRow();
-            }
-        });
+            });
+        }
 
-        // Gère la mise à jour si l'utilisateur change l'heure dans le sélecteur
-        engineInput.addEventListener('input', () => {
-            if (engineInput.value) {
-                displayInput.value = engineInput.value;
-                masterRecalculate();
-                saveCalculatorState();
-                checkAndAddNewRow();
+        displayInput.addEventListener('dblclick', (e) => {
+            e.preventDefault();
+            let timeString;
+            if (wrapper.id === 'tmd') {
+                timeString = '21:30';
+            } else if (wrapper.id === 'limite-hdv') {
+                timeString = '08:00';
+            } else {
+                const now = new Date();
+                timeString = `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}`;
             }
-        });
-    }
-
-    if (clearBtn) {
-        clearBtn.addEventListener('click', () => {
-            // Le bouton clear remet la valeur par défaut
-            displayInput.value = wrapper.id === 'tmd' ? '21:30' : wrapper.id === 'limite-hdv' ? '08:00' : '';
-            if (engineInput) engineInput.value = '';
+            displayInput.value = timeString;
+            if(engineInput) engineInput.value = timeString;
             masterRecalculate();
             saveCalculatorState();
+            checkAndAddNewRow();
         });
+        
+        if (engineInput) {
+            engineInput.addEventListener('input', () => {
+                if (engineInput.value) {
+                    displayInput.value = engineInput.value;
+                    masterRecalculate();
+                    saveCalculatorState();
+                    checkAndAddNewRow();
+                }
+            });
+        }
+
+        if (clearBtn) {
+            clearBtn.addEventListener('click', () => {
+                displayInput.value = wrapper.id === 'tmd' ? '21:30' : wrapper.id === 'limite-hdv' ? '08:00' : '';
+                if(engineInput) engineInput.value = '';
+                masterRecalculate();
+                saveCalculatorState();
+            });
+        }
     }
-}
 
     function initializeNumericInput(wrapper, initialValue = '') {
         const displayInput = wrapper.querySelector('.display-input');
@@ -665,14 +651,13 @@ function initializeCalculator() {
         initializeNumericInput(document.getElementById('suivi-conso-rotation-wrapper'), state['suivi-conso-rotation-wrapper']);
         initializeTimeInput(document.getElementById('suivi-duree-rotation-wrapper'), state['suivi-duree-rotation-wrapper']);
         const tableData = state.calculator_table_data || [];
-        if (tableData.length === 0) {
-            for (let i = 0; i < 6; i++) { addNewRow(tableBody); }
-        } else {
-            tableData.forEach(rowData => addNewRow(tableBody, rowData));
-            addNewRow(tableBody); // Toujours ajouter une ligne vide à la fin
+        const rowsToCreate = Math.max(6, tableData.length);
+        for (let i = 0; i < rowsToCreate; i++) {
+            addNewRow(tableBody, tableData[i]);
         }
+        checkAndAddNewRow();
     }
-    
+
     loadCalculatorState();
     
     function setupManualButton(btnId, wrapperId, flagSetter) { const btn = document.getElementById(btnId); const input = document.getElementById(wrapperId).querySelector('.display-input'); btn.addEventListener('click', () => { const isManual = flagSetter(); if (isManual) { btn.textContent = 'MANUEL'; btn.classList.add('active'); input.readOnly = false; } else { btn.textContent = 'AUTO'; btn.classList.remove('active'); input.readOnly = true; } masterRecalculate(); }); }
@@ -682,12 +667,7 @@ function initializeCalculator() {
 
     resetButton.addEventListener('click', () => { if (confirm("Voulez-vous vraiment remettre tout le tableau à zéro ?")) { localStorage.removeItem('calculator_state'); window.location.reload(); } });
     
-    masterRecalculate = () => {
-        recalculateBlocFuel();
-        updatePreviTab();
-        updateSuiviTab();
-        updateDeroutementTab();
-    };
+    masterRecalculate = () => { recalculateBlocFuel(); updatePreviTab(); updateSuiviTab(); updateDeroutementTab(); };
     
     masterRecalculate();
 }
