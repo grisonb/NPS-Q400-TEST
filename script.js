@@ -118,7 +118,7 @@ function setupEventListeners() {
     if (mainActionButtons) {
         const versionDisplay = document.createElement('div');
         versionDisplay.className = 'version-display';
-        versionDisplay.innerText = 'v50.5';
+        versionDisplay.innerText = 'v50.6';
         mainActionButtons.appendChild(versionDisplay);
     }
 
@@ -636,7 +636,7 @@ function initializeCalculator() {
         let state = {};
         if (savedStateJSON) { state = JSON.parse(savedStateJSON); }
         initializeTimeInput(document.getElementById('bloc-depart'), state['bloc-depart']);
-        initializeNumericInput(document.getElementById('fuel-depart'), state['fuel-depart']);
+        initializeNumericInput(document.getElementById('fuel-depart'), state['fuel-depart'] || '3400 kg');
         initializeTimeInput(document.getElementById('tmd'), state['tmd'] || '21:30');
         initializeTimeInput(document.getElementById('limite-hdv'), state['limite-hdv'] || '08:00');
         initializeTimeInput(document.getElementById('deroutement-heure-wrapper'), state['deroutement-heure-wrapper']);
