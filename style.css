@@ -90,6 +90,9 @@ html, body {
 .table-section td { font-size: 19px; }
 .table-section td.duree-rotation-cell { font-weight: bold; color: #000080; font-size: 28px; }
 .table-section td.fuel-rotation-cell { font-weight: bold; color: #008000; font-size: 28px; }
+.table-section tbody tr:nth-child(odd) {
+    background-color: var(--background-color);
+}
 .analyse-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 30px 50px; padding: 25px; overflow-y: auto; flex-grow: 1; height: 100%; box-sizing: border-box; }
 .result-line { display: grid; grid-template-columns: 1fr auto; align-items: center; margin-bottom: 25px; font-size: 19px; }
 .result-line .label { font-weight: 500; text-align: left; }
