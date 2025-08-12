@@ -180,6 +180,7 @@ function setupEventListeners() {
         localStorage.removeItem('currentCommune');
         updateCalculatorData();
         updateCommuneDisplay(null);
+        document.getElementById('bingo-map-display').style.display = 'none'; // <-- LIGNE AJOUTÉE
         navigator.geolocation.getCurrentPosition(updateUserPosition);
         map.setView([46.6, 2.2], 5.5);
     });
@@ -288,6 +289,31 @@ function updateCommuneDisplay(commune) {
     communeDisplay.innerHTML = communeNameHTML + sunsetHTML;
 }
 
+function updateMapBingoDisplay() {
+    const bingoDisplay = document.getElementById('bingo-map-display');
+    if (!currentCommune) {
+        bingoDisplay.style.display = 'none';
+        return;
+    }
+
+    const bingoBase = calculateBingo(CALCULATOR_DATA.distBaseFeu);
+    const bingoPelic = calculateBingo(CALCULATOR_DATA.distPelicFeu);
+    
+    const lftwEl = document.getElementById('map-bingo-lftw');
+    const pelicEl = document.getElementById('map-bingo-pelic');
+
+    lftwEl.innerHTML = `BINGO LFTW: <b>${bingoBase} kg</b>`;
+
+    if (bingoPelic !== 700 && selectedPelicanOACI) {
+        pelicEl.innerHTML = `BINGO ${selectedPelicanOACI}: <b>${bingoPelic} kg</b>`;
+        pelicEl.style.display = 'inline-block';
+    } else {
+        pelicEl.style.display = 'none';
+    }
+    
+    bingoDisplay.style.display = 'flex';
+}
+
 function displayCommuneDetails(commune, shouldFitBounds = true) {
     routesLayer.clearLayers();
     userToTargetLayer.clearLayers();
@@ -324,6 +350,7 @@ function displayCommuneDetails(commune, shouldFitBounds = true) {
     }
     
     updateCalculatorData();
+    updateMapBingoDisplay();
     navigator.geolocation.getCurrentPosition(updateUserPosition, () => {}, { enableHighAccuracy: true });
 
     if (shouldFitBounds) {
