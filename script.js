@@ -118,7 +118,7 @@ function setupEventListeners() {
     if (mainActionButtons) {
         const versionDisplay = document.createElement('div');
         versionDisplay.className = 'version-display';
-        versionDisplay.innerText = 'v50.7';
+        versionDisplay.innerText = 'v50.8';
         mainActionButtons.appendChild(versionDisplay);
     }
 
@@ -621,12 +621,36 @@ function initializeCalculator() {
         if (clearBtn) { clearBtn.addEventListener('click', () => { displayInput.value = ''; masterRecalculate(); saveCalculatorState(); }); }
     }
     
-    const addNewRow = (tableBody, data) => {
+    const addNewRow = (tableBody, data, isLastRow = false) => {
         const row = document.createElement('tr');
         row.innerHTML = `<td><div class="input-wrapper time-input-wrapper"><input type="text" class="display-input" readonly placeholder="--:--"><span class="clear-btn">&times;</span><span class="clock-icon">🕒</span><input type="time" class="engine-input"></div></td><td><div class="input-wrapper numeric-input-wrapper" data-unit="kg"><input type="text" class="display-input" inputmode="numeric" placeholder="[valeur]"><span class="clear-btn">&times;</span></div></td><td class="duree-rotation-cell"></td><td class="fuel-rotation-cell"></td><td class="tps-vol-cell"></td><td class="tps-vol-restant-cell"></td>`;
         tableBody.appendChild(row);
-        initializeTimeInput(row.querySelector('.time-input-wrapper'), data ? data.time : '');
-        initializeNumericInput(row.querySelector('.numeric-input-wrapper'), data ? data.fuel : '');
+
+        const timeWrapper = row.querySelector('.time-input-wrapper');
+        const numericWrapper = row.querySelector('.numeric-input-wrapper');
+        
+        initializeTimeInput(timeWrapper, data ? data.time : '');
+        initializeNumericInput(numericWrapper, data ? data.fuel : '');
+
+        const checkAndAddRow = () => {
+            // Si cette ligne n'est plus la dernière, on enlève les écouteurs
+            if (row.nextSibling) {
+                timeWrapper.querySelector('.display-input').removeEventListener('change', checkAndAddRow);
+                numericWrapper.querySelector('.display-input').removeEventListener('blur', checkAndAddRow);
+                return;
+            }
+            // Si on a saisi quelque chose, on ajoute une nouvelle ligne
+            if (timeWrapper.querySelector('.display-input').value || numericWrapper.querySelector('.display-input').value) {
+                addNewRow(tableBody, null, true);
+            }
+        };
+
+        if (isLastRow) {
+            // L'événement 'change' sur le timeInput est plus fiable car il se déclenche après la validation
+            timeWrapper.querySelector('.engine-input').addEventListener('change', checkAndAddRow);
+            // Pour le numericInput, on écoute 'blur' (quand l'utilisateur quitte le champ)
+            numericWrapper.querySelector('.display-input').addEventListener('blur', checkAndAddRow);
+        }
     };
 
     function loadCalculatorState() {
@@ -644,9 +668,20 @@ function initializeCalculator() {
         initializeNumericInput(document.getElementById('fuel-sur-feu-wrapper'), state['fuel-sur-feu-wrapper']);
         initializeNumericInput(document.getElementById('suivi-conso-rotation-wrapper'), state['suivi-conso-rotation-wrapper']);
         initializeTimeInput(document.getElementById('suivi-duree-rotation-wrapper'), state['suivi-duree-rotation-wrapper']);
+        
         const tableData = state.calculator_table_data || [];
-        const rowsToCreate = Math.max(6, tableData.length + (tableData.length > 0 && (tableData[tableData.length - 1].time || tableData[tableData.length - 1].fuel) ? 1 : 0));
-        for (let i = 0; i < rowsToCreate; i++) { addNewRow(tableBody, tableData[i]); }
+        // Créer les lignes existantes
+        tableData.forEach(rowData => {
+            addNewRow(tableBody, rowData, false);
+        });
+
+        // Toujours s'assurer qu'il y a une ligne vide à la fin
+        // et au moins 6 lignes au total.
+        const rowsToAdd = Math.max(6, tableBody.rows.length + 1) - tableBody.rows.length;
+        for (let i = 0; i < rowsToAdd; i++) {
+             const isLastRow = (i === rowsToAdd - 1);
+             addNewRow(tableBody, null, isLastRow);
+        }
     }
 
     loadCalculatorState();
