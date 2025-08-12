@@ -110,7 +110,7 @@ html, body {
 /* --- Contrôle de la largeur des colonnes --- */
 .table-section th:nth-child(1), .table-section td:nth-child(1),
 .table-section th:nth-child(2), .table-section td:nth-child(2) {
-    width: 140px; /* Largeur fixe pour les 2 premières colonnes */
+    width: 125px; /* Largeur fixe réduite pour les 2 premières colonnes */
 }
 
 /* Styles spécifiques aux cellules */
