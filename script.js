@@ -118,7 +118,7 @@ function setupEventListeners() {
     if (mainActionButtons) {
         const versionDisplay = document.createElement('div');
         versionDisplay.className = 'version-display';
-        versionDisplay.innerText = 'v50.1';
+        versionDisplay.innerText = 'v50.2';
         mainActionButtons.appendChild(versionDisplay);
     }
 
@@ -557,6 +557,8 @@ function initializeCalculator() {
             let timeString;
             if (wrapper.id === 'tmd') {
                 timeString = '21:30';
+            } else if (wrapper.id === 'limite-hdv') {
+                timeString = '08:00';
             } else {
                 const now = new Date();
                 timeString = `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}`;
