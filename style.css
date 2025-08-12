@@ -85,12 +85,45 @@ html, body {
 .header-item label { font-weight: bold; color: var(--primary-color); margin-bottom: 10px; font-size: 17px; text-transform: uppercase; }
 .input-wrapper .display-input { width: 100%; padding: 12px; font-size: 19px; text-align: center; border: 1px solid var(--border-color); border-radius: 7px; box-sizing: border-box; background-color: #fff; user-select: none; -webkit-user-select: none; }
 .table-wrapper { flex-grow: 1; overflow-y: auto; }
-.table-section { width: 100%; border-collapse: collapse; }
-.table-section th { font-size: 17px; background-color: var(--background-color); text-transform: uppercase; position: sticky; top: 0; z-index: 5; text-align: center; padding: 12px 5px; }
-.table-section td { font-size: 19px; text-align: center; padding: 5px; vertical-align: middle; }
+.table-section { width: 100%; border-collapse: collapse; table-layout: fixed; }
+
+/* Styles généraux pour les en-têtes et cellules */
+.table-section th,
+.table-section td {
+    text-align: center;
+    vertical-align: middle;
+    padding: 5px;
+}
+
+/* Styles spécifiques aux en-têtes */
+.table-section th {
+    font-size: 17px;
+    background-color: var(--background-color);
+    text-transform: uppercase;
+    position: sticky;
+    top: 0;
+    z-index: 5;
+    padding: 12px 5px;
+    white-space: normal; /* Permet au texte de passer à la ligne si besoin */
+}
+
+/* --- Contrôle de la largeur des colonnes --- */
+.table-section th:nth-child(1), .table-section td:nth-child(1),
+.table-section th:nth-child(2), .table-section td:nth-child(2) {
+    width: 140px; /* Largeur fixe pour les 2 premières colonnes */
+}
+
+/* Styles spécifiques aux cellules */
 .table-section td { font-size: 19px; }
+
+/* --- Correction alignement des inputs --- */
+.table-section .input-wrapper .display-input { text-align: center; }
+
+/* Styles pour les cellules de résultats calculés */
 .table-section td.duree-rotation-cell { font-weight: bold; color: #000080; font-size: 28px; }
 .table-section td.fuel-rotation-cell { font-weight: bold; color: #008000; font-size: 28px; }
+
+/* Alternance de couleur pour les lignes */
 .table-section tbody tr:nth-child(odd) {
     background-color: var(--background-color);
 }
