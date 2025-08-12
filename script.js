@@ -118,7 +118,7 @@ function setupEventListeners() {
     if (mainActionButtons) {
         const versionDisplay = document.createElement('div');
         versionDisplay.className = 'version-display';
-        versionDisplay.innerText = 'v50.3';
+        versionDisplay.innerText = 'v50.4';
         mainActionButtons.appendChild(versionDisplay);
     }
 
@@ -546,11 +546,26 @@ function initializeCalculator() {
         localStorage.setItem('calculator_state', JSON.stringify(state));
     }
 
-   function initializeTimeInput(wrapper, initialValue = '') {
+  function initializeTimeInput(wrapper, initialValue = '') {
         const displayInput = wrapper.querySelector('.display-input');
         const engineInput = wrapper.querySelector('.engine-input');
         const clearBtn = wrapper.querySelector('.clear-btn');
-        displayInput.value = initialValue;
+
+        // Helper pour synchroniser la valeur affichée et la valeur de l'input technique
+        const setTimeValue = (time) => {
+            displayInput.value = time;
+            if (engineInput) {
+                // L'input type="time" n'accepte que le format HH:mm ou une chaîne vide
+                if (String(time).match(/^\d{2}:\d{2}$/)) {
+                    engineInput.value = time;
+                } else {
+                    engineInput.value = '';
+                }
+            }
+        };
+
+        // 1. Définir la valeur initiale pour les deux inputs
+        setTimeValue(initialValue);
         
         displayInput.addEventListener('dblclick', (e) => {
             e.preventDefault();
@@ -563,25 +578,19 @@ function initializeCalculator() {
                 const now = new Date();
                 timeString = `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}`;
             }
-            displayInput.value = timeString;
+            // 2. Mettre à jour les deux inputs au double-clic
+            setTimeValue(timeString);
             masterRecalculate();
             saveCalculatorState();
         });
 
         if (engineInput) {
-            // Prépare le sélecteur AVANT son ouverture
-            engineInput.addEventListener('focus', () => {
-                if (displayInput.value.match(/^\d{2}:\d{2}$/)) {
-                    engineInput.value = displayInput.value;
-                } else {
-                    engineInput.value = ''; // Empêche le défaut à l'heure courante si le champ est invalide
-                }
-            });
-
-            // Met à jour la valeur seulement après confirmation par l'utilisateur
+            // L'événement 'focus' n'est plus nécessaire car les inputs sont déjà synchronisés.
+            
+            // Met à jour la valeur affichée après confirmation dans le sélecteur
             engineInput.addEventListener('change', () => {
                 if (engineInput.value) {
-                    displayInput.value = engineInput.value;
+                    displayInput.value = engineInput.value; // L'engineInput est la source de vérité ici
                     masterRecalculate();
                     saveCalculatorState();
                 }
@@ -590,8 +599,9 @@ function initializeCalculator() {
         
         if (clearBtn) {
             clearBtn.addEventListener('click', () => {
-                displayInput.value = wrapper.id === 'tmd' ? '21:30' : wrapper.id === 'limite-hdv' ? '08:00' : '';
-                if(engineInput) engineInput.value = '';
+                const defaultValue = wrapper.id === 'tmd' ? '21:30' : wrapper.id === 'limite-hdv' ? '08:00' : '';
+                // 3. Mettre à jour les deux inputs au clic sur la croix
+                setTimeValue(defaultValue);
                 masterRecalculate();
                 saveCalculatorState();
             });
