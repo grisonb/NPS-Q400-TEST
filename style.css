@@ -186,6 +186,24 @@ html, body {
 .bingo-group .result-line .value { border: 2px solid var(--secondary-color); background-color: #fff0f3; margin-top: 5px; width: 100%; box-sizing: border-box; height: auto; min-height: 45px; display: flex; align-items: center; justify-content: center; text-align: center; line-height: 1.2; white-space: nowrap; font-size: 17px; padding: 10px 8px; }
 .analyse-separator { border: 0; height: 1px; background-color: var(--border-color); margin: 0 0 20px 0; }
 .manual-btn, #refresh-gps-btn { padding: 8px 12px; font-size: 14px; font-weight: bold; border: 1px solid var(--border-color); border-radius: 6px; background-color: #fff; cursor: pointer; }
+#refresh-gps-btn {
+    grid-column: 1 / -1; /* Pour qu'il prenne toute la largeur de sa colonne */
+    margin-top: 15px;
+    padding: 15px; /* Plus grand */
+    font-size: 24px; /* Icône plus grande */
+    font-weight: bold;
+    background-color: var(--primary-color);
+    color: white;
+    border: none;
+    border-radius: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: background-color 0.2s;
+}
+#refresh-gps-btn:hover {
+    background-color: #004a80;
+}
 .manual-btn { margin-left: 10px; }
 .manual-btn.active { background-color: var(--primary-color); color: #fff; border-color: var(--primary-color); }
 .analyse-col-title { font-size: 20px; font-weight: bold; color: var(--primary-color); text-transform: uppercase; margin-bottom: 15px; text-align: center; }
@@ -224,3 +242,22 @@ html, body {
 .input-wrapper .clear-btn { position: absolute; top: 50%; left: 12px; transform: translateY(-50%); font-size: 30px; font-weight: bold; color: var(--light-text-color); cursor: pointer; z-index: 2; }
 .time-input-wrapper .clock-icon { position: absolute; top: 50%; right: 12px; transform: translateY(-50%); font-size: 26px; pointer-events: none; }
 .time-input-wrapper .engine-input { position: absolute; top: 0; right: 0; width: 48px; height: 100%; opacity: 0; cursor: pointer; border: none; z-index: 3; }
+
+#refresh-gps-btn {
+    grid-column: 1 / -1; /* Pour qu'il prenne toute la largeur de sa colonne */
+    margin-top: 15px;
+    padding: 15px; /* Plus grand */
+    font-size: 24px; /* Icône plus grande */
+    font-weight: bold;
+    background-color: var(--primary-color);
+    color: white;
+    border: none;
+    border-radius: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: background-color 0.2s;
+}
+#refresh-gps-btn:hover {
+    background-color: #004a80;
+}
