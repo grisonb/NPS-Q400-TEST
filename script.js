@@ -118,7 +118,7 @@ function setupEventListeners() {
     if (mainActionButtons) {
         const versionDisplay = document.createElement('div');
         versionDisplay.className = 'version-display';
-        versionDisplay.innerText = 'v51.8';
+        versionDisplay.innerText = 'v51.9';
         mainActionButtons.appendChild(versionDisplay);
     }
 
@@ -539,7 +539,62 @@ const parseTime = (timeString) => { if (!timeString || !timeString.includes(':')
 const formatTime = (totalMinutes) => { if (totalMinutes === null || isNaN(totalMinutes) || totalMinutes < 0) return ''; const roundedMinutes = Math.round(totalMinutes); const hours = Math.floor(roundedMinutes / 60); const minutes = roundedMinutes % 60; return `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}`; };
 const parseNumeric = (numericString) => { if (!numericString) return null; const value = parseInt(numericString.replace(/[^0-9]/g, ''), 10); return isNaN(value) ? null : value; };
 
-function updateAndSortRotations(container, current, params) { const lines = container.querySelectorAll('.result-line'); const sortable = []; lines.forEach(line => { const type = line.dataset.rotationType; let value = null; const valueCell = line.querySelector('.value'); if (type === 'base' && current.fuel && params.consoRotation > 0) { value = ((current.fuel - params.bingoBase) / params.consoRotation) + 1; } if (type === 'pelic' && current.fuel && params.consoRotation > 0) { value = ((current.fuel - params.bingoPelic) / params.consoRotation) + 1; } if (type === 'cs' && params.csFeuTime !== null && current.time !== null && params.rotationTime > 0) { value = (params.csFeuTime - current.time) / params.rotationTime; } if (type === 'tmd' && params.tmdTime !== null && current.time !== null && params.rotationTime > 0) { value = (params.tmdTime - current.time) / params.rotationTime; } if (type === 'hdv' && params.limiteHDV !== null && params.rotationTime > 0) { const hdvOnSite = params.limiteHDV - (params.transitTime || 0); value = hdvOnSite / params.rotationTime; } valueCell.textContent = value !== null && value > 0 ? value.toFixed(2) : '0.00'; valueCell.classList.remove('rotation-value-default', 'rotation-value-green', 'rotation-value-yellow', 'rotation-value-red'); if (valueCell.textContent === '0.00' || valueCell.textContent === '--' || current.fuel === null || value === null) { valueCell.classList.add('rotation-value-default'); } else if (value > 1.5) { valueCell.classList.add('rotation-value-green'); } else if (value >= 1.1) { valueCell.classList.add('rotation-value-yellow'); } else { valueCell.classList.add('rotation-value-red'); } sortable.push({ value: value !== null ? value : Infinity, element: line }); }); sortable.sort((a, b) => a.value - b.value); sortable.forEach(item => container.appendChild(item.element)); }
+function updateAndSortRotations(container, current, params) {
+    const lines = container.querySelectorAll('.result-line');
+    const sortable = [];
+
+    lines.forEach(line => {
+        const type = line.dataset.rotationType;
+        let value = null;
+        const valueCell = line.querySelector('.value');
+
+        // --- Vérification des paramètres essentiels ---
+        const canCalculateFuel = current.fuel !== null && params.consoRotation !== null && params.consoRotation > 0;
+        const canCalculateTime = current.time !== null && params.rotationTime !== null && params.rotationTime > 0;
+
+        // --- Calculs conditionnels ---
+        if (type === 'base' && canCalculateFuel) {
+            value = ((current.fuel - params.bingoBase) / params.consoRotation) + 1;
+        }
+        if (type === 'pelic' && canCalculateFuel) {
+            value = ((current.fuel - params.bingoPelic) / params.consoRotation) + 1;
+        }
+        if (type === 'cs' && canCalculateTime && params.csFeuTime !== null) {
+            value = (params.csFeuTime - current.time) / params.rotationTime;
+        }
+        if (type === 'tmd' && canCalculateTime && params.tmdTime !== null) {
+            value = (params.tmdTime - current.time) / params.rotationTime;
+        }
+        if (type === 'hdv' && canCalculateTime && params.limiteHDV !== null) {
+            const hdvOnSite = params.limiteHDV - (params.transitTime || 0);
+            value = hdvOnSite / params.rotationTime;
+        }
+        
+        // --- Affichage du résultat ---
+        if (value !== null && value > 0) {
+            valueCell.textContent = value.toFixed(2);
+        } else {
+            valueCell.textContent = '0.00'; // Par défaut '0.00' si pas calculable ou négatif
+        }
+        
+        // --- Mise en forme visuelle ---
+        valueCell.classList.remove('rotation-value-default', 'rotation-value-green', 'rotation-value-yellow', 'rotation-value-red');
+        if (value === null || value <= 0) {
+             valueCell.classList.add('rotation-value-default');
+        } else if (value > 1.5) {
+            valueCell.classList.add('rotation-value-green');
+        } else if (value >= 1.1) {
+            valueCell.classList.add('rotation-value-yellow');
+        } else {
+            valueCell.classList.add('rotation-value-red');
+        }
+        
+        sortable.push({ value: (value !== null && value > 0) ? value : Infinity, element: line });
+    });
+
+    sortable.sort((a, b) => a.value - b.value);
+    sortable.forEach(item => container.appendChild(item.element));
+}
 function recalculateBlocFuel() {
     const blocDepart = parseTime(document.getElementById('bloc-depart').querySelector('.display-input').value);
     const fuelDepart = parseNumeric(document.getElementById('fuel-depart').querySelector('.display-input').value);
@@ -639,10 +694,15 @@ function updatePreviTab() {
     updateAndSortRotations(document.getElementById('previ-rotation-results-container'), { fuel: fuelSurFeu, time: heureSurFeu }, { bingoBase, bingoPelic, consoRotation, rotationTime, csFeuTime, tmdTime, limiteHDV, transitTime });
 }
 function updateSuiviTab() {
+    const suiviConsoInput = document.getElementById('suivi-conso-rotation-wrapper').querySelector('.display-input');
+    const suiviDureeInput = document.getElementById('suivi-duree-rotation-wrapper').querySelector('.display-input');
+
     if (!currentCommune) {
         document.getElementById('suivi-bingo-base').innerHTML = '-- kg';
         document.getElementById('suivi-bingo-pelic').innerHTML = '-- kg';
         document.querySelectorAll('#suivi-rotation-results-container .value').forEach(el => { el.textContent = '--'; el.className = 'value rotation-value-default'; });
+        suiviConsoInput.value = '';
+        suiviDureeInput.value = '';
         return;
     }
     const bingoBase = calculateBingo(CALCULATOR_DATA.distBaseFeu);
@@ -653,9 +713,6 @@ function updateSuiviTab() {
     if (bingoPelic === 700 || !selectedPelicanOACI) { bingoPelicDisplay.innerHTML = '-- kg'; } else { bingoPelicDisplay.innerHTML = `${selectedPelicanOACI} / ${CALCULATOR_DATA.distPelicFeu} Nm /&nbsp;<b>${bingoPelic} kg</b>`; }
 
     // --- MISE A JOUR DES CHAMPS EN MODE AUTO ---
-    const suiviConsoInput = document.getElementById('suivi-conso-rotation-wrapper').querySelector('.display-input');
-    const suiviDureeInput = document.getElementById('suivi-duree-rotation-wrapper').querySelector('.display-input');
-
     if (!isSuiviConsoManual) {
         const previConso = document.getElementById('conso-par-rotation').textContent;
         suiviConsoInput.value = previConso.includes('--') ? '' : previConso;
