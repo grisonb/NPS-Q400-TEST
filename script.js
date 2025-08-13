@@ -118,7 +118,7 @@ function setupEventListeners() {
     if (mainActionButtons) {
         const versionDisplay = document.createElement('div');
         versionDisplay.className = 'version-display';
-        versionDisplay.innerText = 'v52.1';
+        versionDisplay.innerText = 'v52.2';
         mainActionButtons.appendChild(versionDisplay);
     }
 
@@ -563,11 +563,11 @@ function updateAndSortRotations(container, current, params) {
         }
         if (type === 'cs' && canCalculateTime && params.csFeuTime !== null) {
             value = (params.csFeuTime - current.time) / params.rotationTime;
-            formulaString = `Formule : (Heure CS - Heure Actuelle) / Durée Rotation\n\nCalcul : (${formatTime(params.csFeuTime)} - ${formatTime(current.time)}) / ${params.rotationTime} min`;
+            formulaString = `Formule : (Heure CS - Heure Actuelle) / Durée Rotation\n\nCalcul : (${formatTime(params.csFeuTime) || 'N/A'} - ${formatTime(current.time) || 'N/A'}) / ${params.rotationTime} min`;
         }
         if (type === 'tmd' && canCalculateTime && params.tmdTime !== null) {
             value = (params.tmdTime - current.time) / params.rotationTime;
-            formulaString = `Formule : (Heure TMD - Heure Actuelle) / Durée Rotation\n\nCalcul : (${formatTime(params.tmdTime)} - ${formatTime(current.time)}) / ${params.rotationTime} min`;
+            formulaString = `Formule : (Heure TMD - Heure Actuelle) / Durée Rotation\n\nCalcul : (${formatTime(params.tmdTime) || 'N/A'} - ${formatTime(current.time) || 'N/A'}) / ${params.rotationTime} min`;
         }
         if (type === 'hdv' && canCalculateTime && params.limiteHDV !== null) {
             const hdvOnSite = params.limiteHDV - (params.transitTime || 0);
@@ -585,7 +585,12 @@ function updateAndSortRotations(container, current, params) {
         else if (value >= 1.1) { valueCell.classList.add('rotation-value-yellow'); } 
         else { valueCell.classList.add('rotation-value-red'); }
         
-        if (helpIcon) { helpIcon.onclick = () => alert(formulaString); }
+        if (helpIcon) {
+            // Utilisation de addEventListener pour plus de robustesse
+            helpIcon.addEventListener('click', () => {
+                alert(formulaString);
+            });
+        }
         
         sortable.push({ value: (value !== null && value > 0) ? value : Infinity, element: line });
     });
@@ -649,6 +654,13 @@ function recalculateBlocFuel() {
     });
 }
 function updatePreviTab() {
+    const defaultFormula = "Données insuffisantes pour le calcul.";
+    // Helper pour attacher les alertes
+    const setHelp = (id, formula) => {
+        const icon = document.getElementById(id);
+        if (icon) { icon.addEventListener('click', () => alert(formula || defaultFormula)); }
+    };
+
     if (!currentCommune) {
         document.getElementById('previ-bingo-base').innerHTML = '-- kg';
         document.getElementById('previ-bingo-pelic').innerHTML = '-- kg';
@@ -660,35 +672,56 @@ function updatePreviTab() {
         document.getElementById('duree-rotation').textContent = '--:--';
         document.getElementById('conso-par-rotation').textContent = '-- kg';
         document.getElementById('cs-sur-feu').textContent = '--:--';
+        setHelp('heure-sur-feu-help'); setHelp('duree-transit-help'); setHelp('conso-aller-feu-help');
+        setHelp('fuel-sur-feu-help'); setHelp('duree-rotation-help'); setHelp('conso-par-rotation-help');
         return;
     }
+
     const bingoBase = calculateBingo(CALCULATOR_DATA.distBaseFeu);
     const bingoPelic = calculateBingo(CALCULATOR_DATA.distPelicFeu);
     const bingoBaseDisplay = document.getElementById('previ-bingo-base');
     if (bingoBase === 700) { bingoBaseDisplay.innerHTML = '-- kg'; } else { bingoBaseDisplay.innerHTML = `${CALCULATOR_DATA.distBaseFeu} Nm /&nbsp;<b>${bingoBase} kg</b>`; }
     const bingoPelicDisplay = document.getElementById('previ-bingo-pelic');
     if (bingoPelic === 700 || !selectedPelicanOACI) { bingoPelicDisplay.innerHTML = '-- kg'; } else { bingoPelicDisplay.innerHTML = `${selectedPelicanOACI} / ${CALCULATOR_DATA.distPelicFeu} Nm /&nbsp;<b>${bingoPelic} kg</b>`; }
+    
     const blocDepart = parseTime(document.getElementById('bloc-depart').querySelector('.display-input').value);
     const fuelDepart = parseNumeric(document.getElementById('fuel-depart').querySelector('.display-input').value);
     const limiteHDV = parseTime(document.getElementById('limite-hdv').querySelector('.display-input').value);
     const tmdTime = parseTime(document.getElementById('tmd').querySelector('.display-input').value);
     const csFeuTime = parseTime(CALCULATOR_DATA.csFeu);
+    
     const transitTime = Math.round(calculateTransitTime(CALCULATOR_DATA.distBaseFeu));
     const rotationTime = Math.round(calculateRotationTime(CALCULATOR_DATA.distPelicFeu));
     const consoRotation = calculateConsoRotation(CALCULATOR_DATA.distPelicFeu);
     const consoAller = calculateFuelToGo(CALCULATOR_DATA.distBaseFeu);
     const heureSurFeu = blocDepart !== null ? blocDepart + transitTime : null;
+    
     document.getElementById('duree-transit').textContent = formatTime(transitTime);
+    setHelp('duree-transit-help', `Formule : Distance * (60 / Vitesse)\n\nCalcul : ${CALCULATOR_DATA.distBaseFeu} Nm * (60 / ${CALCULATOR_DATA.distBaseFeu <= 70 ? 210 : 240})`);
+    
     document.getElementById('heure-sur-feu').textContent = formatTime(heureSurFeu);
+    setHelp('heure-sur-feu-help', `Formule : BLOC Départ + Durée transit\n\nCalcul : ${formatTime(blocDepart) || 'N/A'} + ${formatTime(transitTime)}`);
+
     document.getElementById('conso-aller-feu').textContent = `${consoAller} kg`;
+    setHelp('conso-aller-feu-help', `Formule : Distance * Conso. au Nm\n\nCalcul : ${CALCULATOR_DATA.distBaseFeu} Nm * ${CALCULATOR_DATA.distBaseFeu <= 70 ? 5 : 4} kg/Nm`);
+
+    document.getElementById('duree-rotation').textContent = rotationTime === 20 ? '--:--' : formatTime(rotationTime);
+    setHelp('duree-rotation-help', `Formule : 20min + (Distance / Vitesse Sol)\n\nCalcul : 20 + (${CALCULATOR_DATA.distPelicFeu} Nm / ${CALCULATOR_DATA.distPelicFeu <= 50 ? 3.5 : 4})`);
+
+    document.getElementById('conso-par-rotation').textContent = consoRotation === 250 ? '-- kg' : `${consoRotation} kg`;
+    setHelp('conso-par-rotation-help', `Formule : (Distance * Conso. au Nm) + Forfait\n\nCalcul : (${CALCULATOR_DATA.distPelicFeu} Nm * ${CALCULATOR_DATA.distPelicFeu <= 70 ? 10 : 8}) + 250`);
+
+    const fuelSurFeuInput = document.getElementById('fuel-sur-feu-wrapper').querySelector('.display-input');
+    const fuelEstime = fuelDepart ? fuelDepart - consoAller : null;
+    if (!isFuelSurFeuManual) { fuelSurFeuInput.value = fuelEstime ? `${fuelEstime} kg` : ''; }
+    setHelp('fuel-sur-feu-help', `Formule (AUTO) : FUEL Départ - Conso. transit\n\nCalcul : ${fuelDepart || 'N/A'} - ${consoAller}`);
+    
+    const fuelSurFeu = parseNumeric(fuelSurFeuInput.value);
+
     document.getElementById('cs-sur-feu').textContent = CALCULATOR_DATA.csFeu;
     document.getElementById('tmd-display').textContent = formatTime(tmdTime);
     document.getElementById('hdv-restant-display').textContent = formatTime(limiteHDV);
-    document.getElementById('duree-rotation').textContent = rotationTime === 20 ? '--:--' : formatTime(rotationTime);
-    document.getElementById('conso-par-rotation').textContent = consoRotation === 250 ? '-- kg' : `${consoRotation} kg`;
-    const fuelSurFeuInput = document.getElementById('fuel-sur-feu-wrapper').querySelector('.display-input');
-    if (!isFuelSurFeuManual) { const fuelEstime = fuelDepart ? fuelDepart - consoAller : null; fuelSurFeuInput.value = fuelEstime ? `${fuelEstime} kg` : ''; }
-    const fuelSurFeu = parseNumeric(fuelSurFeuInput.value);
+
     updateAndSortRotations(document.getElementById('previ-rotation-results-container'), { fuel: fuelSurFeu, time: heureSurFeu }, { bingoBase, bingoPelic, consoRotation, rotationTime, csFeuTime, tmdTime, limiteHDV, transitTime });
 }
 function updateSuiviTab() {
