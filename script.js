@@ -125,7 +125,7 @@ function setupEventListeners() {
     if (mainActionButtons) {
         const versionDisplay = document.createElement('div');
         versionDisplay.className = 'version-display';
-        versionDisplay.innerText = 'v52.6';
+        versionDisplay.innerText = 'v52.7';
         mainActionButtons.appendChild(versionDisplay);
     }
 
@@ -585,28 +585,39 @@ async function handleZipImport(file) {
 
     try {
         const zip = await JSZip.loadAsync(file);
-        const tileFiles = Object.values(zip.files).filter(f => !f.dir && f.name.match(/\d+\/\d+\/\d+\.(png|jpg)$/i));
+        const tileFiles = Object.values(zip.files).filter(f => !f.dir && f.name.match(/\d+\/\d+\/\d+\.(png|jpg|jpeg)$/i));
         const totalFiles = tileFiles.length;
         statusMessage.textContent = `Importation de ${totalFiles} tuiles...`;
 
         if (totalFiles === 0) {
-            throw new Error("Aucune tuile valide trouvée dans le fichier ZIP. La structure doit être /zoom/colonne/ligne.png");
+            throw new Error("Aucune tuile valide trouvée dans le ZIP. La structure doit être /zoom/colonne/ligne.png");
         }
 
         const transaction = db.transaction('tiles', 'readwrite');
         const store = transaction.objectStore('tiles');
         let processedFiles = 0;
 
-        for (const tileFile of tileFiles) {
-            const blob = await tileFile.async('blob');
-            const url = `https://a.tile.openstreetmap.org/${tileFile.name}`;
-            store.put({ url: url, tile: blob, packName: packName });
-            
-            processedFiles++;
-            progressBar.style.width = `${(processedFiles / totalFiles) * 100}%`;
-        }
+        // On prépare toutes les promesses d'écriture en une seule fois
+        const allPutsPromise = Promise.all(tileFiles.map(tileFile => {
+            return tileFile.async('blob').then(blob => {
+                const url = `https://a.tile.openstreetmap.org/${tileFile.name}`;
+                const request = store.put({ url: url, tile: blob, packName: packName });
+                
+                return new Promise((resolve, reject) => {
+                    request.onsuccess = () => {
+                        processedFiles++;
+                        // Mise à jour de la barre de progression par petits paliers pour ne pas surcharger le rendu
+                        if (processedFiles % 100 === 0 || processedFiles === totalFiles) {
+                             progressBar.style.width = `${(processedFiles / totalFiles) * 100}%`;
+                        }
+                        resolve();
+                    };
+                    request.onerror = () => reject(request.error);
+                });
+            });
+        }));
 
-        await new Promise(resolve => transaction.oncomplete = resolve);
+        await allPutsPromise; // On attend que toutes les écritures soient terminées
 
         statusMessage.textContent = `Importation de ${packName} terminée !`;
         
