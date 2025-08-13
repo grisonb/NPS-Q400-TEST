@@ -288,3 +288,120 @@ html, body {
     display: inline-flex; /* Assure l'alignement vertical du texte et de l'icône */
     align-items: center;
 }
+/* --- STYLES POUR LA MODALE DES CARTES HORS-LIGNE --- */
+#offline-map-modal {
+    position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+    background-color: rgba(0, 0, 0, 0.6);
+    backdrop-filter: blur(5px);
+    z-index: 2000;
+    display: none;
+    justify-content: center;
+    align-items: center;
+}
+
+#offline-map-modal .main-container {
+    width: 90%;
+    max-width: 600px;
+    max-height: 80vh;
+    padding: 20px 30px;
+}
+
+#offline-map-modal h2 {
+    text-align: center;
+    color: var(--primary-color);
+    margin-top: 10px;
+    margin-bottom: 25px;
+}
+
+#offline-map-modal #close-offline-map-btn {
+    position: absolute; top: 10px; right: 15px; width: 44px; height: 44px;
+    font-size: 32px; font-weight: bold; color: var(--light-text-color);
+    background: transparent; border: none; cursor: pointer; line-height: 1;
+}
+
+.modal-content {
+    display: flex;
+    flex-direction: column;
+    gap: 30px;
+}
+
+.import-section p {
+    margin-top: 0;
+    text-align: center;
+    color: var(--light-text-color);
+}
+
+.import-button {
+    display: block;
+    width: 100%;
+    padding: 15px;
+    background-color: var(--primary-color);
+    color: white;
+    text-align: center;
+    font-size: 18px;
+    font-weight: bold;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: background-color 0.2s;
+}
+
+.import-button:hover {
+    background-color: #004a80;
+}
+
+.progress-bar-container {
+    width: 100%;
+    height: 20px;
+    background-color: var(--border-color);
+    border-radius: 10px;
+    overflow: hidden;
+}
+
+.progress-bar {
+    width: 0%; /* Sera modifié par JS */
+    height: 100%;
+    background-color: var(--success-color);
+    transition: width 0.3s ease;
+}
+
+#import-status-message {
+    text-align: center;
+    font-style: italic;
+}
+
+#installed-maps-list {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    overflow: hidden;
+}
+
+#installed-maps-list li {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 15px;
+    border-bottom: 1px solid var(--border-color);
+}
+
+#installed-maps-list li:last-child {
+    border-bottom: none;
+}
+
+.no-maps-placeholder {
+    color: var(--light-text-color);
+    justify-content: center !important;
+    font-style: italic;
+}
+
+.delete-map-btn {
+    padding: 6px 12px;
+    background-color: var(--secondary-color);
+    color: white;
+    border: none;
+    border-radius: 6px;
+    cursor: pointer;
+    font-weight: bold;
+}
