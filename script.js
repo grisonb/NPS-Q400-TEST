@@ -118,7 +118,7 @@ function setupEventListeners() {
     if (mainActionButtons) {
         const versionDisplay = document.createElement('div');
         versionDisplay.className = 'version-display';
-        versionDisplay.innerText = 'v51.6';
+        versionDisplay.innerText = 'v51.7';
         mainActionButtons.appendChild(versionDisplay);
     }
 
@@ -644,26 +644,77 @@ function updateSuiviTab() {
         updateAndSortRotations(document.getElementById('suivi-rotation-results-container'), { fuel: currentFuel, time: currentTime }, { bingoBase, bingoPelic, consoRotation, rotationTime, csFeuTime, tmdTime, limiteHDV: currentHdv, transitTime: 0 });
     }
 }
-function updateDeroutementTab() { if (!currentCommune) { document.getElementById('derout-bingo-base').innerHTML = '-- kg'; document.getElementById('derout-bingo-pelic').innerHTML = '-- kg'; document.querySelectorAll('#derout-rotation-results-container .value').forEach(el => {el.textContent = '--'; el.className = 'value rotation-value-default';}); document.getElementById('derout-fuel-mini-base').textContent = '-- kg'; document.getElementById('derout-fuel-mini-pelic').textContent = '-- kg'; return; } const bingoBase = calculateBingo(CALCULATOR_DATA.distBaseFeu); const bingoPelic = calculateBingo(CALCULATOR_DATA.distPelicFeu); const bingoBaseDisplay = document.getElementById('derout-bingo-base'); if (bingoBase === 700) { bingoBaseDisplay.innerHTML = '-- kg'; } else { bingoBaseDisplay.innerHTML = `${CALCULATOR_DATA.distBaseFeu} Nm /&nbsp;<b>${bingoBase} kg</b>`; } const bingoPelicDisplay = document.getElementById('derout-bingo-pelic'); if (bingoPelic === 700 || !selectedPelicanOACI) { bingoPelicDisplay.innerHTML = '-- kg'; } else { bingoPelicDisplay.innerHTML = `${selectedPelicanOACI} / ${CALCULATOR_DATA.distPelicFeu} Nm /&nbsp;<b>${bingoPelic} kg</b>`; } const fuelForGpsTransit = calculateFuelToGo(CALCULATOR_DATA.distGpsFeu); const fuelMiniBase = fuelForGpsTransit + bingoBase + 250; const fuelMiniPelic = fuelForGpsTransit + bingoPelic + 250; document.getElementById('derout-fuel-mini-base').textContent = fuelMiniBase === 950 ? '-- kg' : `${fuelMiniBase} kg`; document.getElementById('derout-fuel-mini-pelic').textContent = fuelMiniPelic === 950 ? '-- kg' : `${fuelMiniPelic} kg`; const currentFuel = parseNumeric(document.getElementById('deroutement-fuel-wrapper').querySelector('.display-input').value); const currentTime = parseTime(document.getElementById('deroutement-heure-wrapper').querySelector('.display-input').value); const rotationTime = Math.round(calculateRotationTime(CALCULATOR_DATA.distPelicFeu)); const consoRotation = calculateConsoRotation(CALCULATOR_DATA.distPelicFeu); const csFeuTime = parseTime(CALCULATOR_DATA.csFeu); const tmdTime = parseTime(document.getElementById('tmd').querySelector('.display-input').value); const limiteHDV = parseTime(document.getElementById('limite-hdv').querySelector('.display-input').value); const transitTimeFromGps = Math.round(calculateTransitTime(CALCULATOR_DATA.distGpsFeu)); updateAndSortRotations(document.getElementById('derout-rotation-results-container'), { fuel: currentFuel, time: currentTime }, { bingoBase, bingoPelic, consoRotation, rotationTime, csFeuTime, tmdTime, limiteHDV, transitTime: transitTimeFromGps }); }
+function updateDeroutementTab() {
+    if (!currentCommune) {
+        document.getElementById('derout-bingo-base').innerHTML = '-- kg';
+        document.getElementById('derout-bingo-pelic').innerHTML = '-- kg';
+        document.querySelectorAll('#derout-rotation-results-container .value').forEach(el => { el.textContent = '--'; el.className = 'value rotation-value-default'; });
+        document.getElementById('derout-fuel-mini-base').textContent = '-- kg';
+        document.getElementById('derout-fuel-mini-pelic').textContent = '-- kg';
+        return;
+    }
+
+    // --- Calculs de base (identiques aux autres onglets) ---
+    const bingoBase = calculateBingo(CALCULATOR_DATA.distBaseFeu);
+    const bingoPelic = calculateBingo(CALCULATOR_DATA.distPelicFeu);
+    const rotationTime = Math.round(calculateRotationTime(CALCULATOR_DATA.distPelicFeu));
+    const consoRotation = calculateConsoRotation(CALCULATOR_DATA.distPelicFeu);
+    const csFeuTime = parseTime(CALCULATOR_DATA.csFeu);
+    const tmdTime = parseTime(document.getElementById('tmd').querySelector('.display-input').value);
+    const limiteHDV = parseTime(document.getElementById('limite-hdv').querySelector('.display-input').value);
+
+    // --- Affichage des BINGOS ---
+    const bingoBaseDisplay = document.getElementById('derout-bingo-base');
+    if (bingoBase === 700) { bingoBaseDisplay.innerHTML = '-- kg'; } else { bingoBaseDisplay.innerHTML = `${CALCULATOR_DATA.distBaseFeu} Nm /&nbsp;<b>${bingoBase} kg</b>`; }
+    const bingoPelicDisplay = document.getElementById('derout-bingo-pelic');
+    if (bingoPelic === 700 || !selectedPelicanOACI) { bingoPelicDisplay.innerHTML = '-- kg'; } else { bingoPelicDisplay.innerHTML = `${selectedPelicanOACI} / ${CALCULATOR_DATA.distPelicFeu} Nm /&nbsp;<b>${bingoPelic} kg</b>`; }
+
+    // --- Lecture des valeurs manuelles de l'onglet ---
+    const fuelActuel = parseNumeric(document.getElementById('deroutement-fuel-wrapper').querySelector('.display-input').value);
+    const heureActuelle = parseTime(document.getElementById('deroutement-heure-wrapper').querySelector('.display-input').value);
+
+    // --- Calcul du transit depuis la position GPS actuelle ---
+    const transitTimeFromGps = Math.round(calculateTransitTime(CALCULATOR_DATA.distGpsFeu));
+    const consoTransitFromGps = calculateFuelToGo(CALCULATOR_DATA.distGpsFeu);
+
+    // --- Calcul des nouvelles valeurs "sur Feu" ---
+    const heureSurFeu = heureActuelle !== null ? heureActuelle + transitTimeFromGps : null;
+    const fuelSurFeu = fuelActuel !== null ? fuelActuel - consoTransitFromGps : null;
+
+    // --- Calcul du "Fuel mini 1 largage" (logique conservée) ---
+    const fuelMiniBase = consoTransitFromGps + 250 + bingoBase;
+    const fuelMiniPelic = consoTransitFromGps + 250 + bingoPelic;
+    document.getElementById('derout-fuel-mini-base').textContent = (fuelMiniBase === (950 + consoTransitFromGps)) ? '-- kg' : `${fuelMiniBase} kg`;
+    document.getElementById('derout-fuel-mini-pelic').textContent = (fuelMiniPelic === (950 + consoTransitFromGps)) ? '-- kg' : `${fuelMiniPelic} kg`;
+    
+    // --- Calcul et affichage du NBR DE ROTATIONS ---
+    updateAndSortRotations(
+        document.getElementById('derout-rotation-results-container'),
+        { fuel: fuelSurFeu, time: heureSurFeu }, // On utilise les nouvelles valeurs "sur feu"
+        { bingoBase, bingoPelic, consoRotation, rotationTime, csFeuTime, tmdTime, limiteHDV, transitTime: transitTimeFromGps }
+    );
+}
     
 function initializeCalculator() {
     const resetButton = document.getElementById('reset-all-btn');
     const onglets = document.querySelectorAll('.onglet-bouton');
     const csLftwDisplay = document.getElementById('cs-lftw-display');
     const lftwAirport = airports.find(ap => ap.oaci === 'LFTW');
-    const refreshGpsBtn = document.getElementById('refresh-gps-btn');
+   const refreshGpsBtn = document.getElementById('refresh-gps-btn');
     refreshGpsBtn.addEventListener('click', () => {
         if (navigator.geolocation) {
+            refreshGpsBtn.textContent = '🛰️ ...'; // Feedback visuel
             navigator.geolocation.getCurrentPosition(
                 (pos) => {
-                    // La fonction updateUserPosition mettra à jour le userMarker
                     updateUserPosition(pos);
-                    // La fonction updateCalculatorData mettra à jour les distances
-                    updateCalculatorData(); 
-                    // On force le recalcul et la mise à jour de l'onglet
-                    updateDeroutementTab(); 
+                    updateCalculatorData(); // Met à jour les distances
+                    masterRecalculate();    // Force le recalcul de TOUS les onglets
+                    refreshGpsBtn.textContent = '🛰️ Rafraîchir GPS';
                 },
-                () => { alert("Impossible d'obtenir la position GPS."); },
+                () => {
+                    alert("Impossible d'obtenir la position GPS.");
+                    refreshGpsBtn.textContent = '🛰️ Rafraîchir GPS';
+                },
                 { enableHighAccuracy: true }
             );
         }
