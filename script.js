@@ -114,11 +114,14 @@ function setupEventListeners() {
     const calculatorButton = document.getElementById('calculator-button');
     const calculatorModal = document.getElementById('calculator-modal');
     const closeCalculatorButton = document.getElementById('close-calculator-btn');
+    const offlineMapsButton = document.getElementById('offline-maps-button');
+    const offlineMapModal = document.getElementById('offline-map-modal');
+    const closeOfflineMapButton = document.getElementById('close-offline-map-btn');
 
     if (mainActionButtons) {
         const versionDisplay = document.createElement('div');
         versionDisplay.className = 'version-display';
-        versionDisplay.innerText = 'v52.3.1';
+        versionDisplay.innerText = 'v52.4';
         mainActionButtons.appendChild(versionDisplay);
     }
 
@@ -243,6 +246,10 @@ function setupEventListeners() {
     closeCalculatorButton.addEventListener('click', () => { calculatorModal.style.display = 'none'; });
     calculatorModal.addEventListener('click', (e) => { if (e.target === calculatorModal) { calculatorModal.style.display = 'none'; } });
     window.addEventListener('keydown', (e) => { if (e.key === 'Escape' && calculatorModal.style.display === 'flex') { calculatorModal.style.display = 'none'; } });
+    offlineMapsButton.addEventListener('click', () => { offlineMapModal.style.display = 'flex'; });
+    closeOfflineMapButton.addEventListener('click', () => { offlineMapModal.style.display = 'none'; });
+    offlineMapModal.addEventListener('click', (e) => { if (e.target === offlineMapModal) { offlineMapModal.style.display = 'none'; } });
+    window.addEventListener('keydown', (e) => { if (e.key === 'Escape' && offlineMapModal.style.display === 'flex') { offlineMapModal.style.display = 'none'; } });
 
     updateLftwButtonState();
     updateGaarButtonState();
