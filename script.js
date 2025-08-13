@@ -20,6 +20,7 @@ let isGaarMode = false;
 let isDrawingMode = false;
 const manualCircuitColors = ['#ff00ff', '#00ffff', '#ff8c00', '#00ff00', '#ff1493'];
 let gaarLayer = null;
+let db; // Variable pour la connexion à la base de données IndexedDB
 const airports = [
     { oaci: "LFLU", name: "Valence-Chabeuil", lat: 44.920, lon: 4.968 }, { oaci: "LFMU", name: "Béziers-Vias", lat: 43.323, lon: 3.354 }, { oaci: "LFJR", name: "Angers-Marcé", lat: 47.560, lon: -0.312 }, { oaci: "LFHO", name: "Aubenas-Ardèche Méridionale", lat: 44.545, lon: 4.385 }, { oaci: "LFLX", name: "Châteauroux-Déols", lat: 46.861, lon: 1.720 }, { oaci: "LFBM", name: "Mont-de-Marsan", lat: 43.894, lon: -0.509 }, { oaci: "LFBL", name: "Limoges-Bellegarde", lat: 45.862, lon: 1.180 }, { oaci: "LFAQ", name: "Albert-Bray", lat: 49.972, lon: 2.698 }, { oaci: "LFBP", name: "Pau-Pyrénées", lat: 43.380, lon: -0.418 }, { oaci: "LFTH", name: "Toulon-Hyères", lat: 43.097, lon: 6.146 }, { oaci: "LFSG", name: "Épinal-Mirecourt", lat: 48.325, lon: 6.068 }, { oaci: "LFKC", name: "Calvi-Sainte-Catherine", lat: 42.530, lon: 8.793 }, { oaci: "LFMD", name: "Cannes-Mandelieu", lat: 43.542, lon: 6.956 }, { oaci: "LFKB", name: "Bastia-Poretta", lat: 42.552, lon: 9.483 }, { oaci: "LFMH", name: "Saint-Étienne-Bouthéon", lat: 45.541, lon: 4.296 }, { oaci: "LFKF", name: "Figari-Sud-Corse", lat: 41.500, lon: 9.097 }, { oaci: "LFCC", name: "Cahors-Lalbenque", lat: 44.351, lon: 1.475 }, { oaci: "LFML", name: "Marseille-Provence", lat: 43.436, lon: 5.215 }, { oaci: "LFKJ", name: "Ajaccio-Napoléon-Bonaparte", lat: 41.923, lon: 8.802 }, { oaci: "LFMK", name: "Carcassonne-Salvaza", lat: 43.215, lon: 2.306 }, { oaci: "LFRV", name: "Vannes-Meucon", lat: 47.720, lon: -2.721 }, { oaci: "LFTW", name: "Nîmes-Garons", lat: 43.757, lon: 4.416 }, { oaci: "LFMP", name: "Perpignan-Rivesaltes", lat: 42.740, lon: 2.870 }, { oaci: "LFBD", name: "Bordeaux-Mérignac", lat: 44.828, lon: -0.691 }
 ];
@@ -47,6 +48,8 @@ async function initializeApp() {
     if (savedGaarJSON) {
         gaarCircuits = JSON.parse(savedGaarJSON);
     }
+    await initDB();
+displayInstalledMaps();
     try {
         const response = await fetch('./communes.json');
         if (!response.ok) throw new Error(`HTTP ${response.status}`);
@@ -117,11 +120,12 @@ function setupEventListeners() {
     const offlineMapsButton = document.getElementById('offline-maps-button');
     const offlineMapModal = document.getElementById('offline-map-modal');
     const closeOfflineMapButton = document.getElementById('close-offline-map-btn');
+    const zipImporterInput = document.getElementById('zip-importer-input');
 
     if (mainActionButtons) {
         const versionDisplay = document.createElement('div');
         versionDisplay.className = 'version-display';
-        versionDisplay.innerText = 'v52.4';
+        versionDisplay.innerText = 'v52.5';
         mainActionButtons.appendChild(versionDisplay);
     }
 
@@ -250,6 +254,11 @@ function setupEventListeners() {
     closeOfflineMapButton.addEventListener('click', () => { offlineMapModal.style.display = 'none'; });
     offlineMapModal.addEventListener('click', (e) => { if (e.target === offlineMapModal) { offlineMapModal.style.display = 'none'; } });
     window.addEventListener('keydown', (e) => { if (e.key === 'Escape' && offlineMapModal.style.display === 'flex') { offlineMapModal.style.display = 'none'; } });
+    zipImporterInput.addEventListener('change', (event) => {
+    const file = event.target.files[0];
+    handleZipImport(file);
+    event.target.value = ''; // Permet de ré-importer le même fichier
+});
 
     updateLftwButtonState();
     updateGaarButtonState();
@@ -530,7 +539,148 @@ function updateCalculatorData() {
 }
 
 function soundex(s) { if (!s) return ""; const a = s.toLowerCase().split(""), f = a.shift(); if (!f) return ""; let r = ""; const codes = { a: "", e: "", i: "", o: "", u: "", b: 1, f: 1, p: 1, v: 1, c: 2, g: 2, j: 2, k: 2, q: 2, s: 2, x: 2, z: 2, d: 3, t: 3, l: 4, m: 5, n: 5, r: 6 }; return r = f + a.map(v => codes[v]).filter((v, i, a) => 0 === i ? v !== codes[f] : v !== a[i - 1]).join(""), (r + "000").slice(0, 4).toUpperCase() }
+// =========================================================================
+// GESTION DES CARTES HORS-LIGNE
+// =========================================================================
+function initDB() {
+    return new Promise((resolve, reject) => {
+        const request = indexedDB.open('OfflineTilesDB', 1);
 
+        request.onupgradeneeded = event => {
+            const dbInstance = event.target.result;
+            if (!dbInstance.objectStoreNames.contains('tiles')) {
+                const store = dbInstance.createObjectStore('tiles', { keyPath: 'url' });
+                store.createIndex('packName', 'packName', { unique: false });
+            }
+        };
+
+        request.onsuccess = event => {
+            db = event.target.result;
+            console.log("[DB] Connexion réussie.");
+            resolve(db);
+        };
+
+        request.onerror = event => {
+            console.error("[DB] Erreur de connexion:", event.target.error);
+            reject(event.target.error);
+        };
+    });
+}
+
+async function handleZipImport(file) {
+    if (!file) return;
+    if (typeof JSZip === 'undefined') {
+        alert("ERREUR : La librairie d'importation (JSZip) n'est pas chargée.");
+        return;
+    }
+
+    const packName = file.name.replace('.zip', '');
+    const progressSection = document.getElementById('import-progress-section');
+    const statusMessage = document.getElementById('import-status-message');
+    const progressBar = document.getElementById('import-progress-bar');
+
+    progressSection.style.display = 'block';
+    statusMessage.textContent = `Lecture du fichier ${packName}...`;
+    progressBar.style.width = '0%';
+
+    try {
+        const zip = await JSZip.loadAsync(file);
+        const tileFiles = Object.values(zip.files).filter(f => !f.dir && f.name.match(/\d+\/\d+\/\d+\.(png|jpg)$/i));
+        const totalFiles = tileFiles.length;
+        statusMessage.textContent = `Importation de ${totalFiles} tuiles...`;
+
+        if (totalFiles === 0) {
+            throw new Error("Aucune tuile valide trouvée dans le fichier ZIP. La structure doit être /zoom/colonne/ligne.png");
+        }
+
+        const transaction = db.transaction('tiles', 'readwrite');
+        const store = transaction.objectStore('tiles');
+        let processedFiles = 0;
+
+        for (const tileFile of tileFiles) {
+            const blob = await tileFile.async('blob');
+            const url = `https://a.tile.openstreetmap.org/${tileFile.name}`;
+            store.put({ url: url, tile: blob, packName: packName });
+            
+            processedFiles++;
+            progressBar.style.width = `${(processedFiles / totalFiles) * 100}%`;
+        }
+
+        await new Promise(resolve => transaction.oncomplete = resolve);
+
+        statusMessage.textContent = `Importation de ${packName} terminée !`;
+        
+        const installedPacks = JSON.parse(localStorage.getItem('installedMapPacks') || '[]');
+        if (!installedPacks.find(p => p.name === packName)) {
+            installedPacks.push({ name: packName, date: new Date().toLocaleDateString() });
+            localStorage.setItem('installedMapPacks', JSON.stringify(installedPacks));
+        }
+        displayInstalledMaps();
+
+    } catch (error) {
+        statusMessage.textContent = `Erreur: ${error.message}`;
+        console.error("Erreur d'importation ZIP:", error);
+    } finally {
+        setTimeout(() => { progressSection.style.display = 'none'; }, 5000);
+    }
+}
+
+function displayInstalledMaps() {
+    const list = document.getElementById('installed-maps-list');
+    const installedPacks = JSON.parse(localStorage.getItem('installedMapPacks') || '[]');
+    list.innerHTML = '';
+
+    if (installedPacks.length === 0) {
+        list.innerHTML = '<li class="no-maps-placeholder">Aucun pack de cartes installé.</li>';
+        return;
+    }
+
+    installedPacks.forEach(pack => {
+        const li = document.createElement('li');
+        li.innerHTML = `
+            <span><strong>${pack.name}</strong> (Installé le ${pack.date})</span>
+            <button class="delete-map-btn" onclick="window.deleteMapPack('${pack.name}')">Supprimer</button>
+        `;
+        list.appendChild(li);
+    });
+}
+
+window.deleteMapPack = async function(packName) {
+    if (!confirm(`Voulez-vous vraiment supprimer le pack de cartes "${packName}" ?\nCette opération peut prendre du temps.`)) {
+        return;
+    }
+
+    try {
+        const transaction = db.transaction('tiles', 'readwrite');
+        const store = transaction.objectStore('tiles');
+        const index = store.index('packName');
+        const request = index.openKeyCursor(IDBKeyRange.only(packName));
+        
+        let deletedCount = 0;
+        request.onsuccess = event => {
+            const cursor = event.target.result;
+            if (cursor) {
+                store.delete(cursor.primaryKey);
+                deletedCount++;
+                cursor.continue();
+            }
+        };
+
+        await new Promise(resolve => transaction.oncomplete = resolve);
+        
+        alert(`${deletedCount} tuiles du pack "${packName}" ont été supprimées.`);
+
+        let installedPacks = JSON.parse(localStorage.getItem('installedMapPacks') || '[]');
+        installedPacks = installedPacks.filter(p => p.name !== packName);
+        localStorage.setItem('installedMapPacks', JSON.stringify(installedPacks));
+        
+        displayInstalledMaps();
+
+    } catch (error) {
+        alert(`Erreur lors de la suppression du pack : ${error.message}`);
+        console.error("Erreur de suppression:", error);
+    }
+}
 // =========================================================================
 // LOGIQUE DU CALCULATEUR DE MISSION
 // =========================================================================
