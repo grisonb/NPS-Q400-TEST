@@ -553,26 +553,27 @@ function updateAndSortRotations(container, current, params) {
         const canCalculateFuel = current.fuel !== null && params.consoRotation !== null && params.consoRotation > 0;
         const canCalculateTime = current.time !== null && params.rotationTime !== null && params.rotationTime > 0;
 
-        if (type === 'base' && canCalculateFuel) {
-            value = ((current.fuel - params.bingoBase) / params.consoRotation) + 1;
-            formulaString = `Formule : ((Fuel Actuel - BINGO Base) / Conso. Rotation) + 1\n\nCalcul : ((${current.fuel} - ${params.bingoBase}) / ${params.consoRotation}) + 1`;
+        // Génération de la formule textuelle, que les données soient présentes ou non
+        if (type === 'base') {
+            formulaString = `Formule : ((Fuel Actuel - BINGO Base) / Conso. Rotation) + 1\n\nCalcul : ((${current.fuel || 'N/A'} - ${params.bingoBase}) / ${params.consoRotation || 'N/A'}) + 1`;
+            if (canCalculateFuel) value = ((current.fuel - params.bingoBase) / params.consoRotation) + 1;
         }
-        if (type === 'pelic' && canCalculateFuel) {
-            value = ((current.fuel - params.bingoPelic) / params.consoRotation) + 1;
-            formulaString = `Formule : ((Fuel Actuel - BINGO Pélic.) / Conso. Rotation) + 1\n\nCalcul : ((${current.fuel} - ${params.bingoPelic}) / ${params.consoRotation}) + 1`;
+        if (type === 'pelic') {
+            formulaString = `Formule : ((Fuel Actuel - BINGO Pélic.) / Conso. Rotation) + 1\n\nCalcul : ((${current.fuel || 'N/A'} - ${params.bingoPelic}) / ${params.consoRotation || 'N/A'}) + 1`;
+            if (canCalculateFuel) value = ((current.fuel - params.bingoPelic) / params.consoRotation) + 1;
         }
-        if (type === 'cs' && canCalculateTime && params.csFeuTime !== null) {
-            value = (params.csFeuTime - current.time) / params.rotationTime;
-            formulaString = `Formule : (Heure CS - Heure Actuelle) / Durée Rotation\n\nCalcul : (${formatTime(params.csFeuTime) || 'N/A'} - ${formatTime(current.time) || 'N/A'}) / ${params.rotationTime} min`;
+        if (type === 'cs') {
+            formulaString = `Formule : (Heure CS - Heure Actuelle) / Durée Rotation\n\nCalcul : (${formatTime(params.csFeuTime) || 'N/A'} - ${formatTime(current.time) || 'N/A'}) / ${params.rotationTime || 'N/A'} min`;
+            if (canCalculateTime && params.csFeuTime !== null) value = (params.csFeuTime - current.time) / params.rotationTime;
         }
-        if (type === 'tmd' && canCalculateTime && params.tmdTime !== null) {
-            value = (params.tmdTime - current.time) / params.rotationTime;
-            formulaString = `Formule : (Heure TMD - Heure Actuelle) / Durée Rotation\n\nCalcul : (${formatTime(params.tmdTime) || 'N/A'} - ${formatTime(current.time) || 'N/A'}) / ${params.rotationTime} min`;
+        if (type === 'tmd') {
+            formulaString = `Formule : (Heure TMD - Heure Actuelle) / Durée Rotation\n\nCalcul : (${formatTime(params.tmdTime) || 'N/A'} - ${formatTime(current.time) || 'N/A'}) / ${params.rotationTime || 'N/A'} min`;
+            if (canCalculateTime && params.tmdTime !== null) value = (params.tmdTime - current.time) / params.rotationTime;
         }
-        if (type === 'hdv' && canCalculateTime && params.limiteHDV !== null) {
-            const hdvOnSite = params.limiteHDV - (params.transitTime || 0);
-            value = hdvOnSite / params.rotationTime;
-            formulaString = `Formule : (HDV restantes à l'arrivée) / Durée Rotation\n\nHDV à l'arrivée = ${formatTime(params.limiteHDV)} - ${formatTime(params.transitTime || 0)} (transit)\n\nCalcul : ${formatTime(hdvOnSite)} / ${params.rotationTime} min`;
+        if (type === 'hdv') {
+            const hdvOnSite = (params.limiteHDV !== null) ? params.limiteHDV - (params.transitTime || 0) : null;
+            formulaString = `Formule : (HDV restantes à l'arrivée) / Durée Rotation\n\nHDV à l'arrivée = ${formatTime(params.limiteHDV) || 'N/A'} - ${formatTime(params.transitTime || 0)} (transit)\n\nCalcul : ${formatTime(hdvOnSite) || 'N/A'} / ${params.rotationTime || 'N/A'} min`;
+            if (canCalculateTime && hdvOnSite !== null) value = hdvOnSite / params.rotationTime;
         }
         
         if (value === null) { valueCell.textContent = '--'; } 
@@ -585,12 +586,8 @@ function updateAndSortRotations(container, current, params) {
         else if (value >= 1.1) { valueCell.classList.add('rotation-value-yellow'); } 
         else { valueCell.classList.add('rotation-value-red'); }
         
-        if (helpIcon) {
-            // Utilisation de addEventListener pour plus de robustesse
-            helpIcon.addEventListener('click', () => {
-                alert(formulaString);
-            });
-        }
+        // La méthode .onclick est plus simple et évite le bug des écouteurs multiples.
+        if (helpIcon) { helpIcon.onclick = () => alert(formulaString); }
         
         sortable.push({ value: (value !== null && value > 0) ? value : Infinity, element: line });
     });
@@ -653,76 +650,61 @@ function recalculateBlocFuel() {
         if (fuelPelic !== null) previousFuelPelic = fuelPelic;
     });
 }
-function updatePreviTab() {
-    const defaultFormula = "Données insuffisantes pour le calcul.";
-    // Helper pour attacher les alertes
-    const setHelp = (id, formula) => {
-        const icon = document.getElementById(id);
-        if (icon) { icon.addEventListener('click', () => alert(formula || defaultFormula)); }
-    };
-
+function updateDeroutementTab() {
+    const resultsContainer = document.getElementById('derout-rotation-results-container');
+    
+    // Condition pour afficher "--" si la commune n'est pas sélectionnée
     if (!currentCommune) {
-        document.getElementById('previ-bingo-base').innerHTML = '-- kg';
-        document.getElementById('previ-bingo-pelic').innerHTML = '-- kg';
-        document.querySelectorAll('#previ-rotation-results-container .value').forEach(el => { el.textContent = '--'; el.className = 'value rotation-value-default'; });
-        document.getElementById('heure-sur-feu').textContent = '--:--';
-        document.getElementById('duree-transit').textContent = '--:--';
-        document.getElementById('conso-aller-feu').textContent = '-- kg';
-        document.getElementById('fuel-sur-feu-wrapper').querySelector('.display-input').value = '';
-        document.getElementById('duree-rotation').textContent = '--:--';
-        document.getElementById('conso-par-rotation').textContent = '-- kg';
-        document.getElementById('cs-sur-feu').textContent = '--:--';
-        setHelp('heure-sur-feu-help'); setHelp('duree-transit-help'); setHelp('conso-aller-feu-help');
-        setHelp('fuel-sur-feu-help'); setHelp('duree-rotation-help'); setHelp('conso-par-rotation-help');
+        document.getElementById('derout-bingo-base').innerHTML = '-- kg';
+        document.getElementById('derout-bingo-pelic').innerHTML = '-- kg';
+        resultsContainer.querySelectorAll('.value').forEach(el => { el.textContent = '--'; el.className = 'value rotation-value-default'; });
+        document.getElementById('derout-fuel-mini-base').textContent = '-- kg';
+        document.getElementById('derout-fuel-mini-pelic').textContent = '-- kg';
         return;
     }
 
+    // --- Lecture des valeurs manuelles de l'onglet ---
+    const fuelActuel = parseNumeric(document.getElementById('deroutement-fuel-wrapper').querySelector('.display-input').value);
+    const heureActuelle = parseTime(document.getElementById('deroutement-heure-wrapper').querySelector('.display-input').value);
+
+    // --- Calculs de base ---
     const bingoBase = calculateBingo(CALCULATOR_DATA.distBaseFeu);
     const bingoPelic = calculateBingo(CALCULATOR_DATA.distPelicFeu);
-    const bingoBaseDisplay = document.getElementById('previ-bingo-base');
-    if (bingoBase === 700) { bingoBaseDisplay.innerHTML = '-- kg'; } else { bingoBaseDisplay.innerHTML = `${CALCULATOR_DATA.distBaseFeu} Nm /&nbsp;<b>${bingoBase} kg</b>`; }
-    const bingoPelicDisplay = document.getElementById('previ-bingo-pelic');
-    if (bingoPelic === 700 || !selectedPelicanOACI) { bingoPelicDisplay.innerHTML = '-- kg'; } else { bingoPelicDisplay.innerHTML = `${selectedPelicanOACI} / ${CALCULATOR_DATA.distPelicFeu} Nm /&nbsp;<b>${bingoPelic} kg</b>`; }
-    
-    const blocDepart = parseTime(document.getElementById('bloc-depart').querySelector('.display-input').value);
-    const fuelDepart = parseNumeric(document.getElementById('fuel-depart').querySelector('.display-input').value);
-    const limiteHDV = parseTime(document.getElementById('limite-hdv').querySelector('.display-input').value);
-    const tmdTime = parseTime(document.getElementById('tmd').querySelector('.display-input').value);
-    const csFeuTime = parseTime(CALCULATOR_DATA.csFeu);
-    
-    const transitTime = Math.round(calculateTransitTime(CALCULATOR_DATA.distBaseFeu));
     const rotationTime = Math.round(calculateRotationTime(CALCULATOR_DATA.distPelicFeu));
     const consoRotation = calculateConsoRotation(CALCULATOR_DATA.distPelicFeu);
-    const consoAller = calculateFuelToGo(CALCULATOR_DATA.distBaseFeu);
-    const heureSurFeu = blocDepart !== null ? blocDepart + transitTime : null;
+    const csFeuTime = parseTime(CALCULATOR_DATA.csFeu);
+    const tmdTime = parseTime(document.getElementById('tmd').querySelector('.display-input').value);
+    const limiteHDV = parseTime(document.getElementById('limite-hdv').querySelector('.display-input').value);
+    const transitTimeFromGps = Math.round(calculateTransitTime(CALCULATOR_DATA.distGpsFeu));
+    const consoTransitFromGps = calculateFuelToGo(CALCULATOR_DATA.distGpsFeu);
+
+    // --- Affichage des BINGOS et Fuel Mini ---
+    const bingoBaseDisplay = document.getElementById('derout-bingo-base');
+    if (bingoBase === 700) { bingoBaseDisplay.innerHTML = '-- kg'; } else { bingoBaseDisplay.innerHTML = `${CALCULATOR_DATA.distBaseFeu} Nm /&nbsp;<b>${bingoBase} kg</b>`; }
+    const bingoPelicDisplay = document.getElementById('derout-bingo-pelic');
+    if (bingoPelic === 700 || !selectedPelicanOACI) { bingoPelicDisplay.innerHTML = '-- kg'; } else { bingoPelicDisplay.innerHTML = `${selectedPelicanOACI} / ${CALCULATOR_DATA.distPelicFeu} Nm /&nbsp;<b>${bingoPelic} kg</b>`; }
+    const fuelMiniBase = consoTransitFromGps + 250 + bingoBase;
+    const fuelMiniPelic = consoTransitFromGps + 250 + bingoPelic;
+    document.getElementById('derout-fuel-mini-base').textContent = (fuelMiniBase === (950 + consoTransitFromGps)) ? '-- kg' : `${fuelMiniBase} kg`;
+    document.getElementById('derout-fuel-mini-pelic').textContent = (fuelMiniPelic === (950 + consoTransitFromGps)) ? '-- kg' : `${fuelMiniPelic} kg`;
     
-    document.getElementById('duree-transit').textContent = formatTime(transitTime);
-    setHelp('duree-transit-help', `Formule : Distance * (60 / Vitesse)\n\nCalcul : ${CALCULATOR_DATA.distBaseFeu} Nm * (60 / ${CALCULATOR_DATA.distBaseFeu <= 70 ? 210 : 240})`);
-    
-    document.getElementById('heure-sur-feu').textContent = formatTime(heureSurFeu);
-    setHelp('heure-sur-feu-help', `Formule : BLOC Départ + Durée transit\n\nCalcul : ${formatTime(blocDepart) || 'N/A'} + ${formatTime(transitTime)}`);
+    // --- Condition principale pour le calcul des rotations ---
+    if (fuelActuel === null || heureActuelle === null) {
+        resultsContainer.querySelectorAll('.value').forEach(el => { el.textContent = '--'; el.className = 'value rotation-value-default'; });
+        return; // On arrête ici si les données ne sont pas remplies
+    }
 
-    document.getElementById('conso-aller-feu').textContent = `${consoAller} kg`;
-    setHelp('conso-aller-feu-help', `Formule : Distance * Conso. au Nm\n\nCalcul : ${CALCULATOR_DATA.distBaseFeu} Nm * ${CALCULATOR_DATA.distBaseFeu <= 70 ? 5 : 4} kg/Nm`);
+    // --- Calcul des nouvelles valeurs "sur Feu" ---
+    const heureSurFeu = heureActuelle + transitTimeFromGps;
+    const fuelSurFeu = fuelActuel - consoTransitFromGps;
 
-    document.getElementById('duree-rotation').textContent = rotationTime === 20 ? '--:--' : formatTime(rotationTime);
-    setHelp('duree-rotation-help', `Formule : 20min + (Distance / Vitesse Sol)\n\nCalcul : 20 + (${CALCULATOR_DATA.distPelicFeu} Nm / ${CALCULATOR_DATA.distPelicFeu <= 50 ? 3.5 : 4})`);
-
-    document.getElementById('conso-par-rotation').textContent = consoRotation === 250 ? '-- kg' : `${consoRotation} kg`;
-    setHelp('conso-par-rotation-help', `Formule : (Distance * Conso. au Nm) + Forfait\n\nCalcul : (${CALCULATOR_DATA.distPelicFeu} Nm * ${CALCULATOR_DATA.distPelicFeu <= 70 ? 10 : 8}) + 250`);
-
-    const fuelSurFeuInput = document.getElementById('fuel-sur-feu-wrapper').querySelector('.display-input');
-    const fuelEstime = fuelDepart ? fuelDepart - consoAller : null;
-    if (!isFuelSurFeuManual) { fuelSurFeuInput.value = fuelEstime ? `${fuelEstime} kg` : ''; }
-    setHelp('fuel-sur-feu-help', `Formule (AUTO) : FUEL Départ - Conso. transit\n\nCalcul : ${fuelDepart || 'N/A'} - ${consoAller}`);
-    
-    const fuelSurFeu = parseNumeric(fuelSurFeuInput.value);
-
-    document.getElementById('cs-sur-feu').textContent = CALCULATOR_DATA.csFeu;
-    document.getElementById('tmd-display').textContent = formatTime(tmdTime);
-    document.getElementById('hdv-restant-display').textContent = formatTime(limiteHDV);
-
-    updateAndSortRotations(document.getElementById('previ-rotation-results-container'), { fuel: fuelSurFeu, time: heureSurFeu }, { bingoBase, bingoPelic, consoRotation, rotationTime, csFeuTime, tmdTime, limiteHDV, transitTime });
+    // --- Calcul et affichage du NBR DE ROTATIONS ---
+    updateAndSortRotations(
+        resultsContainer,
+        { fuel: fuelSurFeu, time: heureSurFeu },
+        { bingoBase, bingoPelic, consoRotation, rotationTime, csFeuTime, tmdTime, limiteHDV, transitTime: transitTimeFromGps }
+    );
+}
 }
 function updateSuiviTab() {
     const suiviConsoInput = document.getElementById('suivi-conso-rotation-wrapper').querySelector('.display-input');
@@ -777,22 +759,24 @@ function updateSuiviTab() {
 }
 function updateDeroutementTab() {
     const resultsContainer = document.getElementById('derout-rotation-results-container');
+    const setHelp = (id, formula) => {
+        const icon = document.getElementById(id);
+        if (icon) { icon.onclick = () => alert(formula || "Données insuffisantes pour le calcul."); }
+    };
     
-    // Condition pour afficher "--" si la commune n'est pas sélectionnée
     if (!currentCommune) {
         document.getElementById('derout-bingo-base').innerHTML = '-- kg';
         document.getElementById('derout-bingo-pelic').innerHTML = '-- kg';
         resultsContainer.querySelectorAll('.value').forEach(el => { el.textContent = '--'; el.className = 'value rotation-value-default'; });
         document.getElementById('derout-fuel-mini-base').textContent = '-- kg';
         document.getElementById('derout-fuel-mini-pelic').textContent = '-- kg';
+        setHelp('derout-fuel-mini-base-help'); setHelp('derout-fuel-mini-pelic-help');
         return;
     }
 
-    // --- Lecture des valeurs manuelles de l'onglet ---
     const fuelActuel = parseNumeric(document.getElementById('deroutement-fuel-wrapper').querySelector('.display-input').value);
     const heureActuelle = parseTime(document.getElementById('deroutement-heure-wrapper').querySelector('.display-input').value);
 
-    // --- Calculs de base ---
     const bingoBase = calculateBingo(CALCULATOR_DATA.distBaseFeu);
     const bingoPelic = calculateBingo(CALCULATOR_DATA.distPelicFeu);
     const rotationTime = Math.round(calculateRotationTime(CALCULATOR_DATA.distPelicFeu));
@@ -803,27 +787,28 @@ function updateDeroutementTab() {
     const transitTimeFromGps = Math.round(calculateTransitTime(CALCULATOR_DATA.distGpsFeu));
     const consoTransitFromGps = calculateFuelToGo(CALCULATOR_DATA.distGpsFeu);
 
-    // --- Affichage des BINGOS et Fuel Mini ---
     const bingoBaseDisplay = document.getElementById('derout-bingo-base');
     if (bingoBase === 700) { bingoBaseDisplay.innerHTML = '-- kg'; } else { bingoBaseDisplay.innerHTML = `${CALCULATOR_DATA.distBaseFeu} Nm /&nbsp;<b>${bingoBase} kg</b>`; }
     const bingoPelicDisplay = document.getElementById('derout-bingo-pelic');
     if (bingoPelic === 700 || !selectedPelicanOACI) { bingoPelicDisplay.innerHTML = '-- kg'; } else { bingoPelicDisplay.innerHTML = `${selectedPelicanOACI} / ${CALCULATOR_DATA.distPelicFeu} Nm /&nbsp;<b>${bingoPelic} kg</b>`; }
+    
     const fuelMiniBase = consoTransitFromGps + 250 + bingoBase;
     const fuelMiniPelic = consoTransitFromGps + 250 + bingoPelic;
     document.getElementById('derout-fuel-mini-base').textContent = (fuelMiniBase === (950 + consoTransitFromGps)) ? '-- kg' : `${fuelMiniBase} kg`;
     document.getElementById('derout-fuel-mini-pelic').textContent = (fuelMiniPelic === (950 + consoTransitFromGps)) ? '-- kg' : `${fuelMiniPelic} kg`;
-    
-    // --- Condition principale pour le calcul des rotations ---
+    setHelp('derout-fuel-mini-base-help', `Formule: Conso(GPS->Feu) + Forfait Largage + BINGO Base\n\nCalcul: ${consoTransitFromGps} + 250 + ${bingoBase}`);
+    setHelp('derout-fuel-mini-pelic-help', `Formule: Conso(GPS->Feu) + Forfait Largage + BINGO Pélic.\n\nCalcul: ${consoTransitFromGps} + 250 + ${bingoPelic}`);
+
     if (fuelActuel === null || heureActuelle === null) {
         resultsContainer.querySelectorAll('.value').forEach(el => { el.textContent = '--'; el.className = 'value rotation-value-default'; });
-        return; // On arrête ici si les données ne sont pas remplies
+        // On attache des onclick vides pour que l'alerte par défaut s'affiche
+        resultsContainer.querySelectorAll('.formula-help-icon').forEach(icon => icon.onclick = () => alert("Données insuffisantes pour le calcul."));
+        return;
     }
 
-    // --- Calcul des nouvelles valeurs "sur Feu" ---
     const heureSurFeu = heureActuelle + transitTimeFromGps;
     const fuelSurFeu = fuelActuel - consoTransitFromGps;
 
-    // --- Calcul et affichage du NBR DE ROTATIONS ---
     updateAndSortRotations(
         resultsContainer,
         { fuel: fuelSurFeu, time: heureSurFeu },
