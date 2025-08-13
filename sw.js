@@ -1,6 +1,6 @@
-const APP_CACHE_NAME = 'communes-app-cache-v525'; // Version 52.5
-const DATA_CACHE_NAME = 'communes-data-cache-v525';
-const TILE_CACHE_NAME = 'communes-tile-cache-v525';
+const APP_CACHE_NAME = 'communes-app-cache-v526'; // Version 52.6
+const DATA_CACHE_NAME = 'communes-data-cache-v526';
+const TILE_CACHE_NAME = 'communes-tile-cache-v526';
 
 const APP_SHELL_URLS = [
     './',
@@ -10,7 +10,8 @@ const APP_SHELL_URLS = [
     './leaflet.min.js',
     './leaflet.css',
     './manifest.json',
-    './suncalc.js'
+    './suncalc.js',
+    './jszip.min.js' // <-- LIGNE AJOUTÉE
 ];
 
 const DATA_URLS = [
