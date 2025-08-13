@@ -118,7 +118,7 @@ function setupEventListeners() {
     if (mainActionButtons) {
         const versionDisplay = document.createElement('div');
         versionDisplay.className = 'version-display';
-        versionDisplay.innerText = 'v52.0';
+        versionDisplay.innerText = 'v52.1';
         mainActionButtons.appendChild(versionDisplay);
     }
 
@@ -546,52 +546,46 @@ function updateAndSortRotations(container, current, params) {
     lines.forEach(line => {
         const type = line.dataset.rotationType;
         let value = null;
+        let formulaString = "Données insuffisantes pour le calcul.";
         const valueCell = line.querySelector('.value');
+        const helpIcon = line.querySelector('.formula-help-icon');
 
-        // --- Vérification des paramètres essentiels ---
         const canCalculateFuel = current.fuel !== null && params.consoRotation !== null && params.consoRotation > 0;
         const canCalculateTime = current.time !== null && params.rotationTime !== null && params.rotationTime > 0;
 
-        // --- Calculs conditionnels ---
         if (type === 'base' && canCalculateFuel) {
             value = ((current.fuel - params.bingoBase) / params.consoRotation) + 1;
+            formulaString = `Formule : ((Fuel Actuel - BINGO Base) / Conso. Rotation) + 1\n\nCalcul : ((${current.fuel} - ${params.bingoBase}) / ${params.consoRotation}) + 1`;
         }
         if (type === 'pelic' && canCalculateFuel) {
             value = ((current.fuel - params.bingoPelic) / params.consoRotation) + 1;
+            formulaString = `Formule : ((Fuel Actuel - BINGO Pélic.) / Conso. Rotation) + 1\n\nCalcul : ((${current.fuel} - ${params.bingoPelic}) / ${params.consoRotation}) + 1`;
         }
         if (type === 'cs' && canCalculateTime && params.csFeuTime !== null) {
             value = (params.csFeuTime - current.time) / params.rotationTime;
+            formulaString = `Formule : (Heure CS - Heure Actuelle) / Durée Rotation\n\nCalcul : (${formatTime(params.csFeuTime)} - ${formatTime(current.time)}) / ${params.rotationTime} min`;
         }
         if (type === 'tmd' && canCalculateTime && params.tmdTime !== null) {
             value = (params.tmdTime - current.time) / params.rotationTime;
+            formulaString = `Formule : (Heure TMD - Heure Actuelle) / Durée Rotation\n\nCalcul : (${formatTime(params.tmdTime)} - ${formatTime(current.time)}) / ${params.rotationTime} min`;
         }
         if (type === 'hdv' && canCalculateTime && params.limiteHDV !== null) {
             const hdvOnSite = params.limiteHDV - (params.transitTime || 0);
             value = hdvOnSite / params.rotationTime;
+            formulaString = `Formule : (HDV restantes à l'arrivée) / Durée Rotation\n\nHDV à l'arrivée = ${formatTime(params.limiteHDV)} - ${formatTime(params.transitTime || 0)} (transit)\n\nCalcul : ${formatTime(hdvOnSite)} / ${params.rotationTime} min`;
         }
         
-        // --- Affichage du résultat ---
-        if (value === null) {
-            valueCell.textContent = '--';
-        } else if (value > 0) {
-            valueCell.textContent = value.toFixed(2);
-        } else {
-            valueCell.textContent = '0.00';
-        }
+        if (value === null) { valueCell.textContent = '--'; } 
+        else if (value > 0) { valueCell.textContent = value.toFixed(2); } 
+        else { valueCell.textContent = '0.00'; }
         
-        // --- Mise en forme visuelle ---
         valueCell.classList.remove('rotation-value-default', 'rotation-value-green', 'rotation-value-yellow', 'rotation-value-red');
-        if (value === null || value <= 0) {
-             valueCell.classList.add('rotation-value-default');
-             // Si le texte est '--', on s'assure qu'il garde la couleur par défaut
-             if(value === null) valueCell.textContent = '--';
-        } else if (value > 1.5) {
-            valueCell.classList.add('rotation-value-green');
-        } else if (value >= 1.1) {
-            valueCell.classList.add('rotation-value-yellow');
-        } else {
-            valueCell.classList.add('rotation-value-red');
-        }
+        if (value === null || value <= 0) { valueCell.classList.add('rotation-value-default'); if(value === null) valueCell.textContent = '--'; } 
+        else if (value > 1.5) { valueCell.classList.add('rotation-value-green'); } 
+        else if (value >= 1.1) { valueCell.classList.add('rotation-value-yellow'); } 
+        else { valueCell.classList.add('rotation-value-red'); }
+        
+        if (helpIcon) { helpIcon.onclick = () => alert(formulaString); }
         
         sortable.push({ value: (value !== null && value > 0) ? value : Infinity, element: line });
     });
