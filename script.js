@@ -651,6 +651,23 @@ function initializeCalculator() {
     const onglets = document.querySelectorAll('.onglet-bouton');
     const csLftwDisplay = document.getElementById('cs-lftw-display');
     const lftwAirport = airports.find(ap => ap.oaci === 'LFTW');
+    const refreshGpsBtn = document.getElementById('refresh-gps-btn');
+    refreshGpsBtn.addEventListener('click', () => {
+        if (navigator.geolocation) {
+            navigator.geolocation.getCurrentPosition(
+                (pos) => {
+                    // La fonction updateUserPosition mettra à jour le userMarker
+                    updateUserPosition(pos);
+                    // La fonction updateCalculatorData mettra à jour les distances
+                    updateCalculatorData(); 
+                    // On force le recalcul et la mise à jour de l'onglet
+                    updateDeroutementTab(); 
+                },
+                () => { alert("Impossible d'obtenir la position GPS."); },
+                { enableHighAccuracy: true }
+            );
+        }
+    });
 
     function updateLftwSunset() { if (lftwAirport && typeof SunCalc !== 'undefined') { try { const now = new Date(); const times = SunCalc.getTimes(now, lftwAirport.lat, lftwAirport.lon); const sunsetString = times.sunset.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Paris' }); csLftwDisplay.value = sunsetString; } catch (e) { csLftwDisplay.value = '--:--'; } } }
     updateLftwSunset(); setInterval(updateLftwSunset, 60000);
