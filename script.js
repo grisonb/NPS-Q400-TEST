@@ -125,7 +125,7 @@ function setupEventListeners() {
     if (mainActionButtons) {
         const versionDisplay = document.createElement('div');
         versionDisplay.className = 'version-display';
-        versionDisplay.innerText = 'v52.7';
+        versionDisplay.innerText = 'v52.8';
         mainActionButtons.appendChild(versionDisplay);
     }
 
@@ -580,45 +580,54 @@ async function handleZipImport(file) {
     const progressBar = document.getElementById('import-progress-bar');
 
     progressSection.style.display = 'block';
-    statusMessage.textContent = `Lecture du fichier ${packName}...`;
     progressBar.style.width = '0%';
+    statusMessage.textContent = `Analyse du fichier ${packName}...`;
 
     try {
         const zip = await JSZip.loadAsync(file);
         const tileFiles = Object.values(zip.files).filter(f => !f.dir && f.name.match(/\d+\/\d+\/\d+\.(png|jpg|jpeg)$/i));
         const totalFiles = tileFiles.length;
-        statusMessage.textContent = `Importation de ${totalFiles} tuiles...`;
 
         if (totalFiles === 0) {
             throw new Error("Aucune tuile valide trouvée dans le ZIP. La structure doit être /zoom/colonne/ligne.png");
         }
 
-        const transaction = db.transaction('tiles', 'readwrite');
-        const store = transaction.objectStore('tiles');
+        statusMessage.textContent = `Préparation de ${totalFiles} tuiles pour l'importation...`;
+
+        // Étape 1: Décompresser toutes les tuiles en mémoire d'abord.
+        const allTilesData = [];
+        for (const tileFile of tileFiles) {
+            const blob = await tileFile.async('blob');
+            const url = `https://a.tile.openstreetmap.org/${tileFile.name}`;
+            allTilesData.push({ url: url, tile: blob, packName: packName });
+        }
+
+        // Étape 2: Insérer les données par lots dans la base de données.
+        const batchSize = 100; // Traiter 100 tuiles à la fois
         let processedFiles = 0;
 
-        // On prépare toutes les promesses d'écriture en une seule fois
-        const allPutsPromise = Promise.all(tileFiles.map(tileFile => {
-            return tileFile.async('blob').then(blob => {
-                const url = `https://a.tile.openstreetmap.org/${tileFile.name}`;
-                const request = store.put({ url: url, tile: blob, packName: packName });
-                
-                return new Promise((resolve, reject) => {
-                    request.onsuccess = () => {
-                        processedFiles++;
-                        // Mise à jour de la barre de progression par petits paliers pour ne pas surcharger le rendu
-                        if (processedFiles % 100 === 0 || processedFiles === totalFiles) {
-                             progressBar.style.width = `${(processedFiles / totalFiles) * 100}%`;
-                        }
-                        resolve();
-                    };
-                    request.onerror = () => reject(request.error);
-                });
+        for (let i = 0; i < allTilesData.length; i += batchSize) {
+            const batch = allTilesData.slice(i, i + batchSize);
+            const transaction = db.transaction('tiles', 'readwrite');
+            const store = transaction.objectStore('tiles');
+            
+            // Lancer toutes les écritures du lot
+            batch.forEach(tileData => {
+                store.put(tileData);
             });
-        }));
-
-        await allPutsPromise; // On attend que toutes les écritures soient terminées
-
+            
+            // Attendre que la transaction du lot se termine
+            await new Promise((resolve, reject) => {
+                transaction.oncomplete = () => {
+                    processedFiles += batch.length;
+                    statusMessage.textContent = `Importation... ${processedFiles} / ${totalFiles} tuiles`;
+                    progressBar.style.width = `${(processedFiles / totalFiles) * 100}%`;
+                    resolve();
+                };
+                transaction.onerror = () => reject(transaction.error);
+            });
+        }
+        
         statusMessage.textContent = `Importation de ${packName} terminée !`;
         
         const installedPacks = JSON.parse(localStorage.getItem('installedMapPacks') || '[]');
