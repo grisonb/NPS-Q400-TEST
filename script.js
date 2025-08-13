@@ -118,7 +118,7 @@ function setupEventListeners() {
     if (mainActionButtons) {
         const versionDisplay = document.createElement('div');
         versionDisplay.className = 'version-display';
-        versionDisplay.innerText = 'v51.9';
+        versionDisplay.innerText = 'v52.0';
         mainActionButtons.appendChild(versionDisplay);
     }
 
@@ -571,16 +571,20 @@ function updateAndSortRotations(container, current, params) {
         }
         
         // --- Affichage du résultat ---
-        if (value !== null && value > 0) {
+        if (value === null) {
+            valueCell.textContent = '--';
+        } else if (value > 0) {
             valueCell.textContent = value.toFixed(2);
         } else {
-            valueCell.textContent = '0.00'; // Par défaut '0.00' si pas calculable ou négatif
+            valueCell.textContent = '0.00';
         }
         
         // --- Mise en forme visuelle ---
         valueCell.classList.remove('rotation-value-default', 'rotation-value-green', 'rotation-value-yellow', 'rotation-value-red');
         if (value === null || value <= 0) {
              valueCell.classList.add('rotation-value-default');
+             // Si le texte est '--', on s'assure qu'il garde la couleur par défaut
+             if(value === null) valueCell.textContent = '--';
         } else if (value > 1.5) {
             valueCell.classList.add('rotation-value-green');
         } else if (value >= 1.1) {
