@@ -40,26 +40,67 @@ self.addEventListener('activate', event => {
     );
 });
 
+let db;
+
+function getDb() {
+    return new Promise((resolve, reject) => {
+        if (db) return resolve(db);
+        const request = indexedDB.open('OfflineTilesDB', 1);
+        request.onsuccess = event => {
+            db = event.target.result;
+            resolve(db);
+        };
+        request.onerror = event => {
+            reject('Erreur ouverture DB dans SW:', event.target.error);
+        };
+    });
+}
+
+function getTileFromDb(url) {
+    return getDb().then(db => {
+        return new Promise(resolve => {
+            const transaction = db.transaction('tiles', 'readonly');
+            const store = transaction.objectStore('tiles');
+            const request = store.get(url);
+            request.onsuccess = () => {
+                resolve(request.result ? new Response(request.result.tile) : null);
+            };
+            request.onerror = () => resolve(null); // Si erreur, on considère que la tuile n'existe pas
+        });
+    });
+}
+
 self.addEventListener('fetch', event => {
     const requestUrl = new URL(event.request.url);
 
+    // Stratégie pour les tuiles de carte : DB d'abord, puis réseau, avec mise en cache réseau
     if (requestUrl.hostname.includes('tile.openstreetmap.org')) {
         event.respondWith(
-            caches.open(TILE_CACHE_NAME).then(cache => {
-                return cache.match(event.request).then(cachedResponse => {
-                    const fetchPromise = fetch(event.request).then(networkResponse => {
-                        if (networkResponse.ok) {
-                            cache.put(event.request, networkResponse.clone());
-                        }
-                        return networkResponse;
+            getTileFromDb(event.request.url).then(responseFromDb => {
+                if (responseFromDb) {
+                    // console.log(`[SW] Tuile servie depuis IndexedDB: ${event.request.url}`);
+                    return responseFromDb;
+                }
+                
+                // console.log(`[SW] Tuile non trouvée en local, requête réseau: ${event.request.url}`);
+                // Si non trouvée en DB, on va sur le réseau et on met en cache (stratégie Stale-While-Revalidate)
+                return caches.open(TILE_CACHE_NAME).then(cache => {
+                    return cache.match(event.request).then(cachedResponse => {
+                        const fetchPromise = fetch(event.request).then(networkResponse => {
+                            if (networkResponse.ok) {
+                                cache.put(event.request, networkResponse.clone());
+                            }
+                            return networkResponse;
+                        });
+                        return cachedResponse || fetchPromise;
                     });
-                    return cachedResponse || fetchPromise;
                 });
             })
         );
         return;
     }
     
+    // Stratégie pour le reste (App Shell, données): Cache d'abord, puis réseau
     event.respondWith(
         caches.match(event.request)
             .then(cachedResponse => {
