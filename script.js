@@ -1,3 +1,20 @@
+Pas de panique, c'est une erreur très facile à corriger et c'est entièrement de ma faute. C'est une faute de frappe que j'ai introduite dans une des versions précédentes et que nous n'avions pas vue.
+
+Le problème :
+
+Dans la fonction initializeNumericInput, il y a une seule ligne avec une erreur de syntaxe. Cette petite erreur empêche le navigateur de lire l'intégralité du fichier script.js, ce qui bloque l'application à l'étape "Chargement des données...".
+
+La correction est très simple. Pour être absolument certain que tout soit correct, je vous donne à nouveau le fichier script.js complet et corrigé. Remplacez simplement l'intégralité de votre fichier par celui-ci.
+
+Cette version sera bien la 54.2 avec la distinction entre pélicandromes et autres aéroports.
+Fichier script.js (complet et corrigé pour la v54.2)
+
+Remplacez l'intégralité de votre fichier script.js par celui-ci. La seule erreur se trouvait dans la fonction initializeNumericInput.
+code JavaScript
+IGNORE_WHEN_COPYING_START
+IGNORE_WHEN_COPYING_END
+
+    
 // =========================================================================
 // INITIALISATION DE L'APPLICATION
 // =========================================================================
@@ -637,7 +654,6 @@ function saveGaarCircuits() { localStorage.setItem('gaarCircuits', JSON.stringif
 function initDB() {
     return new Promise((resolve, reject) => {
         const request = indexedDB.open('OfflineTilesDB', 1);
-
         request.onupgradeneeded = event => {
             const dbInstance = event.target.result;
             if (!dbInstance.objectStoreNames.contains('tiles')) {
@@ -645,13 +661,11 @@ function initDB() {
                 store.createIndex('packName', 'packName', { unique: false });
             }
         };
-
         request.onsuccess = event => {
             db = event.target.result;
             console.log("[DB] Connexion réussie.");
             resolve(db);
         };
-
         request.onerror = event => {
             console.error("[DB] Erreur de connexion:", event.target.error);
             reject(event.target.error);
@@ -686,7 +700,6 @@ async function handleZipImport(file) {
 
         statusMessage.textContent = `Préparation de ${totalFiles} tuiles pour l'importation...`;
 
-        // Étape 1: Décompresser toutes les tuiles en mémoire d'abord.
         const allTilesData = [];
         for (const tileFile of tileFiles) {
             const blob = await tileFile.async('blob');
@@ -694,8 +707,7 @@ async function handleZipImport(file) {
             allTilesData.push({ url: url, tile: blob, packName: packName });
         }
 
-        // Étape 2: Insérer les données par lots dans la base de données.
-        const batchSize = 100; // Traiter 100 tuiles à la fois
+        const batchSize = 100;
         let processedFiles = 0;
 
         for (let i = 0; i < allTilesData.length; i += batchSize) {
@@ -703,12 +715,10 @@ async function handleZipImport(file) {
             const transaction = db.transaction('tiles', 'readwrite');
             const store = transaction.objectStore('tiles');
             
-            // Lancer toutes les écritures du lot
             batch.forEach(tileData => {
                 store.put(tileData);
             });
             
-            // Attendre que la transaction du lot se termine
             await new Promise((resolve, reject) => {
                 transaction.oncomplete = () => {
                     processedFiles += batch.length;
@@ -823,11 +833,9 @@ function updateAndSortRotations(container, current, params) {
         const canCalculateFuel = current.fuel !== null && params.consoRotation !== null && params.consoRotation > 0;
         const canCalculateTime = current.time !== null && params.rotationTime !== null && params.rotationTime > 0;
 
-        // **Logique du +1 conditionnel**
-        // Le carburant de départ pour cette vérification est le 'fuel actuel' (avant transit vers le feu), pas le 'fuel sur feu'
-        const initialFuelForCheck = current.fuel + (params.transitTime ? (params.consoTransitFromGps || 0) : 0);
-        const fuelForFirstDropBase = (params.transitTime ? (params.consoTransitFromGps || 0) : 0) + 250 + params.bingoBase;
-        const fuelForFirstDropPelic = (params.transitTime ? (params.consoTransitFromGps || 0) : 0) + 250 + params.bingoPelic;
+        const initialFuelForCheck = current.fuel + (params.transitTime && params.consoTransitFromGps ? (params.consoTransitFromGps || 0) : 0);
+        const fuelForFirstDropBase = (params.transitTime && params.consoTransitFromGps ? (params.consoTransitFromGps || 0) : 0) + 250 + params.bingoBase;
+        const fuelForFirstDropPelic = (params.transitTime && params.consoTransitFromGps ? (params.consoTransitFromGps || 0) : 0) + 250 + params.bingoPelic;
         
         const hasFuelForFirstDropBase = initialFuelForCheck >= fuelForFirstDropBase;
         const hasFuelForFirstDropPelic = initialFuelForCheck >= fuelForFirstDropPelic;
@@ -1218,7 +1226,7 @@ function initializeCalculator() {
         displayInput.value = initialValue;
         displayInput.addEventListener('focus', () => { if (displayInput.readOnly) return; if (displayInput.value) { shouldClearOnNextInput = true; } displayInput.value = displayInput.value.replace(/[^0-9]/g, ''); });
         displayInput.addEventListener('blur', () => { if (displayInput.readOnly) return; shouldClearOnNextInput = false; let v = displayInput.value.replace(/[^0-9]/g, ''); if (v) { displayInput.value = `${v} ${unit}`; } else { displayInput.value = ''; } masterRecalculate(); saveCalculatorState(); });
-        displayInput.addEventListener('input', (e) => { if (displayInput.readOnly) return; if (shouldClearOnNextInput && e.data) { displayInput.value = e.data.replace(/[^0-9]/g, ''); shouldClearOnNextInput = false; } else { displayInput.value = displayInput.value.replace(/[^0-g, ''); } masterRecalculate(); });
+        displayInput.addEventListener('input', (e) => { if (displayInput.readOnly) return; if (shouldClearOnNextInput && e.data) { displayInput.value = e.data.replace(/[^0-9]/g, ''); shouldClearOnNextInput = false; } else { displayInput.value = displayInput.value.replace(/[^0-9]/g, ''); } masterRecalculate(); });
         displayInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); displayInput.blur(); } });
         if (clearBtn) { clearBtn.addEventListener('click', () => { displayInput.value = ''; masterRecalculate(); saveCalculatorState(); }); }
     }
@@ -1307,3 +1315,5 @@ document.addEventListener('DOMContentLoaded', () => {
         initializeCalculator();
     }
 });
+
+  
