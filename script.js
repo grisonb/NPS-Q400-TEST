@@ -6,23 +6,12 @@ document.addEventListener('DOMContentLoaded', () => {
     initializeApp();
 });
 
-// =========================================================================
-// VARIABLES GLOBALES
-// =========================================================================
-let allCommunes = [], map, permanentAirportLayer, routesLayer, currentCommune = null, selectedPelicanOACI = null;
-let disabledAirports = new Set(), waterAirports = new Set();
-const MAGNETIC_DECLINATION = 1.0;
-let userMarker = null, watchId = null, accuracyCircle = null, headingLayer = null;
-let userToTargetLayer = null, lftwRouteLayer = null;
-let showLftwRoute = true;
-let gaarCircuits = [];
-let isGaarMode = false;
-let isDrawingMode = false;
-const manualCircuitColors = ['#ff00ff', '#00ffff', '#ff8c00', '#00ff00', '#ff1493'];
-let gaarLayer = null;
-let db; // Variable pour la connexion à la base de données IndexedDB
-const airports = [
+const pelicanAirports = [
     { oaci: "LFLU", name: "Valence-Chabeuil", lat: 44.920, lon: 4.968 }, { oaci: "LFMU", name: "Béziers-Vias", lat: 43.323, lon: 3.354 }, { oaci: "LFJR", name: "Angers-Marcé", lat: 47.560, lon: -0.312 }, { oaci: "LFHO", name: "Aubenas-Ardèche Méridionale", lat: 44.545, lon: 4.385 }, { oaci: "LFLX", name: "Châteauroux-Déols", lat: 46.861, lon: 1.720 }, { oaci: "LFBM", name: "Mont-de-Marsan", lat: 43.894, lon: -0.509 }, { oaci: "LFBL", name: "Limoges-Bellegarde", lat: 45.862, lon: 1.180 }, { oaci: "LFAQ", name: "Albert-Bray", lat: 49.972, lon: 2.698 }, { oaci: "LFBP", name: "Pau-Pyrénées", lat: 43.380, lon: -0.418 }, { oaci: "LFTH", name: "Toulon-Hyères", lat: 43.097, lon: 6.146 }, { oaci: "LFSG", name: "Épinal-Mirecourt", lat: 48.325, lon: 6.068 }, { oaci: "LFKC", name: "Calvi-Sainte-Catherine", lat: 42.530, lon: 8.793 }, { oaci: "LFMD", name: "Cannes-Mandelieu", lat: 43.542, lon: 6.956 }, { oaci: "LFKB", name: "Bastia-Poretta", lat: 42.552, lon: 9.483 }, { oaci: "LFMH", name: "Saint-Étienne-Bouthéon", lat: 45.541, lon: 4.296 }, { oaci: "LFKF", name: "Figari-Sud-Corse", lat: 41.500, lon: 9.097 }, { oaci: "LFCC", name: "Cahors-Lalbenque", lat: 44.351, lon: 1.475 }, { oaci: "LFML", name: "Marseille-Provence", lat: 43.436, lon: 5.215 }, { oaci: "LFKJ", name: "Ajaccio-Napoléon-Bonaparte", lat: 41.923, lon: 8.802 }, { oaci: "LFMK", name: "Carcassonne-Salvaza", lat: 43.215, lon: 2.306 }, { oaci: "LFRV", name: "Vannes-Meucon", lat: 47.720, lon: -2.721 }, { oaci: "LFTW", name: "Nîmes-Garons", lat: 43.757, lon: 4.416 }, { oaci: "LFMP", name: "Perpignan-Rivesaltes", lat: 42.740, lon: 2.870 }, { oaci: "LFBD", name: "Bordeaux-Mérignac", lat: 44.828, lon: -0.691 }
+];
+
+const otherAirports = [
+    { oaci: "LFBC", name: "Cazaux", lat: 44.534, lon: -1.155 }, { oaci: "LFBF", name: "Toulouse-Francazal", lat: 43.546, lon: 1.365 }, { oaci: "LFBG", name: "Cognac-Châteaubernard", lat: 45.660, lon: -0.354 }, { oaci: "LFBI", name: "Poitiers-Biard", lat: 46.587, lon: 0.309 }, { oaci: "LFBK", name: "Saint-Brieuc-Armor", lat: 48.538, lon: -2.852 }, { oaci: "LFBO", name: "Toulouse-Blagnac", lat: 43.635, lon: 1.363 }, { oaci: "LFBQ", name: "Le Sequestre (Albi)", lat: 43.913, lon: 2.115 }, { oaci: "LFBS", name: "Chambéry-Savoie", lat: 45.640, lon: 5.881 }, { oaci: "LFBT", name: "Tarbes-Lourdes-Pyrénées", lat: 43.185, lon: -0.003 }, { oaci: "LFBU", name: "Angoulême-Cognac", lat: 45.729, lon: 0.220 }, { oaci: "LFBV", name: "Brive-Souillac", lat: 45.040, lon: 1.484 }, { oaci: "LFBX", name: "Périgueux-Bassillac", lat: 45.197, lon: 0.816 }, { oaci: "LFCG", name: "Saint-Girons-Antichan", lat: 43.007, lon: 1.103 }, { oaci: "LFCK", name: "Privas-Ardèche-Méridionale", lat: 44.545, lon: 4.385 }, { oaci: "LFCU", name: "Avord", lat: 47.056, lon: 2.637 }, { oaci: "LFCY", name: "Royan-Médis", lat: 45.631, lon: -0.963 }, { oaci: "LFLA", name: "Auxerre-Branches", lat: 47.848, lon: 3.497 }, { oaci: "LFLB", name: "Chambéry-Challes-les-Eaux", lat: 45.560, lon: 5.976 }, { oaci: "LFLC", name: "Clermont-Ferrand-Auvergne", lat: 45.786, lon: 3.169 }, { oaci: "LFLD", name: "Bourges", lat: 47.059, lon: 2.370 }, { oaci: "LFLE", name: "Chambéry-Aix-les-Bains", lat: 45.639, lon: 5.881 }, { oaci: "LFLG", name: "Grenoble-Le Versoud", lat: 45.198, lon: 5.861 }, { oaci: "LFLI", name: "Anemasse", lat: 46.190, lon: 6.273 }, { oaci: "LFLJ", name: "Courchevel", lat: 45.397, lon: 6.634 }, { oaci: "LFLK", name: "Bourg-Ceyzériat", lat: 46.183, lon: 5.293 }, { oaci: "LFLL", name: "Lyon-Saint Exupéry", lat: 45.725, lon: 5.081 }, { oaci: "LFLM", name: "Mâcon-Charnay", lat: 46.286, lon: 4.786 }, { oaci: "LFLN", name: "Saint-Yan", lat: 46.409, lon: 4.013 }, { oaci: "LFLO", name: "Roanne-Renaison", lat: 46.059, lon: 4.004 }, { oaci: "LFLS", name: "Grenoble-Isère", lat: 45.363, lon: 5.331 }, { oaci: "LFLV", name: "Vichy-Charmeil", lat: 46.167, lon: 3.403 }, { oaci: "LFLW", name: "Aurillac", lat: 44.887, lon: 2.418 }, { oaci: "LFLY", name: "Lyon-Bron", lat: 45.729, lon: 4.945 }, { oaci: "LFLZ", name: "Le Puy-Loudes", lat: 45.079, lon: 3.762 }, { oaci: "LFMA", name: "Aix-Les Milles", lat: 43.504, lon: 5.364 }, { oaci: "LFMC", name: "Le Luc-Le Cannet", lat: 43.385, lon: 6.368 }, { oaci: "LFMI", name: "Istres-Le Tubé", lat: 43.524, lon: 4.944 }, { oaci: "LFMN", name: "Nice-Côte d'Azur", lat: 43.665, lon: 7.215 }, { oaci: "LFMQ", name: "Le Castellet", lat: 43.253, lon: 5.786 }, { oaci: "LFMS", name: "Alès-Deaux", lat: 44.116, lon: 4.153 }, { oaci: "LFMV", name: "Avignon-Provence", lat: 43.906, lon: 4.902 }, { oaci: "LFMY", name: "Salon-de-Provence", lat: 43.606, lon: 5.110 }, { oaci: "LFMZ", name: "Lézignan-Corbières", lat: 43.183, lon: 2.783 }, { oaci: "LFNB", name: "Mende-Brenoux", lat: 44.502, lon: 3.531 }, { oaci: "LFOA", name: "Avord", lat: 47.056, lon: 2.637 }, { oaci: "LFOB", name: "Paris-Le Bourget", lat: 48.969, lon: 2.441 }, { oaci: "LFOC", name: "Châteaudun", lat: 48.058, lon: 1.378 }, { oaci: "LFOE", name: "Évreux-Fauville", lat: 49.028, lon: 1.218 }, { oaci: "LFOK", name: "Châlons-Vatry", lat: 48.776, lon: 4.185 }, { oaci: "LFOJ", name: "Orléans-Bricy", lat: 47.989, lon: 1.758 }, { oaci: "LFOP", name: "Rouen-Vallée de Seine", lat: 49.385, lon: 1.182 }, { oaci: "LFOQ", name: "Blois-Le Breuil", lat: 47.678, lon: 1.217 }, { oaci: "LFOR", name: "Chartres-Métropole", lat: 48.455, lon: 1.530 }, { oaci: "LFOT", name: "Tours-Val de Loire", lat: 47.432, lon: 0.722 }, { oaci: "LFOU", name: "Cholet-Le Pontreau", lat: 47.081, lon: -0.871 }, { oaci: "LFOV", name: "Laval-Entrammes", lat: 48.033, lon: -0.749 }, { oaci: "LFPB", name: "Paris-Le Bourget", lat: 48.969, lon: 2.441 }, { oaci: "LFPC", name: "Creil", lat: 49.253, lon: 2.520 }, { oaci: "LFPG", name: "Paris-Charles-de-Gaulle", lat: 49.009, lon: 2.547 }, { oaci: "LFPO", name: "Paris-Orly", lat: 48.723, lon: 2.379 }, { oaci: "LFPV", name: "Villacoublay-Vélizy", lat: 48.773, lon: 2.203 }, { oaci: "LFRB", name: "Brest-Bretagne", lat: 48.447, lon: -4.418 }, { oaci: "LFRC", name: "Cherbourg-Manche", lat: 49.650, lon: -1.478 }, { oaci: "LFRD", name: "Dinard-Pleurtuit-Saint-Malo", lat: 48.587, lon: -2.080 }, { oaci: "LFRE", name: "La Baule-Escoublac", lat: 47.289, lon: -2.348 }, { oaci: "LFRF", name: "Granville-Mont-Saint-Michel", lat: 48.887, lon: -1.564 }, { oaci: "LFRG", name: "Deauville-Normandie", lat: 49.365, lon: 0.154 }, { oaci: "LFRH", name: "Lorient-Bretagne-Sud", lat: 47.760, lon: -3.440 }, { oaci: "LFRI", name: "La Roche-sur-Yon-Les Ajoncs", lat: 46.702, lon: -1.381 }, { oaci: "LFRJ", name: "Landivisiau", lat: 48.527, lon: -4.156 }, { oaci: "LFRK", name: "Caen-Carpiquet", lat: 49.173, lon: -0.450 }, { oaci: "LFRL", name: "Lanvéoc-Poulmic", lat: 48.278, lon: -4.437 }, { oaci: "LFRM", name: "Le Mans-Arnage", lat: 47.949, lon: 0.203 }, { oaci: "LFRN", name: "Rennes-Saint-Jacques", lat: 48.070, lon: -1.732 }, { oaci: "LFRO", name: "Lannion-Côte de Granit Rose", lat: 48.755, lon: -3.472 }, { oaci: "LFRQ", name: "Quimper-Pluguffan", lat: 47.975, lon: -4.167 }, { oaci: "LFRS", name: "Nantes-Atlantique", lat: 47.153, lon: -1.607 }, { oaci: "LFRT", name: "Saint-Nazaire-Montoir", lat: 47.312, lon: -2.152 }, { oaci: "LFRU", name: "Morlaix-Ploujean", lat: 48.604, lon: -3.818 }, { oaci: "LFSD", name: "Dijon-Longvic", lat: 47.268, lon: 5.088 }, { oaci: "LFSF", name: "Metz-Nancy-Lorraine", lat: 48.981, lon: 6.251 }, { oaci: "LFSH", name: "Haguenau", lat: 48.790, lon: 7.820 }, { oaci: "LFSJ", name: "Dole-Tavaux", lat: 47.039, lon: 5.428 }, { oaci: "LFSK", name: "Colmar-Houssen", lat: 48.110, lon: 7.359 }, { oaci: "LFSL", name: "Brive-Laroche", lat: 45.151, lon: 1.571 }, { oaci: "LFSN", name: "Nancy-Essey", lat: 48.694, lon: 6.223 }, { oaci: "LFSO", name: "Nancy-Ochey", lat: 48.577, lon: 5.955 }, { oaci: "LFSP", name: "Pontarlier", lat: 46.908, lon: 6.332 }, { oaci: "LFSQ", name: "Luxeuil-Saint-Sauveur", lat: 47.779, lon: 6.353 }, { oaci: "LFSR", name: "Reims-Prunay", lat: 49.207, lon: 4.148 }, { oaci: "LFST", name: "Strasbourg-Entzheim", lat: 48.542, lon: 7.628 }, { oaci: "LFSX", name: "Montbéliard-Courcelles", lat: 47.487, lon: 6.852 }, { oaci: "LFSZ", name: "Vesoul-Frotey", lat: 47.640, lon: 6.208 }, { oaci: "LFVM", name: "Miquelon", lat: 47.095, lon: -56.372 }, { oaci: "LFVP", name: "Saint-Pierre-Pointe-Blanche", lat: 46.762, lon: -56.172 }, { oaci: "LFYR", name: "Romorantin-Pruniers", lat: 47.352, lon: 1.670 }, { oaci: "LFXA", name: "Amiens-Glisy", lat: 49.872, lon: 2.370 }, { oaci: "LFYD", name: "Dinard", lat: 48.587, lon: -2.080 }, { oaci: "LFXI", name: "Reims-Champagne", lat: 49.308, lon: 4.045 }, { oaci: "LFYL", name: "Lille-Lesquin", lat: 50.563, lon: 3.086 }, { oaci: "LFXM", name: "Melun-Villaroche", lat: 48.608, lon: 2.671 }, { oaci: "LFXN", name: "Toussus-le-Noble", lat: 48.751, lon: 2.107 }, { oaci: "LFXO", name: "Beauvais-Tillé", lat: 49.454, lon: 2.112 }, { oaci: "LFXQ", name: "Saint-Omer-Wizernes", lat: 50.725, lon: 2.220 }, { oaci: "LFXU", name: "Les Mureaux", lat: 48.995, lon: 1.939 }, { oaci: "LFKS", name: "Solenzara", lat: 41.924, lon: 9.405 }
 ];
 
 // =========================================================================
@@ -137,7 +126,7 @@ function setupEventListeners() {
     if (mainActionButtons) {
         const versionDisplay = document.createElement('div');
         versionDisplay.className = 'version-display';
-        versionDisplay.innerText = 'v54.1';
+        versionDisplay.innerText = 'v54.2';
         mainActionButtons.appendChild(versionDisplay);
     }
 
@@ -439,9 +428,36 @@ function drawRoute(startLatLng, endLatLng, options = {}) {
     }
 }
 
-function getClosestAirports(lat, lon, count) { return airports.filter(ap => !disabledAirports.has(ap.oaci)).map(ap => ({ ...ap, distance: calculateDistanceInNm(lat, lon, ap.lat, ap.lon) })).sort((a, b) => a.distance - b.distance).slice(0, count); }
+function getClosestAirports(lat, lon, count) { return pelicanAirports.filter(ap => !disabledAirports.has(ap.oaci)).map(ap => ({ ...ap, distance: calculateDistanceInNm(lat, lon, ap.lat, ap.lon) })).sort((a, b) => a.distance - b.distance).slice(0, count); }
 function refreshUI() { drawPermanentAirportMarkers(); if (currentCommune) displayCommuneDetails(currentCommune, false); }
-function drawPermanentAirportMarkers() { permanentAirportLayer.clearLayers(); airports.forEach(airport => { const isDisabled = disabledAirports.has(airport.oaci); const isWater = waterAirports.has(airport.oaci); let iconClass = "custom-marker-icon airport-marker-base ", iconHTML = "✈️"; isDisabled ? (iconClass += "airport-marker-disabled", iconHTML = "<b>+</b>") : isWater ? (iconClass += "airport-marker-water", iconHTML = "💧") : iconClass += "airport-marker-active"; const icon = L.divIcon({ className: iconClass, html: iconHTML }); const marker = L.marker([airport.lat, airport.lon], { icon: icon }); const disableButtonText = isDisabled ? "Activer" : "Désactiver"; const disableButtonClass = isDisabled ? "enable-btn" : "disable-btn"; marker.bindPopup(`<div class="airport-popup"><b>${airport.oaci}</b><br>${airport.name}<div class="popup-buttons"><button class="water-btn" onclick="window.toggleWater('${airport.oaci}')">Eau</button><button class="${disableButtonClass}" onclick="window.toggleAirport('${airport.oaci}')">${disableButtonText}</button></div></div>`).addTo(permanentAirportLayer); }); }
+function drawPermanentAirportMarkers() {
+    permanentAirportLayer.clearLayers();
+
+    // 1. Dessiner les "autres aéroports" (cercles noirs)
+    otherAirports.forEach(airport => {
+        const marker = L.circleMarker([airport.lat, airport.lon], {
+            radius: 5,
+            color: 'black',
+            fillColor: 'black',
+            fillOpacity: 0.7
+        }).bindPopup(`<b>${airport.oaci}</b><br>${airport.name}`);
+        marker.addTo(permanentAirportLayer);
+    });
+
+    // 2. Dessiner les pélicandromes (icônes avion)
+    pelicanAirports.forEach(airport => {
+        const isDisabled = disabledAirports.has(airport.oaci);
+        const isWater = waterAirports.has(airport.oaci);
+        let iconClass = "custom-marker-icon airport-marker-base ", iconHTML = "✈️";
+        isDisabled ? (iconClass += "airport-marker-disabled", iconHTML = "<b>+</b>") : isWater ? (iconClass += "airport-marker-water", iconHTML = "💧") : iconClass += "airport-marker-active";
+        const icon = L.divIcon({ className: iconClass, html: iconHTML });
+        const marker = L.marker([airport.lat, airport.lon], { icon: icon });
+        const disableButtonText = isDisabled ? "Activer" : "Désactiver";
+        const disableButtonClass = isDisabled ? "enable-btn" : "disable-btn";
+        marker.bindPopup(`<div class="airport-popup"><b>${airport.oaci}</b><br>${airport.name}<div class="popup-buttons"><button class="water-btn" onclick="window.toggleWater('${airport.oaci}')">Eau</button><button class="${disableButtonClass}" onclick="window.toggleAirport('${airport.oaci}')">${disableButtonText}</button></div></div>`);
+        marker.addTo(permanentAirportLayer);
+    });
+}
 const loadState = () => { const savedDisabled = localStorage.getItem('disabled_airports'); if (savedDisabled) disabledAirports = new Set(JSON.parse(savedDisabled)); const savedWater = localStorage.getItem('water_airports'); if (savedWater) waterAirports = new Set(JSON.parse(savedWater)); };
 const saveState = () => { localStorage.setItem('disabled_airports', JSON.stringify([...disabledAirports])); localStorage.setItem('water_airports', JSON.stringify([...waterAirports])); };
 window.toggleAirport = oaci => { disabledAirports.has(oaci) ? disabledAirports.delete(oaci) : (disabledAirports.add(oaci), waterAirports.delete(oaci)), saveState(), refreshUI() };
@@ -579,7 +595,7 @@ function updateLftwButtonState() {
 function drawLftwRoute() {
     lftwRouteLayer.clearLayers();
     if (!showLftwRoute || !currentCommune) return;
-    const lftwAirport = airports.find(ap => ap.oaci === 'LFTW');
+    const lftwAirport = pelicanAirports.find(ap => ap.oaci === 'LFTW');
     if (!lftwAirport) return;
     const { latitude_mairie: lat, longitude_mairie: lon } = currentCommune;
     const { lat: lftwLat, lon: lftwLon } = lftwAirport;
@@ -603,8 +619,8 @@ function updateCalculatorData() {
     if (!currentCommune) {
         CALCULATOR_DATA = { distBaseFeu: 0, distPelicFeu: 0, csFeu: '--:--', distGpsFeu: 0 };
     } else {
-        const lftw = airports.find(ap => ap.oaci === 'LFTW');
-        const selectedPelican = airports.find(ap => ap.oaci === selectedPelicanOACI);
+        const lftw = pelicanAirports.find(ap => ap.oaci === 'LFTW');
+        const selectedPelican = pelicanAirports.find(ap => ap.oaci === selectedPelicanOACI);
         const { latitude_mairie: feuLat, longitude_mairie: feuLon } = currentCommune;
         let distBaseFeu = 0; if (lftw) { distBaseFeu = calculateDistanceInNm(lftw.lat, lftw.lon, feuLat, feuLon); }
         let distPelicFeu = 0; if (selectedPelican) { distPelicFeu = calculateDistanceInNm(selectedPelican.lat, selectedPelican.lon, feuLat, feuLon); }
@@ -1099,26 +1115,7 @@ function initializeCalculator() {
     const resetButton = document.getElementById('reset-all-btn');
     const onglets = document.querySelectorAll('.onglet-bouton');
     const csLftwDisplay = document.getElementById('cs-lftw-display');
-    const lftwAirport = airports.find(ap => ap.oaci === 'LFTW');
-    const refreshGpsBtn = document.getElementById('refresh-gps-btn');
-    refreshGpsBtn.addEventListener('click', () => {
-        if (navigator.geolocation) {
-            refreshGpsBtn.textContent = '🛰️ ...';
-            navigator.geolocation.getCurrentPosition(
-                (pos) => {
-                    updateUserPosition(pos);
-                    updateCalculatorData();
-                    masterRecalculate();
-                    refreshGpsBtn.textContent = '🛰️ Rafraîchir GPS';
-                },
-                () => {
-                    alert("Impossible d'obtenir la position GPS.");
-                    refreshGpsBtn.textContent = '🛰️ Rafraîchir GPS';
-                },
-                { enableHighAccuracy: true }
-            );
-        }
-    });
+    const lftwAirport = pelicanAirports.find(ap => ap.oaci === 'LFTW');
 
     function updateLftwSunset() { if (lftwAirport && typeof SunCalc !== 'undefined') { try { const now = new Date(); const times = SunCalc.getTimes(now, lftwAirport.lat, lftwAirport.lon); const sunsetString = times.sunset.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Paris' }); csLftwDisplay.value = sunsetString; } catch (e) { csLftwDisplay.value = '--:--'; } } }
     updateLftwSunset(); setInterval(updateLftwSunset, 60000);
