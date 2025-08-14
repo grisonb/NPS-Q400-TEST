@@ -142,7 +142,7 @@ function setupEventListeners() {
     if (mainActionButtons) {
         const versionDisplay = document.createElement('div');
         versionDisplay.className = 'version-display';
-        versionDisplay.innerText = 'v54.2.2';
+        versionDisplay.innerText = 'v54.2.3';
         mainActionButtons.appendChild(versionDisplay);
     }
 
@@ -274,7 +274,7 @@ function setupEventListeners() {
     zipImporterInput.addEventListener('change', (event) => {
         const file = event.target.files[0];
         handleZipImport(file);
-        event.target.value = ''; // Permet de ré-importer le même fichier
+        event.target.value = '';
     });
 
     updateLftwButtonState();
@@ -449,7 +449,6 @@ function refreshUI() { drawPermanentAirportMarkers(); if (currentCommune) displa
 function drawPermanentAirportMarkers() {
     permanentAirportLayer.clearLayers();
 
-    // 1. Dessiner les "autres aéroports" (cercles noirs)
     otherAirports.forEach(airport => {
         const marker = L.circleMarker([airport.lat, airport.lon], {
             radius: 5,
@@ -460,7 +459,6 @@ function drawPermanentAirportMarkers() {
         marker.addTo(permanentAirportLayer);
     });
 
-    // 2. Dessiner les pélicandromes (icônes avion)
     pelicanAirports.forEach(airport => {
         const isDisabled = disabledAirports.has(airport.oaci);
         const isWater = waterAirports.has(airport.oaci);
@@ -501,7 +499,6 @@ function toggleLiveGps() {
 function updateUserPosition(pos) {
     const { latitude, longitude, accuracy, heading, speed } = pos.coords;
 
-    // --- 1. Mise à jour du cercle de précision ---
     if (!accuracyCircle) {
         accuracyCircle = L.circle([latitude, longitude], {
             radius: accuracy,
@@ -514,13 +511,11 @@ function updateUserPosition(pos) {
         accuracyCircle.setLatLng([latitude, longitude]).setRadius(accuracy);
     }
 
-    // --- 2. Création ou mise à jour du groupe "cap" (avion + ligne de foi) ---
     if (!headingLayer) {
         headingLayer = L.layerGroup().addTo(map);
     }
-    headingLayer.clearLayers(); // On nettoie avant de redessiner
+    headingLayer.clearLayers();
 
-    // On utilise une icône SVG pour pouvoir la faire pivoter proprement
     const userIconSVG = `<svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg" width="32" height="32"><path d="M50 0 L100 100 L50 75 L0 100 Z" fill="#005a9c" stroke="white" stroke-width="5"/></svg>`;
     const userIcon = L.divIcon({
         html: userIconSVG,
@@ -529,43 +524,32 @@ function updateUserPosition(pos) {
         iconAnchor: [16, 16]
     });
     
-    // Ajout du marqueur de l'avion (il sera pivoté plus tard)
     userMarker = L.marker([latitude, longitude], { 
         icon: userIcon,
         rotationOrigin: 'center center'
     }).addTo(headingLayer);
     
-    // --- 3. Dessin de la ligne de foi et des marqueurs de temps ---
-    const trueHeading = heading; // Le cap est un cap vrai
-    if (trueHeading !== null && speed !== null && speed > 1) { // On n'affiche le cap et la vitesse que si on bouge
-        
-        // Convertir la vitesse (m/s) en nœuds (kts)
+    const trueHeading = heading;
+    if (trueHeading !== null && speed !== null && speed > 1) {
         const speedKts = speed * 1.94384;
         userMarker.bindTooltip(`Cap: ${Math.round(trueHeading)}°<br>Vitesse: ${Math.round(speedKts)} kts`, {permanent: false, direction: 'top'});
-
-        // On fait pivoter l'icône
         userMarker.setRotationAngle(trueHeading);
         
-        // Calcul de la distance pour 30 minutes de vol
         const dist30minNm = speedKts * (30 / 60);
         const endPoint = calculateDestinationPoint(latitude, longitude, trueHeading, dist30minNm);
         
-        // Dessin de la ligne de foi principale
         L.polyline([[latitude, longitude], endPoint], { color: '#005a9c', weight: 2, opacity: 0.7 }).addTo(headingLayer);
 
-        // Dessin des marqueurs de temps (toutes les 5 minutes)
         for (let min = 5; min <= 30; min += 5) {
             const distNm = speedKts * (min / 60);
             const point = calculateDestinationPoint(latitude, longitude, trueHeading, distNm);
             
-            // Un cercle pour le marqueur
             L.circle(point, {
-                radius: 50, // Petit rayon en mètres
+                radius: 50,
                 color: '#005a9c',
                 fillOpacity: 1
             }).addTo(headingLayer);
             
-            // Le label "5m", "10m", etc.
             L.tooltip({
                 permanent: true,
                 direction: 'top',
@@ -575,7 +559,6 @@ function updateUserPosition(pos) {
         }
     }
 
-    // --- 4. Mise à jour de la route vers la cible (si elle existe) ---
     userToTargetLayer.clearLayers();
     if (currentCommune) {
         const { latitude_mairie: lat, longitude_mairie: lon } = currentCommune;
@@ -631,6 +614,26 @@ window.deleteGaarPoint = function(circuitIndex, pointIndex) { gaarCircuits[circu
 function clearAllGaarCircuits() { gaarCircuits = []; gaarLayer.clearLayers(); saveGaarCircuits(); }
 function saveGaarCircuits() { localStorage.setItem('gaarCircuits', JSON.stringify(gaarCircuits)); }
 
+function updateCalculatorData() {
+    if (!currentCommune) {
+        CALCULATOR_DATA = { distBaseFeu: 0, distPelicFeu: 0, csFeu: '--:--', distGpsFeu: 0 };
+    } else {
+        const lftw = pelicanAirports.find(ap => ap.oaci === 'LFTW');
+        const selectedPelican = pelicanAirports.find(ap => ap.oaci === selectedPelicanOACI);
+        const { latitude_mairie: feuLat, longitude_mairie: feuLon } = currentCommune;
+        let distBaseFeu = 0; if (lftw) { distBaseFeu = calculateDistanceInNm(lftw.lat, lftw.lon, feuLat, feuLon); }
+        let distPelicFeu = 0; if (selectedPelican) { distPelicFeu = calculateDistanceInNm(selectedPelican.lat, selectedPelican.lon, feuLat, feuLon); }
+        let csFeu = '--:--'; if (typeof SunCalc !== 'undefined') { try { const now = new Date(); const times = SunCalc.getTimes(now, feuLat, feuLon); csFeu = times.sunset.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Paris' }); } catch (e) { /* ignore */ } }
+        let distGpsFeu = 0; if (userMarker && userMarker.getLatLng()) { const userLatLng = userMarker.getLatLng(); distGpsFeu = calculateDistanceInNm(userLatLng.lat, userLatLng.lng, feuLat, feuLon); }
+        CALCULATOR_DATA.distBaseFeu = Math.round(distBaseFeu);
+        CALCULATOR_DATA.distPelicFeu = Math.round(distPelicFeu);
+        CALCULATOR_DATA.csFeu = csFeu;
+        CALCULATOR_DATA.distGpsFeu = Math.round(distGpsFeu);
+    }
+    if (typeof masterRecalculate === 'function') { masterRecalculate(); }
+}
+
+function soundex(s) { if (!s) return ""; const a = s.toLowerCase().split(""), f = a.shift(); if (!f) return ""; let r = ""; const codes = { a: "", e: "", i: "", o: "", u: "", b: 1, f: 1, p: 1, v: 1, c: 2, g: 2, j: 2, k: 2, q: 2, s: 2, x: 2, z: 2, d: 3, t: 3, l: 4, m: 5, n: 5, r: 6 }; return r = f + a.map(v => codes[v]).filter((v, i, a) => 0 === i ? v !== codes[f] : v !== a[i - 1]).join(""), (r + "000").slice(0, 4).toUpperCase() }
 // =========================================================================
 // GESTION DES CARTES HORS-LIGNE
 // =========================================================================
@@ -1298,5 +1301,3 @@ document.addEventListener('DOMContentLoaded', () => {
         initializeCalculator();
     }
 });
-
-  
