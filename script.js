@@ -125,7 +125,7 @@ function setupEventListeners() {
     if (mainActionButtons) {
         const versionDisplay = document.createElement('div');
         versionDisplay.className = 'version-display';
-        versionDisplay.innerText = 'v53.3';
+        versionDisplay.innerText = 'v53.4';
         mainActionButtons.appendChild(versionDisplay);
     }
 
