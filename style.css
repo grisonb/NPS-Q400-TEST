@@ -215,8 +215,8 @@ html, body {
 .result-line .value.rotation-value-red { background-color: var(--secondary-color); color: white; }
 #reset-all-btn {
     position: absolute;
-    bottom: -3px;    /* Décalé un peu moins vers le bas (donc plus haut) */
-    right: -3px;     /* Décalé un peu moins vers la droite (donc plus à gauche) */
+    bottom: 2px;    /* Décalé un peu moins vers le bas (donc plus haut) */
+    right: 2px;     /* Décalé un peu moins vers la droite (donc plus à gauche) */
     width: 60px;
     height: 60px;
     border-radius: 50%;
