@@ -99,8 +99,8 @@ html, body {
     position: absolute;
     top: -2px;      /* Décalé encore moins vers le haut */
     right: -2px;     /* Décalé encore moins vers la droite */
-    width: 40px;
-    height: 40px;
+    width: 35px;
+    height: 35px;
     background-color: var(--secondary-color); /* Fond rouge */
     color: white;                             /* Croix blanche */
     border: 3px solid white;                  /* Bordure blanche pour le détacher */
@@ -217,8 +217,8 @@ html, body {
     position: absolute;
     bottom: -6px;    /* Décalé un peu moins vers le bas (donc plus haut) */
     right: -6px;     /* Décalé un peu moins vers la droite (donc plus à gauche) */
-    width: 70px;
-    height: 70px;
+    width: 60px;
+    height: 60px;
     border-radius: 50%;
     background-color: var(--secondary-color);
     color: white;
