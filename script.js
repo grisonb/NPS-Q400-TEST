@@ -878,20 +878,20 @@ function updatePreviTab() {
     const consoAller = calculateFuelToGo(CALCULATOR_DATA.distBaseFeu);
     const heureSurFeu = blocDepart !== null ? blocDepart + transitTime : null;
     
-    document.getElementById('duree-transit').textContent = formatTime(transitTime);
+    document.getElementById('duree-transit').textContent = formatTime(transitTime) || '--:--';
     setHelp('duree-transit-help', `Formule : Distance * (60 / Vitesse)\n\nCalcul : ${CALCULATOR_DATA.distBaseFeu} Nm * (60 / ${CALCULATOR_DATA.distBaseFeu <= 70 ? 210 : 240})`);
     
-    document.getElementById('heure-sur-feu').textContent = formatTime(heureSurFeu);
+    document.getElementById('heure-sur-feu').textContent = formatTime(heureSurFeu) || '--:--';
     setHelp('heure-sur-feu-help', `Formule : BLOC Départ + Durée transit\n\nCalcul : ${formatTime(blocDepart) || 'N/A'} + ${formatTime(transitTime)}`);
 
     document.getElementById('conso-aller-feu').textContent = `${consoAller} kg`;
     setHelp('conso-aller-feu-help', `Formule : Distance * Conso. au Nm\n\nCalcul : ${CALCULATOR_DATA.distBaseFeu} Nm * ${CALCULATOR_DATA.distBaseFeu <= 70 ? 5 : 4} kg/Nm`);
 
     document.getElementById('duree-rotation').textContent = rotationTime === 20 ? '--:--' : formatTime(rotationTime);
-    setHelp('duree-rotation-help', `Formule : 20min + (Distance / Vitesse Sol)\n\nCalcul : 20 + (${CALCULATOR_DATA.distPelicFeu} Nm / ${CALCULATOR_DATA.distPelicFeu <= 50 ? 3.5 : 4})`);
+    setHelp('duree-rotation-help', `Formule : 20min + (Distance / Vitesse Sol)\n\nCalcul : 20 + (${Math.max(CALCULATOR_DATA.distPelicFeu, 10)} Nm / ${Math.max(CALCULATOR_DATA.distPelicFeu, 10) <= 50 ? 3.5 : 4})`);
 
     document.getElementById('conso-par-rotation').textContent = consoRotation === 250 ? '-- kg' : `${consoRotation} kg`;
-    setHelp('conso-par-rotation-help', `Formule : (Distance * Conso. au Nm) + Forfait\n\nCalcul : (${CALCULATOR_DATA.distPelicFeu} Nm * ${CALCULATOR_DATA.distPelicFeu <= 70 ? 10 : 8}) + 250`);
+    setHelp('conso-par-rotation-help', `Formule : (Distance * Conso. au Nm) + Forfait\n\nCalcul : (${Math.max(CALCULATOR_DATA.distPelicFeu, 10)} Nm * ${Math.max(CALCULATOR_DATA.distPelicFeu, 10) <= 70 ? 10 : 8}) + 250`);
 
     const fuelSurFeuInput = document.getElementById('fuel-sur-feu-wrapper').querySelector('.display-input');
     const fuelEstime = fuelDepart ? fuelDepart - consoAller : null;
@@ -904,7 +904,7 @@ function updatePreviTab() {
     document.getElementById('tmd-display').textContent = formatTime(tmdTime);
     document.getElementById('hdv-restant-display').textContent = formatTime(limiteHDV);
 
-    updateAndSortRotations(document.getElementById('previ-rotation-results-container'), { fuel: fuelSurFeu, time: heureSurFeu }, { bingoBase, bingoPelic, consoRotation, rotationTime, csFeuTime, tmdTime, limiteHDV, transitTime });
+    updateAndSortRotations(document.getElementById('previ-rotation-results-container'), { fuel: fuelSurFeu, time: heureSurFeu }, { bingoBase, bingoPelic, consoRotation, rotationTime, csFeuTime, tmdTime, limiteHDV, transitTime, consoTransitFromGps: consoAller });
 }
 
 function updateSuiviTab() {
