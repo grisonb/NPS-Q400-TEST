@@ -6,6 +6,22 @@ document.addEventListener('DOMContentLoaded', () => {
     initializeApp();
 });
 
+// =========================================================================
+// VARIABLES GLOBALES
+// =========================================================================
+let allCommunes = [], map, permanentAirportLayer, routesLayer, currentCommune = null, selectedPelicanOACI = null;
+let disabledAirports = new Set(), waterAirports = new Set();
+const MAGNETIC_DECLINATION = 1.0;
+let userMarker = null, watchId = null, accuracyCircle = null, headingLayer = null;
+let userToTargetLayer = null, lftwRouteLayer = null;
+let showLftwRoute = true;
+let gaarCircuits = [];
+let isGaarMode = false;
+let isDrawingMode = false;
+const manualCircuitColors = ['#ff00ff', '#00ffff', '#ff8c00', '#00ff00', '#ff1493'];
+let gaarLayer = null;
+let db; // Variable pour la connexion à la base de données IndexedDB
+
 const pelicanAirports = [
     { oaci: "LFLU", name: "Valence-Chabeuil", lat: 44.920, lon: 4.968 }, { oaci: "LFMU", name: "Béziers-Vias", lat: 43.323, lon: 3.354 }, { oaci: "LFJR", name: "Angers-Marcé", lat: 47.560, lon: -0.312 }, { oaci: "LFHO", name: "Aubenas-Ardèche Méridionale", lat: 44.545, lon: 4.385 }, { oaci: "LFLX", name: "Châteauroux-Déols", lat: 46.861, lon: 1.720 }, { oaci: "LFBM", name: "Mont-de-Marsan", lat: 43.894, lon: -0.509 }, { oaci: "LFBL", name: "Limoges-Bellegarde", lat: 45.862, lon: 1.180 }, { oaci: "LFAQ", name: "Albert-Bray", lat: 49.972, lon: 2.698 }, { oaci: "LFBP", name: "Pau-Pyrénées", lat: 43.380, lon: -0.418 }, { oaci: "LFTH", name: "Toulon-Hyères", lat: 43.097, lon: 6.146 }, { oaci: "LFSG", name: "Épinal-Mirecourt", lat: 48.325, lon: 6.068 }, { oaci: "LFKC", name: "Calvi-Sainte-Catherine", lat: 42.530, lon: 8.793 }, { oaci: "LFMD", name: "Cannes-Mandelieu", lat: 43.542, lon: 6.956 }, { oaci: "LFKB", name: "Bastia-Poretta", lat: 42.552, lon: 9.483 }, { oaci: "LFMH", name: "Saint-Étienne-Bouthéon", lat: 45.541, lon: 4.296 }, { oaci: "LFKF", name: "Figari-Sud-Corse", lat: 41.500, lon: 9.097 }, { oaci: "LFCC", name: "Cahors-Lalbenque", lat: 44.351, lon: 1.475 }, { oaci: "LFML", name: "Marseille-Provence", lat: 43.436, lon: 5.215 }, { oaci: "LFKJ", name: "Ajaccio-Napoléon-Bonaparte", lat: 41.923, lon: 8.802 }, { oaci: "LFMK", name: "Carcassonne-Salvaza", lat: 43.215, lon: 2.306 }, { oaci: "LFRV", name: "Vannes-Meucon", lat: 47.720, lon: -2.721 }, { oaci: "LFTW", name: "Nîmes-Garons", lat: 43.757, lon: 4.416 }, { oaci: "LFMP", name: "Perpignan-Rivesaltes", lat: 42.740, lon: 2.870 }, { oaci: "LFBD", name: "Bordeaux-Mérignac", lat: 44.828, lon: -0.691 }
 ];
@@ -50,7 +66,7 @@ async function initializeApp() {
         gaarCircuits = JSON.parse(savedGaarJSON);
     }
     await initDB();
-displayInstalledMaps();
+    displayInstalledMaps();
     try {
         const response = await fetch('./communes.json');
         if (!response.ok) throw new Error(`HTTP ${response.status}`);
@@ -256,10 +272,10 @@ function setupEventListeners() {
     offlineMapModal.addEventListener('click', (e) => { if (e.target === offlineMapModal) { offlineMapModal.style.display = 'none'; } });
     window.addEventListener('keydown', (e) => { if (e.key === 'Escape' && offlineMapModal.style.display === 'flex') { offlineMapModal.style.display = 'none'; } });
     zipImporterInput.addEventListener('change', (event) => {
-    const file = event.target.files[0];
-    handleZipImport(file);
-    event.target.value = ''; // Permet de ré-importer le même fichier
-});
+        const file = event.target.files[0];
+        handleZipImport(file);
+        event.target.value = ''; // Permet de ré-importer le même fichier
+    });
 
     updateLftwButtonState();
     updateGaarButtonState();
@@ -615,26 +631,6 @@ window.deleteGaarPoint = function(circuitIndex, pointIndex) { gaarCircuits[circu
 function clearAllGaarCircuits() { gaarCircuits = []; gaarLayer.clearLayers(); saveGaarCircuits(); }
 function saveGaarCircuits() { localStorage.setItem('gaarCircuits', JSON.stringify(gaarCircuits)); }
 
-function updateCalculatorData() {
-    if (!currentCommune) {
-        CALCULATOR_DATA = { distBaseFeu: 0, distPelicFeu: 0, csFeu: '--:--', distGpsFeu: 0 };
-    } else {
-        const lftw = pelicanAirports.find(ap => ap.oaci === 'LFTW');
-        const selectedPelican = pelicanAirports.find(ap => ap.oaci === selectedPelicanOACI);
-        const { latitude_mairie: feuLat, longitude_mairie: feuLon } = currentCommune;
-        let distBaseFeu = 0; if (lftw) { distBaseFeu = calculateDistanceInNm(lftw.lat, lftw.lon, feuLat, feuLon); }
-        let distPelicFeu = 0; if (selectedPelican) { distPelicFeu = calculateDistanceInNm(selectedPelican.lat, selectedPelican.lon, feuLat, feuLon); }
-        let csFeu = '--:--'; if (typeof SunCalc !== 'undefined') { try { const now = new Date(); const times = SunCalc.getTimes(now, feuLat, feuLon); csFeu = times.sunset.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Paris' }); } catch (e) { /* ignore */ } }
-        let distGpsFeu = 0; if (userMarker && userMarker.getLatLng()) { const userLatLng = userMarker.getLatLng(); distGpsFeu = calculateDistanceInNm(userLatLng.lat, userLatLng.lng, feuLat, feuLon); }
-        CALCULATOR_DATA.distBaseFeu = Math.round(distBaseFeu);
-        CALCULATOR_DATA.distPelicFeu = Math.round(distPelicFeu);
-        CALCULATOR_DATA.csFeu = csFeu;
-        CALCULATOR_DATA.distGpsFeu = Math.round(distGpsFeu);
-    }
-    if (typeof masterRecalculate === 'function') { masterRecalculate(); }
-}
-
-function soundex(s) { if (!s) return ""; const a = s.toLowerCase().split(""), f = a.shift(); if (!f) return ""; let r = ""; const codes = { a: "", e: "", i: "", o: "", u: "", b: 1, f: 1, p: 1, v: 1, c: 2, g: 2, j: 2, k: 2, q: 2, s: 2, x: 2, z: 2, d: 3, t: 3, l: 4, m: 5, n: 5, r: 6 }; return r = f + a.map(v => codes[v]).filter((v, i, a) => 0 === i ? v !== codes[f] : v !== a[i - 1]).join(""), (r + "000").slice(0, 4).toUpperCase() }
 // =========================================================================
 // GESTION DES CARTES HORS-LIGNE
 // =========================================================================
@@ -797,6 +793,7 @@ window.deleteMapPack = async function(packName) {
         console.error("Erreur de suppression:", error);
     }
 }
+
 // =========================================================================
 // LOGIQUE DU CALCULATEUR DE MISSION
 // =========================================================================
@@ -882,7 +879,7 @@ function updateAndSortRotations(container, current, params) {
         sortable.push({ value: (value !== null) ? value : Infinity, element: line });
     });
 
-    sortable.sort((a, b) => a.value - b.a);
+    sortable.sort((a, b) => a.value - b.value);
     sortable.forEach(item => container.appendChild(item.element));
 }
 
@@ -1107,7 +1104,7 @@ function updateDeroutementTab() {
     updateAndSortRotations(
         resultsContainer,
         { fuel: fuelSurFeu, time: heureSurFeu },
-        { bingoBase, bingoPelic, consoRotation, rotationTime, csFeuTime, tmdTime, limiteHDV, transitTime: transitTimeFromGps }
+        { bingoBase, bingoPelic, consoRotation, rotationTime, csFeuTime, tmdTime, limiteHDV, transitTime: transitTimeFromGps, consoTransitFromGps: consoTransitFromGps }
     );
 }
     
@@ -1116,6 +1113,25 @@ function initializeCalculator() {
     const onglets = document.querySelectorAll('.onglet-bouton');
     const csLftwDisplay = document.getElementById('cs-lftw-display');
     const lftwAirport = pelicanAirports.find(ap => ap.oaci === 'LFTW');
+    const refreshGpsBtn = document.getElementById('refresh-gps-btn');
+    refreshGpsBtn.addEventListener('click', () => {
+        if (navigator.geolocation) {
+            refreshGpsBtn.textContent = '🛰️ ...';
+            navigator.geolocation.getCurrentPosition(
+                (pos) => {
+                    updateUserPosition(pos);
+                    updateCalculatorData();
+                    masterRecalculate();
+                    refreshGpsBtn.textContent = '🛰️ Rafraîchir GPS';
+                },
+                () => {
+                    alert("Impossible d'obtenir la position GPS.");
+                    refreshGpsBtn.textContent = '🛰️ Rafraîchir GPS';
+                },
+                { enableHighAccuracy: true }
+            );
+        }
+    });
 
     function updateLftwSunset() { if (lftwAirport && typeof SunCalc !== 'undefined') { try { const now = new Date(); const times = SunCalc.getTimes(now, lftwAirport.lat, lftwAirport.lon); const sunsetString = times.sunset.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Paris' }); csLftwDisplay.value = sunsetString; } catch (e) { csLftwDisplay.value = '--:--'; } } }
     updateLftwSunset(); setInterval(updateLftwSunset, 60000);
@@ -1202,7 +1218,7 @@ function initializeCalculator() {
         displayInput.value = initialValue;
         displayInput.addEventListener('focus', () => { if (displayInput.readOnly) return; if (displayInput.value) { shouldClearOnNextInput = true; } displayInput.value = displayInput.value.replace(/[^0-9]/g, ''); });
         displayInput.addEventListener('blur', () => { if (displayInput.readOnly) return; shouldClearOnNextInput = false; let v = displayInput.value.replace(/[^0-9]/g, ''); if (v) { displayInput.value = `${v} ${unit}`; } else { displayInput.value = ''; } masterRecalculate(); saveCalculatorState(); });
-        displayInput.addEventListener('input', (e) => { if (displayInput.readOnly) return; if (shouldClearOnNextInput && e.data) { displayInput.value = e.data.replace(/[^0-9]/g, ''); shouldClearOnNextInput = false; } else { displayInput.value = displayInput.value.replace(/[^0-9]/g, ''); } masterRecalculate(); });
+        displayInput.addEventListener('input', (e) => { if (displayInput.readOnly) return; if (shouldClearOnNextInput && e.data) { displayInput.value = e.data.replace(/[^0-9]/g, ''); shouldClearOnNextInput = false; } else { displayInput.value = displayInput.value.replace(/[^0-g, ''); } masterRecalculate(); });
         displayInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); displayInput.blur(); } });
         if (clearBtn) { clearBtn.addEventListener('click', () => { displayInput.value = ''; masterRecalculate(); saveCalculatorState(); }); }
     }
