@@ -125,7 +125,7 @@ function setupEventListeners() {
     if (mainActionButtons) {
         const versionDisplay = document.createElement('div');
         versionDisplay.className = 'version-display';
-        versionDisplay.innerText = 'v52.9';
+        versionDisplay.innerText = 'v53.0';
         mainActionButtons.appendChild(versionDisplay);
     }
 
@@ -730,42 +730,59 @@ function updateAndSortRotations(container, current, params) {
         const canCalculateFuel = current.fuel !== null && params.consoRotation !== null && params.consoRotation > 0;
         const canCalculateTime = current.time !== null && params.rotationTime !== null && params.rotationTime > 0;
 
-        // Génération de la formule textuelle, que les données soient présentes ou non
+        // **CORRECTION LOGIQUE** : Le "+1" est maintenant conditionnel.
+        // On vérifie si on a assez de fuel pour au moins 1 largage + le retour sécu.
+        const fuelForFirstDropBase = (params.transitTime ? params.consoTransitFromGps || 0 : 0) + 250 + params.bingoBase;
+        const fuelForFirstDropPelic = (params.transitTime ? params.consoTransitFromGps || 0 : 0) + 250 + params.bingoPelic;
+        
+        const hasFuelForFirstDropBase = (current.fuel + (params.consoRotation - 250)) >= fuelForFirstDropBase;
+        const hasFuelForFirstDropPelic = (current.fuel + (params.consoRotation - 250)) >= fuelForFirstDropPelic;
+
         if (type === 'base') {
-            formulaString = `Formule : ((Fuel Actuel - BINGO Base) / Conso. Rotation) + 1\n\nCalcul : ((${current.fuel || 'N/A'} - ${params.bingoBase}) / ${params.consoRotation || 'N/A'}) + 1`;
-            if (canCalculateFuel) value = ((current.fuel - params.bingoBase) / params.consoRotation) + 1;
+            const plusOne = hasFuelForFirstDropBase ? 1 : 0;
+            formulaString = `Fuel sur Feu = ${current.fuel || 'N/A'} kg\n\nFormule : ((Fuel sur Feu - BINGO Base) / Conso. Rotation) [+1 si possible]\n\nCalcul : ((${current.fuel || 'N/A'} - ${params.bingoBase}) / ${params.consoRotation || 'N/A'}) + ${plusOne}`;
+            if (canCalculateFuel) value = ((current.fuel - params.bingoBase) / params.consoRotation) + plusOne;
         }
         if (type === 'pelic') {
-            formulaString = `Formule : ((Fuel Actuel - BINGO Pélic.) / Conso. Rotation) + 1\n\nCalcul : ((${current.fuel || 'N/A'} - ${params.bingoPelic}) / ${params.consoRotation || 'N/A'}) + 1`;
-            if (canCalculateFuel) value = ((current.fuel - params.bingoPelic) / params.consoRotation) + 1;
+            const plusOne = hasFuelForFirstDropPelic ? 1 : 0;
+            formulaString = `Fuel sur Feu = ${current.fuel || 'N/A'} kg\n\nFormule : ((Fuel sur Feu - BINGO Pélic.) / Conso. Rotation) [+1 si possible]\n\nCalcul : ((${current.fuel || 'N/A'} - ${params.bingoPelic}) / ${params.consoRotation || 'N/A'}) + ${plusOne}`;
+            if (canCalculateFuel) value = ((current.fuel - params.bingoPelic) / params.consoRotation) + plusOne;
         }
         if (type === 'cs') {
-            formulaString = `Formule : (Heure CS - Heure Actuelle) / Durée Rotation\n\nCalcul : (${formatTime(params.csFeuTime) || 'N/A'} - ${formatTime(current.time) || 'N/A'}) / ${params.rotationTime || 'N/A'} min`;
+            formulaString = `Heure sur Feu = ${formatTime(current.time) || 'N/A'}\n\nFormule : (Heure CS - Heure sur Feu) / Durée Rotation\n\nCalcul : (${formatTime(params.csFeuTime) || 'N/A'} - ${formatTime(current.time) || 'N/A'}) / ${params.rotationTime || 'N/A'} min`;
             if (canCalculateTime && params.csFeuTime !== null) value = (params.csFeuTime - current.time) / params.rotationTime;
         }
         if (type === 'tmd') {
-            formulaString = `Formule : (Heure TMD - Heure Actuelle) / Durée Rotation\n\nCalcul : (${formatTime(params.tmdTime) || 'N/A'} - ${formatTime(current.time) || 'N/A'}) / ${params.rotationTime || 'N/A'} min`;
+            formulaString = `Heure sur Feu = ${formatTime(current.time) || 'N/A'}\n\nFormule : (Heure TMD - Heure sur Feu) / Durée Rotation\n\nCalcul : (${formatTime(params.tmdTime) || 'N/A'} - ${formatTime(current.time) || 'N/A'}) / ${params.rotationTime || 'N/A'} min`;
             if (canCalculateTime && params.tmdTime !== null) value = (params.tmdTime - current.time) / params.rotationTime;
         }
         if (type === 'hdv') {
             const hdvOnSite = (params.limiteHDV !== null) ? params.limiteHDV - (params.transitTime || 0) : null;
-            formulaString = `Formule : (HDV restantes à l'arrivée) / Durée Rotation\n\nHDV à l'arrivée = ${formatTime(params.limiteHDV) || 'N/A'} - ${formatTime(params.transitTime || 0)} (transit)\n\nCalcul : ${formatTime(hdvOnSite) || 'N/A'} / ${params.rotationTime || 'N/A'} min`;
+            formulaString = `HDV sur Feu = ${formatTime(hdvOnSite) || 'N/A'}\n\nFormule : (HDV sur Feu) / Durée Rotation\n\nHDV sur Feu = ${formatTime(params.limiteHDV) || 'N/A'} - ${formatTime(params.transitTime || 0)} (transit)\n\nCalcul : ${formatTime(hdvOnSite) || 'N/A'} / ${params.rotationTime || 'N/A'} min`;
             if (canCalculateTime && hdvOnSite !== null) value = hdvOnSite / params.rotationTime;
         }
         
-        if (value === null) { valueCell.textContent = '--'; } 
-        else if (value > 0) { valueCell.textContent = value.toFixed(2); } 
-        else { valueCell.textContent = '0.00'; }
+        if (value === null) {
+            valueCell.textContent = '--';
+        } else {
+            valueCell.textContent = value.toFixed(1); 
+        }
         
         valueCell.classList.remove('rotation-value-default', 'rotation-value-green', 'rotation-value-yellow', 'rotation-value-red');
-        if (value === null || value <= 0) { valueCell.classList.add('rotation-value-default'); if(value === null) valueCell.textContent = '--'; } 
-        else if (value > 1.5) { valueCell.classList.add('rotation-value-green'); } 
-        else if (value >= 1.1) { valueCell.classList.add('rotation-value-yellow'); } 
-        else { valueCell.classList.add('rotation-value-red'); }
+        if (value === null) {
+             valueCell.classList.add('rotation-value-default');
+             valueCell.textContent = '--';
+        } else if (value > 1.5) {
+            valueCell.classList.add('rotation-value-green');
+        } else if (value >= 1.1) {
+            valueCell.classList.add('rotation-value-yellow');
+        } else {
+            valueCell.classList.add('rotation-value-red');
+        }
         
         if (helpIcon) { helpIcon.onclick = () => alert(formulaString); }
         
-        sortable.push({ value: (value !== null && value > 0) ? value : Infinity, element: line });
+        sortable.push({ value: (value !== null) ? value : Infinity, element: line });
     });
 
     sortable.sort((a, b) => a.value - b.value);
