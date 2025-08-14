@@ -61,16 +61,16 @@ html, body {
     transform: translateX(-50%);
     z-index: 1000;
     background-color: rgba(255, 226, 230, 0.95); /* Fond rouge clair */
-    border: 2px solid var(--secondary-color);
-    display: flex; /* Sera activé par JS */
+    border: 3px solid var(--secondary-color); /* Bordure un peu plus épaisse */
+    display: flex;
     align-items: center;
     justify-content: center;
-    gap: 20px;
-    box-shadow: 0 1px 5px rgba(0,0,0,0.4);
-    border-radius: var(--border-radius);
-    height: 40px;
-    padding: 0 18px;
-    font-size: 16px;
+    gap: 30px; /* Espace augmenté entre les deux bingos */
+    box-shadow: 0 2px 8px rgba(0,0,0,0.4);
+    border-radius: 18px; /* Rayon augmenté (12px * 1.5) */
+    height: 60px; /* Hauteur augmentée (40px * 1.5) */
+    padding: 0 27px; /* Padding augmenté (18px * 1.5) */
+    font-size: 24px; /* Police augmentée (16px * 1.5) */
     font-weight: 500;
     white-space: nowrap;
     color: var(--text-color);
@@ -78,7 +78,7 @@ html, body {
 #bingo-map-display b {
     color: var(--secondary-color);
 }
-#commune-info-display { position: absolute; top: calc(var(--safe-area-top) + 50px); /* Poussé vers le bas */ left: 50%; transform: translateX(-50%); z-index: 1000; background-color: white; display: none; align-items: center; box-shadow: 0 1px 5px rgba(0,0,0,0.4); border-radius: var(--border-radius); border: 1px solid rgba(0,0,0,0.2); height: 52px; padding: 0 18px; font-size: 18px; font-weight: 500; white-space: nowrap; max-width: calc(100vw - 130px); overflow: hidden; color: var(--text-color); gap: 12px; }
+#commune-info-display { position: absolute; top: calc(var(--safe-area-top) + 75px); /* Poussé encore plus bas */ left: 50%; transform: translateX(-50%); z-index: 1000; background-color: white; display: none; align-items: center; box-shadow: 0 1px 5px rgba(0,0,0,0.4); border-radius: var(--border-radius); border: 1px solid rgba(0,0,0,0.2); height: 52px; padding: 0 18px; font-size: 18px; font-weight: 500; white-space: nowrap; max-width: calc(100vw - 130px); overflow: hidden; color: var(--text-color); gap: 12px; }
 #commune-info-display > .commune-name { overflow: hidden; text-overflow: ellipsis; }
 #commune-info-display .sunset-info { font-size: 15px; color: var(--light-text-color); margin-left: auto; white-space: nowrap; }
 #live-gps-button { flex-shrink: 0; width: 48px; height: 48px; padding: 0; border: 1px solid var(--border-color); border-radius: var(--border-radius); background-color: var(--card-background-color); color: var(--primary-color); font-size: 24px; cursor: pointer; display: flex; align-items: center; justify-content: center; line-height: 1; transition: background-color 0.2s, color 0.2s; }
