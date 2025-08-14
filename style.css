@@ -405,3 +405,21 @@ html, body {
     cursor: pointer;
     font-weight: bold;
 }
+
+/* --- STYLES POUR LE NOUVEAU MARQUEUR UTILISATEUR --- */
+.user-heading-icon {
+    /* On enlève les styles par défaut de .custom-marker-icon */
+    background-color: transparent !important;
+    border: none !important;
+    box-shadow: none !important;
+}
+
+.time-marker-tooltip {
+    background-color: rgba(255, 255, 255, 0.8);
+    border: 1px solid #005a9c;
+    color: #005a9c;
+    font-weight: bold;
+    font-size: 12px;
+    padding: 2px 5px;
+    box-shadow: none;
+}
