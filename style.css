@@ -97,8 +97,8 @@ html, body {
 #calculator-modal { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background-color: rgba(0, 0, 0, 0.6); backdrop-filter: blur(5px); z-index: 2000; display: none; justify-content: center; align-items: center; }
 #close-calculator-btn {
     position: absolute;
-    top: -4px;      /* Décalé encore moins vers le haut */
-    right: -4px;     /* Décalé encore moins vers la droite */
+    top: -3px;      /* Décalé encore moins vers le haut */
+    right: -3px;     /* Décalé encore moins vers la droite */
     width: 40px;
     height: 40px;
     background-color: var(--secondary-color); /* Fond rouge */
@@ -215,8 +215,8 @@ html, body {
 .result-line .value.rotation-value-red { background-color: var(--secondary-color); color: white; }
 #reset-all-btn {
     position: absolute;
-    bottom: -10px;    /* Décalé un peu moins vers le bas (donc plus haut) */
-    right: -10px;     /* Décalé un peu moins vers la droite (donc plus à gauche) */
+    bottom: -8px;    /* Décalé un peu moins vers le bas (donc plus haut) */
+    right: -8px;     /* Décalé un peu moins vers la droite (donc plus à gauche) */
     width: 70px;
     height: 70px;
     border-radius: 50%;
