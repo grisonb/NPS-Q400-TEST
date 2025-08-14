@@ -1,20 +1,3 @@
-Pas de panique, c'est une erreur très facile à corriger et c'est entièrement de ma faute. C'est une faute de frappe que j'ai introduite dans une des versions précédentes et que nous n'avions pas vue.
-
-Le problème :
-
-Dans la fonction initializeNumericInput, il y a une seule ligne avec une erreur de syntaxe. Cette petite erreur empêche le navigateur de lire l'intégralité du fichier script.js, ce qui bloque l'application à l'étape "Chargement des données...".
-
-La correction est très simple. Pour être absolument certain que tout soit correct, je vous donne à nouveau le fichier script.js complet et corrigé. Remplacez simplement l'intégralité de votre fichier par celui-ci.
-
-Cette version sera bien la 54.2 avec la distinction entre pélicandromes et autres aéroports.
-Fichier script.js (complet et corrigé pour la v54.2)
-
-Remplacez l'intégralité de votre fichier script.js par celui-ci. La seule erreur se trouvait dans la fonction initializeNumericInput.
-code JavaScript
-IGNORE_WHEN_COPYING_START
-IGNORE_WHEN_COPYING_END
-
-    
 // =========================================================================
 // INITIALISATION DE L'APPLICATION
 // =========================================================================
@@ -159,7 +142,7 @@ function setupEventListeners() {
     if (mainActionButtons) {
         const versionDisplay = document.createElement('div');
         versionDisplay.className = 'version-display';
-        versionDisplay.innerText = 'v54.2';
+        versionDisplay.innerText = 'v54.2.2';
         mainActionButtons.appendChild(versionDisplay);
     }
 
