@@ -125,7 +125,7 @@ function setupEventListeners() {
     if (mainActionButtons) {
         const versionDisplay = document.createElement('div');
         versionDisplay.className = 'version-display';
-        versionDisplay.innerText = 'v53.0';
+        versionDisplay.innerText = 'v53.1';
         mainActionButtons.appendChild(versionDisplay);
     }
 
@@ -707,9 +707,9 @@ window.deleteMapPack = async function(packName) {
 let CALCULATOR_DATA = { distBaseFeu: 0, distPelicFeu: 0, csFeu: '--:--', distGpsFeu: 0 };
 const calculateBingo = (dist) => (dist <= 70) ? (dist * 5) + 700 : (dist * 4) + 700;
 const calculateFuelToGo = (dist) => (dist <= 70) ? (dist * 5) : (dist * 4);
-const calculateConsoRotation = (dist) => (dist <= 70) ? (dist * 10) + 250 : (dist * 8) + 250;
+const calculateConsoRotation = (dist) => { const effectiveDist = Math.max(dist, 10); return (effectiveDist <= 70) ? (effectiveDist * 10) + 250 : (effectiveDist * 8) + 250; };
 const calculateTransitTime = (dist) => (dist <= 70) ? (dist * (60 / 210)) : (dist * (60 / 240));
-const calculateRotationTime = (dist) => (dist <= 50) ? (20 + (dist / 3.5)) : (20 + (dist / 4));
+const calculateRotationTime = (dist) => { const effectiveDist = Math.max(dist, 10); return (effectiveDist <= 50) ? (20 + (effectiveDist / 3.5)) : (20 + (effectiveDist / 4)); };
 let masterRecalculate = () => {};
 let isFuelSurFeuManual = false, isSuiviConsoManual = false, isSuiviDureeManual = false;
 const parseTime = (timeString) => { if (!timeString || !timeString.includes(':')) return null; const parts = timeString.split(':'); return parseInt(parts[0], 10) * 60 + parseInt(parts[1], 10); };
@@ -730,13 +730,14 @@ function updateAndSortRotations(container, current, params) {
         const canCalculateFuel = current.fuel !== null && params.consoRotation !== null && params.consoRotation > 0;
         const canCalculateTime = current.time !== null && params.rotationTime !== null && params.rotationTime > 0;
 
-        // **CORRECTION LOGIQUE** : Le "+1" est maintenant conditionnel.
-        // On vérifie si on a assez de fuel pour au moins 1 largage + le retour sécu.
-        const fuelForFirstDropBase = (params.transitTime ? params.consoTransitFromGps || 0 : 0) + 250 + params.bingoBase;
-        const fuelForFirstDropPelic = (params.transitTime ? params.consoTransitFromGps || 0 : 0) + 250 + params.bingoPelic;
+        // **Logique du +1 conditionnel**
+        // Le carburant de départ pour cette vérification est le 'fuel actuel' (avant transit vers le feu), pas le 'fuel sur feu'
+        const initialFuelForCheck = current.fuel + (params.transitTime ? (params.consoTransitFromGps || 0) : 0);
+        const fuelForFirstDropBase = (params.transitTime ? (params.consoTransitFromGps || 0) : 0) + 250 + params.bingoBase;
+        const fuelForFirstDropPelic = (params.transitTime ? (params.consoTransitFromGps || 0) : 0) + 250 + params.bingoPelic;
         
-        const hasFuelForFirstDropBase = (current.fuel + (params.consoRotation - 250)) >= fuelForFirstDropBase;
-        const hasFuelForFirstDropPelic = (current.fuel + (params.consoRotation - 250)) >= fuelForFirstDropPelic;
+        const hasFuelForFirstDropBase = initialFuelForCheck >= fuelForFirstDropBase;
+        const hasFuelForFirstDropPelic = initialFuelForCheck >= fuelForFirstDropPelic;
 
         if (type === 'base') {
             const plusOne = hasFuelForFirstDropBase ? 1 : 0;
@@ -785,7 +786,7 @@ function updateAndSortRotations(container, current, params) {
         sortable.push({ value: (value !== null) ? value : Infinity, element: line });
     });
 
-    sortable.sort((a, b) => a.value - b.value);
+    sortable.sort((a, b) => a.value - b.a);
     sortable.forEach(item => container.appendChild(item.element));
 }
 
