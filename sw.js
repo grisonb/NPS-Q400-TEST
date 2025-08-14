@@ -1,6 +1,6 @@
-const APP_CACHE_NAME = 'communes-app-cache-v534'; // Version 53.4
-const DATA_CACHE_NAME = 'communes-data-cache-v534';
-const TILE_CACHE_NAME = 'communes-tile-cache-v534';
+const APP_CACHE_NAME = 'communes-app-cache-v535'; // Version 53.5
+const DATA_CACHE_NAME = 'communes-data-cache-v535';
+const TILE_CACHE_NAME = 'communes-tile-cache-v535';
 
 const APP_SHELL_URLS = [
     './',
