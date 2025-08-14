@@ -12,7 +12,7 @@ document.addEventListener('DOMContentLoaded', () => {
 let allCommunes = [], map, permanentAirportLayer, routesLayer, currentCommune = null, selectedPelicanOACI = null;
 let disabledAirports = new Set(), waterAirports = new Set();
 const MAGNETIC_DECLINATION = 1.0;
-let userMarker = null, watchId = null;
+let userMarker = null, watchId = null, accuracyCircle = null, headingLayer = null;
 let userToTargetLayer = null, lftwRouteLayer = null;
 let showLftwRoute = true;
 let gaarCircuits = [];
@@ -34,6 +34,18 @@ const calculateDistanceInNm = (lat1, lon1, lat2, lon2) => { const R = 6371, dLat
 const calculateBearing = (lat1, lon1, lat2, lon2) => { const lat1Rad = toRad(lat1), lon1Rad = toRad(lon1), lat2Rad = toRad(lat2), lon2Rad = toRad(lon2), dLon = lon2Rad - lon1Rad, y = Math.sin(dLon) * Math.cos(lat2Rad), x = Math.cos(lat1Rad) * Math.sin(lat2Rad) - Math.sin(lat1Rad) * Math.cos(lat2Rad) * Math.cos(dLon); let bearingRad = Math.atan2(y, x), bearingDeg = toDeg(bearingRad); return (bearingDeg + 360) % 360; };
 const convertToDMM = (deg, type) => { if (deg === null || isNaN(deg)) return 'N/A'; const absDeg = Math.abs(deg), degrees = Math.floor(absDeg), minutesTotal = (absDeg - degrees) * 60, minutesFormatted = minutesTotal.toFixed(2).padStart(5, '0'); let direction = type === 'lat' ? (deg >= 0 ? 'N' : 'S') : (deg >= 0 ? 'E' : 'W'); return `${degrees}° ${minutesFormatted}' ${direction}`; };
 const levenshteinDistance = (a, b) => { const matrix = Array(b.length + 1).fill(null).map(() => Array(a.length + 1).fill(null)); for (let i = 0; i <= a.length; i += 1) matrix[0][i] = i; for (let j = 0; j <= b.length; j += 1) matrix[j][0] = j; for (let j = 1; j <= b.length; j += 1) for (let i = 1; i <= a.length; i += 1) { const indicator = a[i - 1] === b[j - 1] ? 0 : 1; matrix[j][i] = Math.min(matrix[j][i - 1] + 1, matrix[j - 1][i] + 1, matrix[j - 1][i - 1] + indicator); } return matrix[b.length][a.length]; };
+const calculateDestinationPoint = (lat, lon, bearing, distanceNm) => {
+    const R = 3440.065; // Rayon de la Terre en milles nautiques
+    const latRad = toRad(lat);
+    const lonRad = toRad(lon);
+    const bearingRad = toRad(bearing);
+    const distRad = distanceNm / R;
+
+    const destLatRad = Math.asin(Math.sin(latRad) * Math.cos(distRad) + Math.cos(latRad) * Math.sin(distRad) * Math.cos(bearingRad));
+    let destLonRad = lonRad + Math.atan2(Math.sin(bearingRad) * Math.sin(distRad) * Math.cos(latRad), Math.cos(distRad) - Math.sin(latRad) * Math.sin(destLatRad));
+    
+    return [toDeg(destLatRad), toDeg(destLonRad)];
+};
 
 // =========================================================================
 // LOGIQUE PRINCIPALE DE L'APPLICATION
@@ -125,7 +137,7 @@ function setupEventListeners() {
     if (mainActionButtons) {
         const versionDisplay = document.createElement('div');
         versionDisplay.className = 'version-display';
-        versionDisplay.innerText = 'v54.0';
+        versionDisplay.innerText = 'v54.1';
         mainActionButtons.appendChild(versionDisplay);
     }
 
@@ -455,21 +467,89 @@ function toggleLiveGps() {
 }
 
 function updateUserPosition(pos) {
-    const { latitude: userLat, longitude: userLon } = pos.coords;
-    if (!userMarker) {
-        const userIcon = L.divIcon({ className: 'custom-marker-icon user-marker', html: '👤' });
-        userMarker = L.marker([userLat, userLon], { icon: userIcon }).bindPopup('Votre position').addTo(map);
+    const { latitude, longitude, accuracy, heading, speed } = pos.coords;
+
+    // --- 1. Mise à jour du cercle de précision ---
+    if (!accuracyCircle) {
+        accuracyCircle = L.circle([latitude, longitude], {
+            radius: accuracy,
+            weight: 1,
+            color: '#005a9c',
+            fillColor: '#005a9c',
+            fillOpacity: 0.1
+        }).addTo(map);
     } else {
-        userMarker.setLatLng([userLat, userLon]);
+        accuracyCircle.setLatLng([latitude, longitude]).setRadius(accuracy);
     }
+
+    // --- 2. Création ou mise à jour du groupe "cap" (avion + ligne de foi) ---
+    if (!headingLayer) {
+        headingLayer = L.layerGroup().addTo(map);
+    }
+    headingLayer.clearLayers(); // On nettoie avant de redessiner
+
+    // On utilise une icône SVG pour pouvoir la faire pivoter proprement
+    const userIconSVG = `<svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg" width="32" height="32"><path d="M50 0 L100 100 L50 75 L0 100 Z" fill="#005a9c" stroke="white" stroke-width="5"/></svg>`;
+    const userIcon = L.divIcon({
+        html: userIconSVG,
+        className: 'user-heading-icon',
+        iconSize: [32, 32],
+        iconAnchor: [16, 16]
+    });
+    
+    // Ajout du marqueur de l'avion (il sera pivoté plus tard)
+    userMarker = L.marker([latitude, longitude], { 
+        icon: userIcon,
+        rotationOrigin: 'center center'
+    }).addTo(headingLayer);
+    
+    // --- 3. Dessin de la ligne de foi et des marqueurs de temps ---
+    const trueHeading = heading; // Le cap est un cap vrai
+    if (trueHeading !== null && speed !== null && speed > 1) { // On n'affiche le cap et la vitesse que si on bouge
+        
+        // Convertir la vitesse (m/s) en nœuds (kts)
+        const speedKts = speed * 1.94384;
+        userMarker.bindTooltip(`Cap: ${Math.round(trueHeading)}°<br>Vitesse: ${Math.round(speedKts)} kts`, {permanent: false, direction: 'top'});
+
+        // On fait pivoter l'icône
+        userMarker.setRotationAngle(trueHeading);
+        
+        // Calcul de la distance pour 30 minutes de vol
+        const dist30minNm = speedKts * (30 / 60);
+        const endPoint = calculateDestinationPoint(latitude, longitude, trueHeading, dist30minNm);
+        
+        // Dessin de la ligne de foi principale
+        L.polyline([[latitude, longitude], endPoint], { color: '#005a9c', weight: 2, opacity: 0.7 }).addTo(headingLayer);
+
+        // Dessin des marqueurs de temps (toutes les 5 minutes)
+        for (let min = 5; min <= 30; min += 5) {
+            const distNm = speedKts * (min / 60);
+            const point = calculateDestinationPoint(latitude, longitude, trueHeading, distNm);
+            
+            // Un cercle pour le marqueur
+            L.circle(point, {
+                radius: 50, // Petit rayon en mètres
+                color: '#005a9c',
+                fillOpacity: 1
+            }).addTo(headingLayer);
+            
+            // Le label "5m", "10m", etc.
+            L.tooltip({
+                permanent: true,
+                direction: 'top',
+                className: 'time-marker-tooltip',
+                offset: [0, -10]
+            }).setLatLng(point).setContent(`${min}m`).addTo(headingLayer);
+        }
+    }
+
+    // --- 4. Mise à jour de la route vers la cible (si elle existe) ---
     userToTargetLayer.clearLayers();
     if (currentCommune) {
         const { latitude_mairie: lat, longitude_mairie: lon } = currentCommune;
-        if (lat.toFixed(6) !== userLat.toFixed(6) || lon.toFixed(6) !== userLon.toFixed(6)) {
-            const trueBearing = calculateBearing(userLat, userLon, lat, lon);
-            const magneticBearing = (trueBearing - MAGNETIC_DECLINATION + 360) % 360;
-            drawRoute([userLat, userLon], [lat, lon], { isUser: true, magneticBearing: magneticBearing });
-        }
+        const trueBearingToTarget = calculateBearing(latitude, longitude, lat, lon);
+        const magneticBearing = (trueBearingToTarget - MAGNETIC_DECLINATION + 360) % 360;
+        drawRoute([latitude, longitude], [lat, lon], { isUser: true, magneticBearing: magneticBearing });
     }
 }
 
