@@ -163,7 +163,7 @@ function setupEventListeners() {
     if (mainActionButtons) {
         const versionDisplay = document.createElement('div');
         versionDisplay.className = 'version-display';
-        versionDisplay.innerText = 'v54.8';
+        versionDisplay.innerText = 'v54.9';
         mainActionButtons.appendChild(versionDisplay);
     }
 
@@ -360,7 +360,7 @@ function updateMapBingoDisplay() {
 
 function displayCommuneDetails(commune, shouldFitBounds = true) {
     routesLayer.clearLayers();
-    userToTargetLayer.clearLayers();
+    // userToTargetLayer.clearLayers(); // <-- LIGNE SUPPRIMÉE : C'est la source du bug.
     lftwRouteLayer.clearLayers();
     drawPermanentAirportMarkers();
     
