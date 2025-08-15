@@ -142,7 +142,7 @@ function setupEventListeners() {
     if (mainActionButtons) {
         const versionDisplay = document.createElement('div');
         versionDisplay.className = 'version-display';
-        versionDisplay.innerText = 'v54.2.3';
+        versionDisplay.innerText = 'v54.3';
         mainActionButtons.appendChild(versionDisplay);
     }
 
@@ -449,14 +449,26 @@ function refreshUI() { drawPermanentAirportMarkers(); if (currentCommune) displa
 function drawPermanentAirportMarkers() {
     permanentAirportLayer.clearLayers();
 
+    // 1. Dessiner les "autres aéroports" (cercles noirs)
     otherAirports.forEach(airport => {
-        const marker = L.circleMarker([airport.lat, airport.lon], {
-            radius: 5,
+        // Le cercle visible, plus petit
+        const visibleMarker = L.circleMarker([airport.lat, airport.lon], {
+            radius: 2.5, // Taille divisée par 2
             color: 'black',
             fillColor: 'black',
             fillOpacity: 0.7
+        });
+        
+        // La zone de clic invisible, plus grande
+        const hitbox = L.circleMarker([airport.lat, airport.lon], {
+            radius: 8, // Zone de clic généreuse
+            stroke: false,
+            fill: false
         }).bindPopup(`<b>${airport.oaci}</b><br>${airport.name}`);
-        marker.addTo(permanentAirportLayer);
+
+        // On ajoute les deux à un groupe de calques pour qu'ils fonctionnent ensemble
+        const group = L.layerGroup([visibleMarker, hitbox]);
+        group.addTo(permanentAirportLayer);
     });
 
     pelicanAirports.forEach(airport => {
@@ -516,12 +528,12 @@ function updateUserPosition(pos) {
     }
     headingLayer.clearLayers();
 
-    const userIconSVG = `<svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg" width="32" height="32"><path d="M50 0 L100 100 L50 75 L0 100 Z" fill="#005a9c" stroke="white" stroke-width="5"/></svg>`;
+    const userIconSVG = `<svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg" width="21" height="21"><path d="M50 0 L100 100 L50 75 L0 100 Z" fill="#005a9c" stroke="white" stroke-width="8"/></svg>`;
     const userIcon = L.divIcon({
         html: userIconSVG,
         className: 'user-heading-icon',
-        iconSize: [32, 32],
-        iconAnchor: [16, 16]
+        iconSize: [21, 21],
+        iconAnchor: [10.5, 10.5]
     });
     
     userMarker = L.marker([latitude, longitude], { 
