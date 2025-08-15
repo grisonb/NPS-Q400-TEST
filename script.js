@@ -51,7 +51,7 @@ const calculateDestinationPoint = (lat, lon, bearing, distanceNm) => {
     
     return [toDeg(destLatRad), toDeg(destLonRad)];
 };
-
+// ... le reste du fichier continue ici ...
 // =========================================================================
 // LOGIQUE PRINCIPALE DE L'APPLICATION
 // =========================================================================
@@ -142,7 +142,7 @@ function setupEventListeners() {
     if (mainActionButtons) {
         const versionDisplay = document.createElement('div');
         versionDisplay.className = 'version-display';
-        versionDisplay.innerText = 'v54.4.1';
+        versionDisplay.innerText = 'v54.4.2';
         mainActionButtons.appendChild(versionDisplay);
     }
 
@@ -449,31 +449,16 @@ function refreshUI() { drawPermanentAirportMarkers(); if (currentCommune) displa
 function drawPermanentAirportMarkers() {
     permanentAirportLayer.clearLayers();
 
-    // 1. Dessiner les "autres aéroports" (cercles noirs)
     otherAirports.forEach(airport => {
         const marker = L.circleMarker([airport.lat, airport.lon], {
-            radius: 1.25,      // Rayon visible très petit
+            radius: 1.25,
             fillColor: 'black',
             fillOpacity: 1,
-            // --- C'est ici l'astuce ---
-            color: 'transparent', // La bordure est invisible
-            weight: 15,           // Mais elle est très épaisse (15px), ce qui crée la zone de clic
+            color: 'transparent',
+            weight: 15,
             opacity: 0
         }).bindPopup(`<b>${airport.oaci}</b><br>${airport.name}`);
-        
         marker.addTo(permanentAirportLayer);
-    });
-        
-        // La zone de clic invisible, plus grande
-        const hitbox = L.circleMarker([airport.lat, airport.lon], {
-            radius: 8, // Zone de clic généreuse
-            stroke: false,
-            fill: false
-        }).bindPopup(`<b>${airport.oaci}</b><br>${airport.name}`);
-
-        // On ajoute les deux à un groupe de calques pour qu'ils fonctionnent ensemble
-        const group = L.layerGroup([visibleMarker, hitbox]);
-        group.addTo(permanentAirportLayer);
     });
 
     pelicanAirports.forEach(airport => {
