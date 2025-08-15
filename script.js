@@ -142,7 +142,7 @@ function setupEventListeners() {
     if (mainActionButtons) {
         const versionDisplay = document.createElement('div');
         versionDisplay.className = 'version-display';
-        versionDisplay.innerText = 'v54.3';
+        versionDisplay.innerText = 'v54.4';
         mainActionButtons.appendChild(versionDisplay);
     }
 
@@ -451,13 +451,18 @@ function drawPermanentAirportMarkers() {
 
     // 1. Dessiner les "autres aéroports" (cercles noirs)
     otherAirports.forEach(airport => {
-        // Le cercle visible, plus petit
-        const visibleMarker = L.circleMarker([airport.lat, airport.lon], {
-            radius: 2.5, // Taille divisée par 2
-            color: 'black',
+        const marker = L.circleMarker([airport.lat, airport.lon], {
+            radius: 1.25,      // Rayon visible très petit
             fillColor: 'black',
-            fillOpacity: 0.7
-        });
+            fillOpacity: 1,
+            // --- C'est ici l'astuce ---
+            color: 'transparent', // La bordure est invisible
+            weight: 15,           // Mais elle est très épaisse (15px), ce qui crée la zone de clic
+            opacity: 0
+        }).bindPopup(`<b>${airport.oaci}</b><br>${airport.name}`);
+        
+        marker.addTo(permanentAirportLayer);
+    });
         
         // La zone de clic invisible, plus grande
         const hitbox = L.circleMarker([airport.lat, airport.lon], {
