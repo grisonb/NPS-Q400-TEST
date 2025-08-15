@@ -12,7 +12,7 @@ document.addEventListener('DOMContentLoaded', () => {
 let allCommunes = [], map, permanentAirportLayer, routesLayer, currentCommune = null, selectedPelicanOACI = null;
 let disabledAirports = new Set(), waterAirports = new Set();
 const MAGNETIC_DECLINATION = 1.0;
-let userMarker = null, watchId = null, accuracyCircle = null, headingLayer = null;
+let userMarker = null, watchId = null, accuracyCircle = null, headingLayer = null, lastPosition = null;
 let userToTargetLayer = null, lftwRouteLayer = null;
 let showLftwRoute = true;
 let gaarCircuits = [];
@@ -142,7 +142,7 @@ function setupEventListeners() {
     if (mainActionButtons) {
         const versionDisplay = document.createElement('div');
         versionDisplay.className = 'version-display';
-        versionDisplay.innerText = 'v54.4.2';
+        versionDisplay.innerText = 'v54.5';
         mainActionButtons.appendChild(versionDisplay);
     }
 
@@ -500,14 +500,16 @@ function toggleLiveGps() {
 
 function updateUserPosition(pos) {
     const { latitude, longitude, accuracy, heading, speed } = pos.coords;
+    
+    // console.log("Données GPS reçues:", pos.coords);
 
     if (!accuracyCircle) {
         accuracyCircle = L.circle([latitude, longitude], {
             radius: accuracy,
-            weight: 1,
+            weight: 2,
             color: '#005a9c',
             fillColor: '#005a9c',
-            fillOpacity: 0.1
+            fillOpacity: 0.15
         }).addTo(map);
     } else {
         accuracyCircle.setLatLng([latitude, longitude]).setRadius(accuracy);
@@ -531,9 +533,32 @@ function updateUserPosition(pos) {
         rotationOrigin: 'center center'
     }).addTo(headingLayer);
     
-    const trueHeading = heading;
-    if (trueHeading !== null && speed !== null && speed > 1) {
-        const speedKts = speed * 1.94384;
+    let trueHeading = heading;
+    let currentSpeed = speed;
+
+    // --- LOGIQUE DE CALCUL MANUEL DU CAP ---
+    // Si l'appareil ne fournit pas le cap (heading) ou la vitesse (speed), on essaie de les calculer
+    if ((trueHeading === null || currentSpeed === null) && lastPosition) {
+        const distanceMoved = calculateDistanceInNm(lastPosition.latitude, lastPosition.longitude, latitude, longitude) * 1852; // en mètres
+        const timeElapsed = (pos.timestamp - lastPosition.timestamp) / 1000; // en secondes
+
+        if (timeElapsed > 0 && distanceMoved > 3) { // On ne calcule que si on a bougé d'au moins 3 mètres
+            // Calcul du cap
+            if (trueHeading === null) {
+                trueHeading = calculateBearing(lastPosition.latitude, lastPosition.longitude, latitude, longitude);
+            }
+            // Calcul de la vitesse
+            if (currentSpeed === null) {
+                currentSpeed = distanceMoved / timeElapsed; // vitesse en m/s
+            }
+        }
+    }
+    // Mise à jour de la dernière position pour le prochain calcul
+    lastPosition = { latitude, longitude, timestamp: pos.timestamp };
+
+    if (trueHeading !== null && currentSpeed !== null && currentSpeed > 0.5) {
+        const speedKts = currentSpeed * 1.94384;
+        
         userMarker.bindTooltip(`Cap: ${Math.round(trueHeading)}°<br>Vitesse: ${Math.round(speedKts)} kts`, {permanent: false, direction: 'top'});
         userMarker.setRotationAngle(trueHeading);
         
