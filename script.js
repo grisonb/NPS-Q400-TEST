@@ -142,7 +142,7 @@ function setupEventListeners() {
     if (mainActionButtons) {
         const versionDisplay = document.createElement('div');
         versionDisplay.className = 'version-display';
-        versionDisplay.innerText = 'v54.5';
+        versionDisplay.innerText = 'v54.6';
         mainActionButtons.appendChild(versionDisplay);
     }
 
@@ -500,21 +500,24 @@ function toggleLiveGps() {
 
 function updateUserPosition(pos) {
     const { latitude, longitude, accuracy, heading, speed } = pos.coords;
-    
-    // console.log("Données GPS reçues:", pos.coords);
 
+    // --- 1. Mise à jour du cercle de précision (rendu plus grand et visible) ---
     if (!accuracyCircle) {
         accuracyCircle = L.circle([latitude, longitude], {
             radius: accuracy,
             weight: 2,
-            color: '#005a9c',
-            fillColor: '#005a9c',
-            fillOpacity: 0.15
+            color: 'rgba(0, 90, 156, 0.5)', // Bleu plus transparent
+            fillColor: 'rgba(0, 90, 156, 0.2)', // Remplissage très transparent
+            fillOpacity: 1 // On contrôle l'opacité via la couleur rgba
         }).addTo(map);
     } else {
         accuracyCircle.setLatLng([latitude, longitude]).setRadius(accuracy);
     }
+    // On s'assure que le cercle est sous l'avion
+    if (accuracyCircle) accuracyCircle.bringToBack();
 
+
+    // --- 2. Création ou mise à jour du groupe "cap" ---
     if (!headingLayer) {
         headingLayer = L.layerGroup().addTo(map);
     }
@@ -536,26 +539,32 @@ function updateUserPosition(pos) {
     let trueHeading = heading;
     let currentSpeed = speed;
 
-    // --- LOGIQUE DE CALCUL MANUEL DU CAP ---
-    // Si l'appareil ne fournit pas le cap (heading) ou la vitesse (speed), on essaie de les calculer
-    if ((trueHeading === null || currentSpeed === null) && lastPosition) {
+    // --- LOGIQUE DE CALCUL MANUEL DU CAP (améliorée) ---
+    if (lastPosition) {
         const distanceMoved = calculateDistanceInNm(lastPosition.latitude, lastPosition.longitude, latitude, longitude) * 1852; // en mètres
         const timeElapsed = (pos.timestamp - lastPosition.timestamp) / 1000; // en secondes
 
-        if (timeElapsed > 0 && distanceMoved > 3) { // On ne calcule que si on a bougé d'au moins 3 mètres
-            // Calcul du cap
+        // Seuil abaissé à 1 mètre pour s'activer même en marchant
+        if (timeElapsed > 0 && distanceMoved > 1) { 
+            // On ne calcule le cap que si l'appareil ne le fournit pas
             if (trueHeading === null) {
                 trueHeading = calculateBearing(lastPosition.latitude, lastPosition.longitude, latitude, longitude);
             }
-            // Calcul de la vitesse
+            // On ne calcule la vitesse que si l'appareil ne la fournit pas
             if (currentSpeed === null) {
                 currentSpeed = distanceMoved / timeElapsed; // vitesse en m/s
             }
         }
     }
-    // Mise à jour de la dernière position pour le prochain calcul
-    lastPosition = { latitude, longitude, timestamp: pos.timestamp };
+    
+    // Si après tout ça on n'a toujours pas de cap, on garde le dernier cap connu
+    if (trueHeading === null && lastPosition && lastPosition.heading) {
+        trueHeading = lastPosition.heading;
+    }
 
+    lastPosition = { latitude, longitude, timestamp: pos.timestamp, heading: trueHeading };
+
+    // --- 3. Dessin de la ligne de foi ---
     if (trueHeading !== null && currentSpeed !== null && currentSpeed > 0.5) {
         const speedKts = currentSpeed * 1.94384;
         
@@ -584,8 +593,12 @@ function updateUserPosition(pos) {
                 offset: [0, -10]
             }).setLatLng(point).setContent(`${min}m`).addTo(headingLayer);
         }
+    } else if (trueHeading !== null) {
+        // Si on a un cap mais pas de vitesse (GPS venant de s'activer), on oriente au moins l'avion
+        userMarker.setRotationAngle(trueHeading);
     }
 
+    // --- 4. Mise à jour de la route vers la cible ---
     userToTargetLayer.clearLayers();
     if (currentCommune) {
         const { latitude_mairie: lat, longitude_mairie: lon } = currentCommune;
