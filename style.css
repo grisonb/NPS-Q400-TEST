@@ -423,8 +423,3 @@ html, body {
     padding: 2px 5px;
     box-shadow: none;
 }
-
-/* Rend la zone de clic des aéroports de dégagement fonctionnelle */
-.leaflet-interactive[stroke="false"][fill="false"] {
-    pointer-events: all !important;
-}
