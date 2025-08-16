@@ -164,7 +164,7 @@ function setupEventListeners() {
     if (mainActionButtons) {
         const versionDisplay = document.createElement('div');
         versionDisplay.className = 'version-display';
-        versionDisplay.innerText = 'v55.1';
+        versionDisplay.innerText = 'v55.2';
         mainActionButtons.appendChild(versionDisplay);
     }
 
@@ -406,6 +406,7 @@ function displayCommuneDetails(commune, shouldFitBounds = true) {
     updateCalculatorData();
     updateMapBingoDisplay();
     navigator.geolocation.getCurrentPosition(updateUserPosition, () => {}, { enableHighAccuracy: true });
+    drawUserToTargetRoute(); // On redessine la ligne rouge immédiatement
 
     if (shouldFitBounds) {
         setTimeout(() => {
@@ -518,6 +519,19 @@ function toggleLiveGps() {
     }
 }
 
+function drawUserToTargetRoute() {
+    userToTargetLayer.clearLayers();
+    if (currentCommune && userMarker && userMarker.getLatLng()) {
+        const { latitude_mairie: lat, longitude_mairie: lon } = currentCommune;
+        const userLatLng = userMarker.getLatLng();
+
+        const trueBearingToTarget = calculateBearing(userLatLng.lat, userLatLng.lng, lat, lon);
+        const magneticBearing = (trueBearingToTarget - MAGNETIC_DECLINATION + 360) % 360;
+        
+        drawRoute([userLatLng.lat, userLatLng.lng], [lat, lon], { isUser: true, magneticBearing: magneticBearing });
+    }
+}
+
 function updateUserPosition(pos) {
     const { latitude, longitude, accuracy, heading, speed } = pos.coords;
 
@@ -554,20 +568,7 @@ function updateUserPosition(pos) {
 
     // --- CORRECTION DU TRAIT ROUGE ---
     // On s'assure que le calque est nettoyé et que la route est redessinée à chaque fois.
-    userToTargetLayer.clearLayers();
-    if (currentCommune) {
-        const { latitude_mairie: lat, longitude_mairie: lon } = currentCommune;
-        
-        // On récupère les coordonnées actuelles du marqueur pour être certain
-        const userLatLng = userMarker.getLatLng();
-
-        const trueBearingToTarget = calculateBearing(userLatLng.lat, userLatLng.lng, lat, lon);
-        const magneticBearing = (trueBearingToTarget - MAGNETIC_DECLINATION + 360) % 360;
-        
-        // On appelle la fonction de dessin avec les bonnes coordonnées
-        drawRoute([userLatLng.lat, userLatLng.lng], [lat, lon], { isUser: true, magneticBearing: magneticBearing });
-    }
-}
+    drawUserToTargetRoute();
 
 function findClosestCommuneName(lat, lon) {
     if (!allCommunes || allCommunes.length === 0) return null;
