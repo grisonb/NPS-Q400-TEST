@@ -51,7 +51,7 @@ const calculateDestinationPoint = (lat, lon, bearing, distanceNm) => {
     
     return [toDeg(destLatRad), toDeg(destLonRad)];
 };
-// ... le reste du fichier continue ici ...
+
 // =========================================================================
 // LOGIQUE PRINCIPALE DE L'APPLICATION
 // =========================================================================
@@ -117,27 +117,6 @@ function initMap() {
         localStorage.setItem('currentCommune', JSON.stringify(manualCommune));
         displayCommuneDetails(manualCommune, false);
     });
-}
-
-function clearCurrentSelection() {
-    selectedPelicanOACI = null;
-    const searchInput = document.getElementById('search-input');
-    const clearSearchBtn = document.getElementById('clear-search');
-    searchInput.value = '';
-    document.getElementById('results-list').style.display = 'none';
-    clearSearchBtn.style.display = 'none';
-    routesLayer.clearLayers();
-    userToTargetLayer.clearLayers();
-    lftwRouteLayer.clearLayers();
-    drawPermanentAirportMarkers();
-    currentCommune = null;
-    localStorage.removeItem('currentCommune');
-    updateCalculatorData();
-    masterRecalculate();
-    updateCommuneDisplay(null);
-    document.getElementById('bingo-map-display').style.display = 'none';
-    navigator.geolocation.getCurrentPosition(updateUserPosition);
-    map.setView([46.6, 2.2], 5.5);
 }
 
 function setupEventListeners() {
@@ -213,7 +192,24 @@ function setupEventListeners() {
         displayResults(scoredResults.slice(0, 10));
     });
 
-    clearSearchBtn.addEventListener('click', clearCurrentSelection);
+    clearSearchBtn.addEventListener('click', () => {
+        selectedPelicanOACI = null;
+        searchInput.value = '';
+        document.getElementById('results-list').style.display = 'none';
+        clearSearchBtn.style.display = 'none';
+        routesLayer.clearLayers();
+        userToTargetLayer.clearLayers();
+        lftwRouteLayer.clearLayers();
+        drawPermanentAirportMarkers();
+        currentCommune = null;
+        localStorage.removeItem('currentCommune');
+        updateCalculatorData();
+        masterRecalculate();
+        updateCommuneDisplay(null);
+        document.getElementById('bingo-map-display').style.display = 'none';
+        navigator.geolocation.getCurrentPosition(updateUserPosition);
+        map.setView([46.6, 2.2], 5.5);
+    });
 
     airportCountInput.addEventListener('change', () => {
         if (currentCommune) {
@@ -281,8 +277,7 @@ function setupEventListeners() {
         handleZipImport(file);
         event.target.value = '';
     });
-    
-gpsDebugButton.addEventListener('click', () => {
+    gpsDebugButton.addEventListener('click', () => {
         isGpsDebugMode = !isGpsDebugMode;
         gpsDebugButton.textContent = isGpsDebugMode ? 'Debug GPS ON' : 'Debug GPS OFF';
         gpsDebugButton.classList.toggle('active', isGpsDebugMode);
@@ -290,7 +285,7 @@ gpsDebugButton.addEventListener('click', () => {
             alert("Mode Debug GPS activé. Une alerte s'affichera à chaque mise à jour de la position.");
         }
     });
-    
+
     updateLftwButtonState();
     updateGaarButtonState();
 }
@@ -329,18 +324,12 @@ function updateCommuneDisplay(commune) {
             const now = new Date();
             const times = SunCalc.getTimes(now, commune.latitude_mairie, commune.longitude_mairie);
             const sunsetString = times.sunset.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Paris' });
-            const closeButtonHTML = `<span id="clear-commune-btn" class="clear-commune-btn" title="Effacer le feu">×</span>`;
-            sunsetHTML = `<div class="sunset-info">🌅&nbsp;CS&nbsp;<b>${sunsetString}</b></div>${closeButtonHTML}`;
+            sunsetHTML = `<div class="sunset-info">🌅&nbsp;CS&nbsp;<b>${sunsetString}</b></div>`;
         } catch (e) {
             sunsetHTML = '<div class="sunset-info"></div>';
         }
     }
     communeDisplay.innerHTML = communeNameHTML + sunsetHTML;
-    
-    const clearCommuneBtn = document.getElementById('clear-commune-btn');
-    if (clearCommuneBtn) {
-        clearCommuneBtn.addEventListener('click', clearCurrentSelection);
-    }
 }
 
 function updateMapBingoDisplay() {
@@ -370,7 +359,6 @@ function updateMapBingoDisplay() {
 
 function displayCommuneDetails(commune, shouldFitBounds = true) {
     routesLayer.clearLayers();
-    // userToTargetLayer.clearLayers(); // <-- LIGNE SUPPRIMÉE : C'est la source du bug.
     lftwRouteLayer.clearLayers();
     drawPermanentAirportMarkers();
     
@@ -535,19 +523,6 @@ function drawUserToTargetRoute() {
 function updateUserPosition(pos) {
     const { latitude, longitude, accuracy, heading, speed } = pos.coords;
 
-    if (isGpsDebugMode) {
-        alert(
-            `--- DONNÉES GPS BRUTES ---\n` +
-            `Latitude: ${latitude}\n` +
-            `Longitude: ${longitude}\n` +
-            `Précision: ${accuracy} m\n` +
-            `Cap Fourni: ${heading}\n` +
-            `Vitesse Fournie: ${speed} m/s`
-        );
-    }
-
-    // --- MISE À JOUR DU MARQUEUR SIMPLE (SANS CERCLE NI CAP POUR L'INSTANT) ---
-    // C'est un retour à une version plus simple pour isoler le bug.
     if (!userMarker) {
         const userIconSVG = `<svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg" width="21" height="21"><path d="M50 0 L100 100 L50 75 L0 100 Z" fill="#e3001b" stroke="white" stroke-width="8"/></svg>`;
         const userIcon = L.divIcon({
@@ -561,14 +536,12 @@ function updateUserPosition(pos) {
         userMarker.setLatLng([latitude, longitude]);
     }
     
-    // Si l'appareil fournit un cap, on oriente le triangle
     if (heading !== null) {
         userMarker.setRotationAngle(heading);
     }
 
-    // --- CORRECTION DU TRAIT ROUGE ---
-    // On s'assure que le calque est nettoyé et que la route est redessinée à chaque fois.
     drawUserToTargetRoute();
+}
 
 function findClosestCommuneName(lat, lon) {
     if (!allCommunes || allCommunes.length === 0) return null;
