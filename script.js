@@ -12,7 +12,7 @@ document.addEventListener('DOMContentLoaded', () => {
 let allCommunes = [], map, permanentAirportLayer, routesLayer, currentCommune = null, selectedPelicanOACI = null;
 let disabledAirports = new Set(), waterAirports = new Set();
 const MAGNETIC_DECLINATION = 1.0;
-let userMarker = null, watchId = null, accuracyCircle = null, headingLayer = null, lastPosition = null;
+let userMarker = null, watchId = null, accuracyCircle = null, headingLayer = null, lastPosition = null, isGpsDebugMode = false;
 let userToTargetLayer = null, lftwRouteLayer = null;
 let showLftwRoute = true;
 let gaarCircuits = [];
@@ -159,11 +159,12 @@ function setupEventListeners() {
     const offlineMapModal = document.getElementById('offline-map-modal');
     const closeOfflineMapButton = document.getElementById('close-offline-map-btn');
     const zipImporterInput = document.getElementById('zip-importer-input');
+    const gpsDebugButton = document.getElementById('gps-debug-button');
 
     if (mainActionButtons) {
         const versionDisplay = document.createElement('div');
         versionDisplay.className = 'version-display';
-        versionDisplay.innerText = 'v54.9';
+        versionDisplay.innerText = 'v55.0';
         mainActionButtons.appendChild(versionDisplay);
     }
 
@@ -280,7 +281,16 @@ function setupEventListeners() {
         handleZipImport(file);
         event.target.value = '';
     });
-
+    
+gpsDebugButton.addEventListener('click', () => {
+        isGpsDebugMode = !isGpsDebugMode;
+        gpsDebugButton.textContent = isGpsDebugMode ? 'Debug GPS ON' : 'Debug GPS OFF';
+        gpsDebugButton.classList.toggle('active', isGpsDebugMode);
+        if (isGpsDebugMode) {
+            alert("Mode Debug GPS activé. Une alerte s'affichera à chaque mise à jour de la position.");
+        }
+    });
+    
     updateLftwButtonState();
     updateGaarButtonState();
 }
@@ -511,13 +521,20 @@ function toggleLiveGps() {
 function updateUserPosition(pos) {
     const { latitude, longitude, accuracy, heading, speed } = pos.coords;
 
+    if (isGpsDebugMode) {
+        alert(
+            `--- DONNÉES GPS BRUTES ---\n` +
+            `Latitude: ${latitude}\n` +
+            `Longitude: ${longitude}\n` +
+            `Précision: ${accuracy} m\n` +
+            `Cap Fourni: ${heading}\n` +
+            `Vitesse Fournie: ${speed} m/s`
+        );
+    }
+
     if (!accuracyCircle) {
         accuracyCircle = L.circle([latitude, longitude], {
-            radius: accuracy,
-            weight: 2,
-            color: 'rgba(0, 90, 156, 0.5)',
-            fillColor: 'rgba(0, 90, 156, 0.2)',
-            fillOpacity: 1
+            radius: accuracy, weight: 2, color: 'rgba(0, 90, 156, 0.5)', fillColor: 'rgba(0, 90, 156, 0.2)', fillOpacity: 1
         }).addTo(map);
     } else {
         accuracyCircle.setLatLng([latitude, longitude]).setRadius(accuracy);
@@ -531,73 +548,57 @@ function updateUserPosition(pos) {
 
     const userIconSVG = `<svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg" width="21" height="21"><path d="M50 0 L100 100 L50 75 L0 100 Z" fill="#005a9c" stroke="white" stroke-width="8"/></svg>`;
     const userIcon = L.divIcon({
-        html: userIconSVG,
-        className: 'user-heading-icon',
-        iconSize: [21, 21],
-        iconAnchor: [10.5, 10.5]
+        html: userIconSVG, className: 'user-heading-icon', iconSize: [21, 21], iconAnchor: [10.5, 10.5]
     });
     
     userMarker = L.marker([latitude, longitude], { 
-        icon: userIcon,
-        rotationOrigin: 'center center'
+        icon: userIcon, rotationOrigin: 'center center'
     }).addTo(headingLayer);
     
-    let trueHeading = heading;
-    let currentSpeed = speed;
+    let finalHeading = heading;
+    let finalSpeed = speed;
 
     if (lastPosition) {
-        const distanceMoved = calculateDistanceInNm(lastPosition.latitude, lastPosition.longitude, latitude, longitude) * 1852;
-        const timeElapsed = (pos.timestamp - lastPosition.timestamp) / 1000;
+        const distanceMoved = calculateDistanceInNm(lastPosition.latitude, lastPosition.longitude, latitude, longitude) * 1852; // m
+        const timeElapsed = (pos.timestamp - lastPosition.timestamp) / 1000; // s
 
-        if (timeElapsed > 0 && distanceMoved > 1) { 
-            if (trueHeading === null) {
-                trueHeading = calculateBearing(lastPosition.latitude, lastPosition.longitude, latitude, longitude);
+        if (timeElapsed > 0.1 && distanceMoved > 1) {
+            if (finalHeading === null) {
+                finalHeading = calculateBearing(lastPosition.latitude, lastPosition.longitude, latitude, longitude);
             }
-            if (currentSpeed === null) {
-                currentSpeed = distanceMoved / timeElapsed;
+            if (finalSpeed === null) {
+                finalSpeed = distanceMoved / timeElapsed;
             }
         }
     }
     
-    if (trueHeading === null && lastPosition && lastPosition.heading) {
-        trueHeading = lastPosition.heading;
+    if (finalHeading === null && lastPosition && lastPosition.heading !== null) {
+        finalHeading = lastPosition.heading;
     }
 
-    lastPosition = { latitude, longitude, timestamp: pos.timestamp, heading: trueHeading };
+    lastPosition = { latitude, longitude, timestamp: pos.timestamp, heading: finalHeading };
 
-    if (trueHeading !== null && currentSpeed !== null && currentSpeed > 0.5) {
-        const speedKts = currentSpeed * 1.94384;
-        
-        userMarker.bindTooltip(`Cap: ${Math.round(trueHeading)}°<br>Vitesse: ${Math.round(speedKts)} kts`, {permanent: false, direction: 'top'});
-        userMarker.setRotationAngle(trueHeading);
-        
-        const dist30minNm = speedKts * (30 / 60);
-        const endPoint = calculateDestinationPoint(latitude, longitude, trueHeading, dist30minNm);
-        
-        L.polyline([[latitude, longitude], endPoint], { color: '#005a9c', weight: 2, opacity: 0.7 }).addTo(headingLayer);
+    if (finalHeading !== null) {
+        userMarker.setRotationAngle(finalHeading);
 
-        for (let min = 5; min <= 30; min += 5) {
-            const distNm = speedKts * (min / 60);
-            const point = calculateDestinationPoint(latitude, longitude, trueHeading, distNm);
+        if (finalSpeed !== null && finalSpeed > 0.5) {
+            const speedKts = finalSpeed * 1.94384;
+            userMarker.bindTooltip(`Cap: ${Math.round(finalHeading)}°<br>Vitesse: ${Math.round(speedKts)} kts`);
             
-            L.circle(point, {
-                radius: 50,
-                color: '#005a9c',
-                fillOpacity: 1
-            }).addTo(headingLayer);
+            const dist30minNm = speedKts * (30 / 60);
+            const endPoint = calculateDestinationPoint(latitude, longitude, finalHeading, dist30minNm);
             
-            L.tooltip({
-                permanent: true,
-                direction: 'top',
-                className: 'time-marker-tooltip',
-                offset: [0, -10]
-            }).setLatLng(point).setContent(`${min}m`).addTo(headingLayer);
+            L.polyline([[latitude, longitude], endPoint], { color: '#005a9c', weight: 2, opacity: 0.7 }).addTo(headingLayer);
+
+            for (let min = 5; min <= 30; min += 5) {
+                const distNm = speedKts * (min / 60);
+                const point = calculateDestinationPoint(latitude, longitude, finalHeading, distNm);
+                L.circle(point, { radius: 50, color: '#005a9c', fillOpacity: 1 }).addTo(headingLayer);
+                L.tooltip({ permanent: true, direction: 'top', className: 'time-marker-tooltip', offset: [0, -10] }).setLatLng(point).setContent(`${min}m`).addTo(headingLayer);
+            }
         }
-    } else if (trueHeading !== null) {
-        userMarker.setRotationAngle(trueHeading);
     }
 
-    // --- CORRECTION : Redessiner la ligne rouge à chaque mise à jour ---
     userToTargetLayer.clearLayers();
     if (currentCommune) {
         const { latitude_mairie: lat, longitude_mairie: lon } = currentCommune;
