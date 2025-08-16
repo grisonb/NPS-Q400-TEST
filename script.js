@@ -164,7 +164,7 @@ function setupEventListeners() {
     if (mainActionButtons) {
         const versionDisplay = document.createElement('div');
         versionDisplay.className = 'version-display';
-        versionDisplay.innerText = 'v55.0';
+        versionDisplay.innerText = 'v55.1';
         mainActionButtons.appendChild(versionDisplay);
     }
 
@@ -532,79 +532,40 @@ function updateUserPosition(pos) {
         );
     }
 
-    if (!accuracyCircle) {
-        accuracyCircle = L.circle([latitude, longitude], {
-            radius: accuracy, weight: 2, color: 'rgba(0, 90, 156, 0.5)', fillColor: 'rgba(0, 90, 156, 0.2)', fillOpacity: 1
+    // --- MISE À JOUR DU MARQUEUR SIMPLE (SANS CERCLE NI CAP POUR L'INSTANT) ---
+    // C'est un retour à une version plus simple pour isoler le bug.
+    if (!userMarker) {
+        const userIconSVG = `<svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg" width="21" height="21"><path d="M50 0 L100 100 L50 75 L0 100 Z" fill="#e3001b" stroke="white" stroke-width="8"/></svg>`;
+        const userIcon = L.divIcon({
+            html: userIconSVG, className: 'user-heading-icon', iconSize: [21, 21], iconAnchor: [10.5, 10.5]
+        });
+        userMarker = L.marker([latitude, longitude], { 
+            icon: userIcon,
+            rotationOrigin: 'center center'
         }).addTo(map);
     } else {
-        accuracyCircle.setLatLng([latitude, longitude]).setRadius(accuracy);
-    }
-    if (accuracyCircle) accuracyCircle.bringToBack();
-
-    if (!headingLayer) {
-        headingLayer = L.layerGroup().addTo(map);
-    }
-    headingLayer.clearLayers();
-
-    const userIconSVG = `<svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg" width="21" height="21"><path d="M50 0 L100 100 L50 75 L0 100 Z" fill="#005a9c" stroke="white" stroke-width="8"/></svg>`;
-    const userIcon = L.divIcon({
-        html: userIconSVG, className: 'user-heading-icon', iconSize: [21, 21], iconAnchor: [10.5, 10.5]
-    });
-    
-    userMarker = L.marker([latitude, longitude], { 
-        icon: userIcon, rotationOrigin: 'center center'
-    }).addTo(headingLayer);
-    
-    let finalHeading = heading;
-    let finalSpeed = speed;
-
-    if (lastPosition) {
-        const distanceMoved = calculateDistanceInNm(lastPosition.latitude, lastPosition.longitude, latitude, longitude) * 1852; // m
-        const timeElapsed = (pos.timestamp - lastPosition.timestamp) / 1000; // s
-
-        if (timeElapsed > 0.1 && distanceMoved > 1) {
-            if (finalHeading === null) {
-                finalHeading = calculateBearing(lastPosition.latitude, lastPosition.longitude, latitude, longitude);
-            }
-            if (finalSpeed === null) {
-                finalSpeed = distanceMoved / timeElapsed;
-            }
-        }
+        userMarker.setLatLng([latitude, longitude]);
     }
     
-    if (finalHeading === null && lastPosition && lastPosition.heading !== null) {
-        finalHeading = lastPosition.heading;
+    // Si l'appareil fournit un cap, on oriente le triangle
+    if (heading !== null) {
+        userMarker.setRotationAngle(heading);
     }
 
-    lastPosition = { latitude, longitude, timestamp: pos.timestamp, heading: finalHeading };
-
-    if (finalHeading !== null) {
-        userMarker.setRotationAngle(finalHeading);
-
-        if (finalSpeed !== null && finalSpeed > 0.5) {
-            const speedKts = finalSpeed * 1.94384;
-            userMarker.bindTooltip(`Cap: ${Math.round(finalHeading)}°<br>Vitesse: ${Math.round(speedKts)} kts`);
-            
-            const dist30minNm = speedKts * (30 / 60);
-            const endPoint = calculateDestinationPoint(latitude, longitude, finalHeading, dist30minNm);
-            
-            L.polyline([[latitude, longitude], endPoint], { color: '#005a9c', weight: 2, opacity: 0.7 }).addTo(headingLayer);
-
-            for (let min = 5; min <= 30; min += 5) {
-                const distNm = speedKts * (min / 60);
-                const point = calculateDestinationPoint(latitude, longitude, finalHeading, distNm);
-                L.circle(point, { radius: 50, color: '#005a9c', fillOpacity: 1 }).addTo(headingLayer);
-                L.tooltip({ permanent: true, direction: 'top', className: 'time-marker-tooltip', offset: [0, -10] }).setLatLng(point).setContent(`${min}m`).addTo(headingLayer);
-            }
-        }
-    }
-
+    // --- CORRECTION DU TRAIT ROUGE ---
+    // On s'assure que le calque est nettoyé et que la route est redessinée à chaque fois.
     userToTargetLayer.clearLayers();
     if (currentCommune) {
         const { latitude_mairie: lat, longitude_mairie: lon } = currentCommune;
-        const trueBearingToTarget = calculateBearing(latitude, longitude, lat, lon);
+        
+        // On récupère les coordonnées actuelles du marqueur pour être certain
+        const userLatLng = userMarker.getLatLng();
+
+        const trueBearingToTarget = calculateBearing(userLatLng.lat, userLatLng.lng, lat, lon);
         const magneticBearing = (trueBearingToTarget - MAGNETIC_DECLINATION + 360) % 360;
-        drawRoute([latitude, longitude], [lat, lon], { isUser: true, magneticBearing: magneticBearing });
+        
+        // On appelle la fonction de dessin avec les bonnes coordonnées
+        drawRoute([userLatLng.lat, userLatLng.lng], [lat, lon], { isUser: true, magneticBearing: magneticBearing });
     }
 }
 
