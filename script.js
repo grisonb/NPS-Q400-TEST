@@ -164,7 +164,7 @@ function setupEventListeners() {
     if (mainActionButtons) {
         const versionDisplay = document.createElement('div');
         versionDisplay.className = 'version-display';
-        versionDisplay.innerText = 'v55.9';
+        versionDisplay.innerText = 'v56.0';
         mainActionButtons.appendChild(versionDisplay);
     }
 
@@ -604,18 +604,63 @@ function renderUserPosition(pos) {
 
 // Ancienne updateUserPosition est maintenant utilisée seulement pour la position initiale
 function updateUserPosition(pos) {
-    const { latitude, longitude } = pos.coords;
+    const { latitude, longitude, accuracy, heading, speed } = pos.coords;
+
+    // --- 1. MISE À JOUR DU MARQUEUR PRINCIPAL ---
     if (!userMarker) {
-         const userIconSVG = `<svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg" width="21" height="21"><path d="M50 0 L100 100 L50 75 L0 100 Z" fill="#e3001b" stroke="white" stroke-width="8"/></svg>`;
+        // Création initiale du marqueur
+        const userIconSVG = `<svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg" width="21" height="21"><path d="M50 0 L100 100 L50 75 L0 100 Z" fill="#e3001b" stroke="white" stroke-width="8"/></svg>`;
         const userIcon = L.divIcon({
             html: userIconSVG, className: 'user-heading-icon', iconSize: [21, 21], iconAnchor: [10.5, 10.5]
         });
         userMarker = L.marker([latitude, longitude], { 
-            icon: userIcon, rotationOrigin: 'center center'
+            icon: userIcon,
+            rotationOrigin: 'center center'
         }).addTo(map);
     } else {
+        // Simple mise à jour de la position
         userMarker.setLatLng([latitude, longitude]);
     }
+    
+    // --- 2. GESTION DU CERCLE DE PRÉCISION ---
+    if (!accuracyCircle) {
+        accuracyCircle = L.circle([latitude, longitude], {
+            radius: accuracy, weight: 2, color: 'rgba(0, 90, 156, 0.5)', fillColor: 'rgba(0, 90, 156, 0.2)', fillOpacity: 1
+        }).addTo(map);
+    } else {
+        accuracyCircle.setLatLng([latitude, longitude]).setRadius(accuracy);
+    }
+    if (accuracyCircle) accuracyCircle.bringToBack();
+    
+    // --- 3. GESTION DE LA LIGNE DE FOI ET DE L'ORIENTATION ---
+    if (!headingLayer) {
+        headingLayer = L.layerGroup().addTo(map);
+    }
+    headingLayer.clearLayers(); // On nettoie uniquement le calque de la ligne de foi
+
+    // On affiche le cap et la vitesse uniquement si les données sont valides et que l'on bouge
+    if (heading !== null && speed !== null && speed > 0.5) {
+        userMarker.setRotationAngle(heading);
+        
+        const speedKts = speed * 1.94384;
+        userMarker.bindTooltip(`Cap: ${Math.round(heading)}°<br>Vitesse: ${Math.round(speedKts)} kts`);
+        
+        const dist30minNm = speedKts * (30 / 60);
+        if (dist30minNm > 0) {
+            const endPoint = calculateDestinationPoint(latitude, longitude, heading, dist30minNm);
+            L.polyline([[latitude, longitude], endPoint], { color: '#005a9c', weight: 2, opacity: 0.7 }).addTo(headingLayer);
+
+            for (let min = 5; min <= 30; min += 5) {
+                const distNm = speedKts * (min / 60);
+                const point = calculateDestinationPoint(latitude, longitude, heading, distNm);
+                L.circle(point, { radius: 50, color: '#005a9c', fillOpacity: 1 }).addTo(headingLayer);
+                L.tooltip({ permanent: true, direction: 'top', className: 'time-marker-tooltip', offset: [0, -10] }).setLatLng(point).setContent(`${min}m`).addTo(headingLayer);
+            }
+        }
+    }
+
+    // --- 4. REDESSINER LA LIGNE ROUGE VERS LA CIBLE ---
+    // Cette fonction est maintenant appelée à chaque mise à jour, ce qui garantit le suivi.
     drawUserToTargetRoute();
 }
 
