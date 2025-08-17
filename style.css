@@ -452,3 +452,8 @@ html, body {
 .clear-commune-btn:hover {
     color: var(--secondary-color);
 }
+
+#refresh-gps-btn.active {
+    background-color: var(--success-color) !important;
+    transform: scale(1.05);
+}
