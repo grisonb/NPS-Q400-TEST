@@ -436,3 +436,19 @@ html, body {
     padding: 2px 5px;
     box-shadow: none;
 }
+
+/* --- STYLE POUR LE BOUTON D'EFFACEMENT DU FEU --- */
+.clear-commune-btn {
+    font-size: 28px;
+    font-weight: bold;
+    color: var(--light-text-color);
+    cursor: pointer;
+    margin-left: 15px;
+    padding: 0 5px;
+    line-height: 1;
+    transition: color 0.2s;
+}
+
+.clear-commune-btn:hover {
+    color: var(--secondary-color);
+}
