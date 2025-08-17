@@ -164,7 +164,7 @@ function setupEventListeners() {
     if (mainActionButtons) {
         const versionDisplay = document.createElement('div');
         versionDisplay.className = 'version-display';
-        versionDisplay.innerText = 'v55.6';
+        versionDisplay.innerText = 'v55.8';
         mainActionButtons.appendChild(versionDisplay);
     }
 
@@ -1160,39 +1160,21 @@ function initializeCalculator() {
     const csLftwDisplay = document.getElementById('cs-lftw-display');
     const lftwAirport = pelicanAirports.find(ap => ap.oaci === 'LFTW');
     const refreshGpsBtn = document.getElementById('refresh-gps-btn');
-    refreshGpsBtn.addEventListener('click', async () => {
-        if (!navigator.geolocation) {
-            alert("La géolocalisation n'est pas supportée par ce navigateur.");
-            return;
-        }
-
-        const originalText = refreshGpsBtn.textContent;
-        refreshGpsBtn.textContent = '🛰️ ...';
-        refreshGpsBtn.disabled = true;
-
-        try {
-            const pos = await new Promise((resolve, reject) => {
-                navigator.geolocation.getCurrentPosition(resolve, reject, { 
-                    enableHighAccuracy: true,
-                    timeout: 10000, // 10 secondes max pour trouver la position
-                    maximumAge: 0 
-                });
-            });
-
-            updateUserPosition(pos);
+    refreshGpsBtn.addEventListener('click', () => {
+        // On vérifie simplement si une position GPS est déjà affichée
+        if (userMarker && userMarker.getLatLng()) {
+            // Pas besoin de demander une nouvelle position, on utilise celle qui est affichée.
+            // La fonction updateCalculatorData lira la position de userMarker.
             updateCalculatorData();
+            // On force le recalcul de tous les onglets.
             masterRecalculate();
-
-        } catch (error) {
-            let errorMessage = "Impossible d'obtenir la position GPS.";
-            if (error.code === 1) errorMessage = "L'autorisation de géolocalisation a été refusée.";
-            if (error.code === 2) errorMessage = "Position non disponible.";
-            if (error.code === 3) errorMessage = "La demande de géolocalisation a expiré.";
-            alert(errorMessage);
-        } finally {
-            // Ce bloc s'exécute toujours, que ça réussisse ou que ça échoue.
-            refreshGpsBtn.textContent = originalText;
-            refreshGpsBtn.disabled = false;
+            // On peut ajouter un petit feedback visuel pour confirmer l'action
+            refreshGpsBtn.classList.add('active');
+            setTimeout(() => {
+                refreshGpsBtn.classList.remove('active');
+            }, 500);
+        } else {
+            alert("Aucune position GPS active à rafraîchir. Veuillez activer le suivi GPS d'abord.");
         }
     });
 
