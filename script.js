@@ -12,7 +12,7 @@ document.addEventListener('DOMContentLoaded', () => {
 let allCommunes = [], map, permanentAirportLayer, routesLayer, currentCommune = null, selectedPelicanOACI = null;
 let disabledAirports = new Set(), waterAirports = new Set();
 const MAGNETIC_DECLINATION = 1.0;
-let userMarker = null, watchId = null, accuracyCircle = null, headingLayer = null, lastPosition = null, isGpsDebugMode = false, gpsUpdateLoop = null;
+let userMarker = null, watchId = null, accuracyCircle = null, headingLayer = null, lastPosition = null, isGpsDebugMode = false;
 let userToTargetLayer = null, lftwRouteLayer = null;
 let showLftwRoute = true;
 let gaarCircuits = [];
@@ -20,7 +20,9 @@ let isGaarMode = false;
 let isDrawingMode = false;
 const manualCircuitColors = ['#ff00ff', '#00ffff', '#ff8c00', '#00ff00', '#ff1493'];
 let gaarLayer = null;
-let db; // Variable pour la connexion à la base de données IndexedDB
+let deptsLayer = null;
+let showDeptsLayer = false;
+let db;
 
 const pelicanAirports = [
     { oaci: "LFLU", name: "Valence-Chabeuil", lat: 44.920, lon: 4.968 }, { oaci: "LFMU", name: "Béziers-Vias", lat: 43.323, lon: 3.354 }, { oaci: "LFJR", name: "Angers-Marcé", lat: 47.560, lon: -0.312 }, { oaci: "LFHO", name: "Aubenas-Ardèche Méridionale", lat: 44.545, lon: 4.385 }, { oaci: "LFLX", name: "Châteauroux-Déols", lat: 46.861, lon: 1.720 }, { oaci: "LFBM", name: "Mont-de-Marsan", lat: 43.894, lon: -0.509 }, { oaci: "LFBL", name: "Limoges-Bellegarde", lat: 45.862, lon: 1.180 }, { oaci: "LFAQ", name: "Albert-Bray", lat: 49.972, lon: 2.698 }, { oaci: "LFBP", name: "Pau-Pyrénées", lat: 43.380, lon: -0.418 }, { oaci: "LFTH", name: "Toulon-Hyères", lat: 43.097, lon: 6.146 }, { oaci: "LFSG", name: "Épinal-Mirecourt", lat: 48.325, lon: 6.068 }, { oaci: "LFKC", name: "Calvi-Sainte-Catherine", lat: 42.530, lon: 8.793 }, { oaci: "LFMD", name: "Cannes-Mandelieu", lat: 43.542, lon: 6.956 }, { oaci: "LFKB", name: "Bastia-Poretta", lat: 42.552, lon: 9.483 }, { oaci: "LFMH", name: "Saint-Étienne-Bouthéon", lat: 45.541, lon: 4.296 }, { oaci: "LFKF", name: "Figari-Sud-Corse", lat: 41.500, lon: 9.097 }, { oaci: "LFCC", name: "Cahors-Lalbenque", lat: 44.351, lon: 1.475 }, { oaci: "LFML", name: "Marseille-Provence", lat: 43.436, lon: 5.215 }, { oaci: "LFKJ", name: "Ajaccio-Napoléon-Bonaparte", lat: 41.923, lon: 8.802 }, { oaci: "LFMK", name: "Carcassonne-Salvaza", lat: 43.215, lon: 2.306 }, { oaci: "LFRV", name: "Vannes-Meucon", lat: 47.720, lon: -2.721 }, { oaci: "LFTW", name: "Nîmes-Garons", lat: 43.757, lon: 4.416 }, { oaci: "LFMP", name: "Perpignan-Rivesaltes", lat: 42.740, lon: 2.870 }, { oaci: "LFBD", name: "Bordeaux-Mérignac", lat: 44.828, lon: -0.691 }
@@ -45,10 +47,8 @@ const calculateDestinationPoint = (lat, lon, bearing, distanceNm) => {
     const lonRad = toRad(lon);
     const bearingRad = toRad(bearing);
     const distRad = distanceNm / R;
-
     const destLatRad = Math.asin(Math.sin(latRad) * Math.cos(distRad) + Math.cos(latRad) * Math.sin(distRad) * Math.cos(bearingRad));
     let destLonRad = lonRad + Math.atan2(Math.sin(bearingRad) * Math.sin(distRad) * Math.cos(latRad), Math.cos(distRad) - Math.sin(latRad) * Math.sin(destLatRad));
-    
     return [toDeg(destLatRad), toDeg(destLonRad)];
 };
 
@@ -68,15 +68,44 @@ async function initializeApp() {
     await initDB();
     displayInstalledMaps();
     try {
-        const response = await fetch('./communes.json');
-        if (!response.ok) throw new Error(`HTTP ${response.status}`);
-        const data = await response.json();
-        if (!data || !data.data) throw new Error("Format JSON invalide.");
-        allCommunes = data.data.map(c => ({ ...c, normalized_name: simplifyString(c.nom_standard), search_parts: simplifyString(c.nom_standard).split(' ').filter(Boolean), soundex_parts: simplifyString(c.nom_standard).split(' ').filter(Boolean).map(part => soundex(part)) }));
+        const [communesResponse, deptsResponse] = await Promise.all([
+            fetch('./communes.json'),
+            fetch('./departements.geojson')
+        ]);
+
+        if (!communesResponse.ok) throw new Error(`communes.json: HTTP ${communesResponse.status}`);
+        if (!deptsResponse.ok) throw new Error(`departements.geojson: HTTP ${deptsResponse.status}`);
+
+        const communesData = await communesResponse.json();
+        const deptsData = await deptsResponse.json();
+        
+        if (!communesData || !communesData.data) throw new Error("Format JSON invalide pour communes.json.");
+        allCommunes = communesData.data.map(c => ({ ...c, normalized_name: simplifyString(c.nom_standard), search_parts: simplifyString(c.nom_standard).split(' ').filter(Boolean), soundex_parts: simplifyString(c.nom_standard).split(' ').filter(Boolean).map(part => soundex(part)) }));
+        
         statusMessage.style.display = 'none';
         searchSection.style.display = 'block';
         initMap();
+
+        deptsLayer = L.geoJSON(deptsData, {
+            style: {
+                color: "#000",
+                weight: 1,
+                opacity: 0.4,
+                fillOpacity: 0.0
+            }
+        }).bindTooltip(layer => layer.feature.properties.code, {
+            permanent: true,
+            direction: 'center',
+            className: 'department-label'
+        });
+
         setupEventListeners();
+
+        const savedDeptsState = localStorage.getItem('showDeptsLayer');
+        showDeptsLayer = savedDeptsState === 'true';
+        toggleDeptsLayerVisibility();
+
+
         if (localStorage.getItem('liveGpsActive') === 'true') {
             toggleLiveGps();
         } else {
@@ -119,27 +148,6 @@ function initMap() {
     });
 }
 
-function clearCurrentSelection() {
-    selectedPelicanOACI = null;
-    const searchInput = document.getElementById('search-input');
-    const clearSearchBtn = document.getElementById('clear-search');
-    searchInput.value = '';
-    document.getElementById('results-list').style.display = 'none';
-    clearSearchBtn.style.display = 'none';
-    routesLayer.clearLayers();
-    userToTargetLayer.clearLayers();
-    lftwRouteLayer.clearLayers();
-    drawPermanentAirportMarkers();
-    currentCommune = null;
-    localStorage.removeItem('currentCommune');
-    updateCalculatorData();
-    masterRecalculate();
-    updateCommuneDisplay(null);
-    document.getElementById('bingo-map-display').style.display = 'none';
-    navigator.geolocation.getCurrentPosition(updateUserPosition);
-    map.setView([46.6, 2.2], 5.5);
-}
-
 function setupEventListeners() {
     const searchInput = document.getElementById('search-input');
     const clearSearchBtn = document.getElementById('clear-search');
@@ -160,6 +168,7 @@ function setupEventListeners() {
     const closeOfflineMapButton = document.getElementById('close-offline-map-btn');
     const zipImporterInput = document.getElementById('zip-importer-input');
     const gpsDebugButton = document.getElementById('gps-debug-button');
+    const deptsLayerButton = document.getElementById('depts-layer-button');
 
     if (mainActionButtons) {
         const versionDisplay = document.createElement('div');
@@ -276,6 +285,11 @@ function setupEventListeners() {
     closeOfflineMapButton.addEventListener('click', () => { offlineMapModal.style.display = 'none'; });
     offlineMapModal.addEventListener('click', (e) => { if (e.target === offlineMapModal) { offlineMapModal.style.display = 'none'; } });
     window.addEventListener('keydown', (e) => { if (e.key === 'Escape' && offlineMapModal.style.display === 'flex') { offlineMapModal.style.display = 'none'; } });
+    deptsLayerButton.addEventListener('click', () => {
+        showDeptsLayer = !showDeptsLayer;
+        localStorage.setItem('showDeptsLayer', showDeptsLayer);
+        toggleDeptsLayerVisibility();
+    });
     zipImporterInput.addEventListener('change', (event) => {
         const file = event.target.files[0];
         handleZipImport(file);
@@ -292,6 +306,27 @@ function setupEventListeners() {
 
     updateLftwButtonState();
     updateGaarButtonState();
+}
+
+function clearCurrentSelection() {
+    selectedPelicanOACI = null;
+    const searchInput = document.getElementById('search-input');
+    const clearSearchBtn = document.getElementById('clear-search');
+    searchInput.value = '';
+    document.getElementById('results-list').style.display = 'none';
+    clearSearchBtn.style.display = 'none';
+    routesLayer.clearLayers();
+    userToTargetLayer.clearLayers();
+    lftwRouteLayer.clearLayers();
+    drawPermanentAirportMarkers();
+    currentCommune = null;
+    localStorage.removeItem('currentCommune');
+    updateCalculatorData();
+    masterRecalculate();
+    updateCommuneDisplay(null);
+    document.getElementById('bingo-map-display').style.display = 'none';
+    navigator.geolocation.getCurrentPosition(updateUserPosition);
+    map.setView([46.6, 2.2], 5.5);
 }
 
 function displayResults(results) {
@@ -328,7 +363,6 @@ function updateCommuneDisplay(commune) {
             const now = new Date();
             const times = SunCalc.getTimes(now, commune.latitude_mairie, commune.longitude_mairie);
             const sunsetString = times.sunset.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Paris' });
-            // On ajoute le bouton "x" ici
             const closeButtonHTML = `<span id="clear-commune-btn" class="clear-commune-btn" title="Effacer le feu">×</span>`;
             sunsetHTML = `<div class="sunset-info">🌅&nbsp;CS&nbsp;<b>${sunsetString}</b></div>${closeButtonHTML}`;
         } catch (e) {
@@ -337,7 +371,6 @@ function updateCommuneDisplay(commune) {
     }
     communeDisplay.innerHTML = communeNameHTML + sunsetHTML;
     
-    // On attache l'événement de clic au nouveau bouton
     const clearCommuneBtn = document.getElementById('clear-commune-btn');
     if (clearCommuneBtn) {
         clearCommuneBtn.addEventListener('click', clearCurrentSelection);
@@ -503,112 +536,37 @@ window.toggleWater = oaci => { waterAirports.has(oaci) ? waterAirports.delete(oa
 function toggleLiveGps() {
     const liveGpsButton = document.getElementById('live-gps-button');
     if (watchId) {
-        // Arrêter le suivi
         navigator.geolocation.clearWatch(watchId);
-        cancelAnimationFrame(gpsUpdateLoop);
         watchId = null;
-        gpsUpdateLoop = null;
-        lastPosition = null; // Réinitialiser pour le prochain démarrage
         liveGpsButton.classList.remove('active');
         localStorage.setItem('liveGpsActive', 'false');
     } else {
-        // Démarrer le suivi
-        if (!navigator.geolocation) { 
-            alert("La géolocalisation n'est pas supportée."); 
-            return; 
-        }
-        
-        const updateDisplay = () => {
-            if (lastPosition) {
-                renderUserPosition(lastPosition);
-            }
-            gpsUpdateLoop = requestAnimationFrame(updateDisplay);
-        };
-        
+        if (!navigator.geolocation) { alert("La géolocalisation n'est pas supportée."); return; }
         watchId = navigator.geolocation.watchPosition(
-            (pos) => {
-                lastPosition = pos; // On ne fait que stocker la dernière position
-                if (!gpsUpdateLoop) {
-                    // On démarre la boucle de rendu seulement après avoir reçu la première position
-                    updateDisplay();
-                }
-            }, 
-            (error) => { 
-                console.error("Erreur de suivi GPS:", error); 
-                alert("Impossible d'activer le suivi GPS. Vérifiez les autorisations."); 
-                if (watchId) toggleLiveGps(); 
-            }, 
+            updateUserPosition, 
+            (error) => { console.error("Erreur de suivi GPS:", error); alert("Impossible d'activer le suivi GPS. Vérifiez les autorisations."); if (watchId) toggleLiveGps(); }, 
             { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
         );
-        
         liveGpsButton.classList.add('active');
         localStorage.setItem('liveGpsActive', 'true');
     }
 }
 
-function renderUserPosition(pos) {
-    const { latitude, longitude, accuracy, heading, speed } = pos.coords;
-
-    // Le marqueur principal est maintenant géré par cette boucle
-    if (!userMarker) {
-        const userIconSVG = `<svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg" width="21" height="21"><path d="M50 0 L100 100 L50 75 L0 100 Z" fill="#e3001b" stroke="white" stroke-width="8"/></svg>`;
-        const userIcon = L.divIcon({
-            html: userIconSVG, className: 'user-heading-icon', iconSize: [21, 21], iconAnchor: [10.5, 10.5]
-        });
-        userMarker = L.marker([latitude, longitude], { 
-            icon: userIcon, rotationOrigin: 'center center'
-        }).addTo(map);
-    } else {
-        userMarker.setLatLng([latitude, longitude]);
+function drawUserToTargetRoute() {
+    userToTargetLayer.clearLayers();
+    if (currentCommune && userMarker && userMarker.getLatLng()) {
+        const { latitude_mairie: lat, longitude_mairie: lon } = currentCommune;
+        const userLatLng = userMarker.getLatLng();
+        const trueBearingToTarget = calculateBearing(userLatLng.lat, userLatLng.lng, lat, lon);
+        const magneticBearing = (trueBearingToTarget - MAGNETIC_DECLINATION + 360) % 360;
+        drawRoute([userLatLng.lat, userLatLng.lng], [lat, lon], { isUser: true, magneticBearing: magneticBearing });
     }
-
-    if (!accuracyCircle) {
-        accuracyCircle = L.circle([latitude, longitude], {
-            radius: accuracy, weight: 2, color: 'rgba(0, 90, 156, 0.5)', fillColor: 'rgba(0, 90, 156, 0.2)', fillOpacity: 1
-        }).addTo(map);
-    } else {
-        accuracyCircle.setLatLng([latitude, longitude]).setRadius(accuracy);
-    }
-    if (accuracyCircle) accuracyCircle.bringToBack();
-    
-    if (!headingLayer) {
-        headingLayer = L.layerGroup().addTo(map);
-    }
-    headingLayer.clearLayers();
-    
-    let finalHeading = heading;
-    if (finalHeading !== null) {
-        userMarker.setRotationAngle(finalHeading);
-        
-        if (speed !== null && speed > 0.5) {
-            const speedKts = speed * 1.94384;
-            userMarker.bindTooltip(`Cap: ${Math.round(finalHeading)}°<br>Vitesse: ${Math.round(speedKts)} kts`);
-            
-            const dist30minNm = speedKts * (30 / 60);
-            if (dist30minNm > 0) {
-                const endPoint = calculateDestinationPoint(latitude, longitude, finalHeading, dist30minNm);
-                L.polyline([[latitude, longitude], endPoint], { color: '#005a9c', weight: 2, opacity: 0.7 }).addTo(headingLayer);
-
-                for (let min = 5; min <= 30; min += 5) {
-                    const distNm = speedKts * (min / 60);
-                    const point = calculateDestinationPoint(latitude, longitude, finalHeading, distNm);
-                    L.circle(point, { radius: 50, color: '#005a9c', fillOpacity: 1 }).addTo(headingLayer);
-                    L.tooltip({ permanent: true, direction: 'top', className: 'time-marker-tooltip', offset: [0, -10] }).setLatLng(point).setContent(`${min}m`).addTo(headingLayer);
-                }
-            }
-        }
-    }
-    
-    drawUserToTargetRoute();
 }
 
-// Ancienne updateUserPosition est maintenant utilisée seulement pour la position initiale
 function updateUserPosition(pos) {
     const { latitude, longitude, accuracy, heading, speed } = pos.coords;
 
-    // --- 1. MISE À JOUR DU MARQUEUR PRINCIPAL ---
     if (!userMarker) {
-        // Création initiale du marqueur
         const userIconSVG = `<svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg" width="21" height="21"><path d="M50 0 L100 100 L50 75 L0 100 Z" fill="#e3001b" stroke="white" stroke-width="8"/></svg>`;
         const userIcon = L.divIcon({
             html: userIconSVG, className: 'user-heading-icon', iconSize: [21, 21], iconAnchor: [10.5, 10.5]
@@ -618,50 +576,25 @@ function updateUserPosition(pos) {
             rotationOrigin: 'center center'
         }).addTo(map);
     } else {
-        // Simple mise à jour de la position
         userMarker.setLatLng([latitude, longitude]);
     }
     
-    // --- 2. GESTION DU CERCLE DE PRÉCISION ---
-    if (!accuracyCircle) {
-        accuracyCircle = L.circle([latitude, longitude], {
-            radius: accuracy, weight: 2, color: 'rgba(0, 90, 156, 0.5)', fillColor: 'rgba(0, 90, 156, 0.2)', fillOpacity: 1
-        }).addTo(map);
-    } else {
-        accuracyCircle.setLatLng([latitude, longitude]).setRadius(accuracy);
-    }
-    if (accuracyCircle) accuracyCircle.bringToBack();
-    
-    // --- 3. GESTION DE LA LIGNE DE FOI ET DE L'ORIENTATION ---
-    if (!headingLayer) {
-        headingLayer = L.layerGroup().addTo(map);
-    }
-    headingLayer.clearLayers(); // On nettoie uniquement le calque de la ligne de foi
-
-    // On affiche le cap et la vitesse uniquement si les données sont valides et que l'on bouge
-    if (heading !== null && speed !== null && speed > 0.5) {
+    if (heading !== null) {
         userMarker.setRotationAngle(heading);
-        
-        const speedKts = speed * 1.94384;
-        userMarker.bindTooltip(`Cap: ${Math.round(heading)}°<br>Vitesse: ${Math.round(speedKts)} kts`);
-        
-        const dist30minNm = speedKts * (30 / 60);
-        if (dist30minNm > 0) {
-            const endPoint = calculateDestinationPoint(latitude, longitude, heading, dist30minNm);
-            L.polyline([[latitude, longitude], endPoint], { color: '#005a9c', weight: 2, opacity: 0.7 }).addTo(headingLayer);
-
-            for (let min = 5; min <= 30; min += 5) {
-                const distNm = speedKts * (min / 60);
-                const point = calculateDestinationPoint(latitude, longitude, heading, distNm);
-                L.circle(point, { radius: 50, color: '#005a9c', fillOpacity: 1 }).addTo(headingLayer);
-                L.tooltip({ permanent: true, direction: 'top', className: 'time-marker-tooltip', offset: [0, -10] }).setLatLng(point).setContent(`${min}m`).addTo(headingLayer);
-            }
-        }
     }
 
-    // --- 4. REDESSINER LA LIGNE ROUGE VERS LA CIBLE ---
-    // Cette fonction est maintenant appelée à chaque mise à jour, ce qui garantit le suivi.
     drawUserToTargetRoute();
+}
+
+function findClosestCommuneName(lat, lon) {
+    if (!allCommunes || allCommunes.length === 0) return null;
+    let closestCommune = null; let minDistance = Infinity;
+    for (const commune of allCommunes) {
+        const distance = calculateDistanceInNm(lat, lon, commune.latitude_mairie, commune.longitude_mairie);
+        if (distance < minDistance) { minDistance = distance; closestCommune = commune; }
+    }
+    if (closestCommune && minDistance < 27) { return closestCommune.nom_standard; }
+    return null;
 }
 
 function toggleLftwRoute() {
@@ -686,6 +619,26 @@ function drawLftwRoute() {
     const trueBearing = calculateBearing(lat, lon, lftwLat, lftwLon);
     const magneticBearing = (trueBearing - MAGNETIC_DECLINATION + 360) % 360;
     drawRoute([lat, lon], [lftwLat, lftwLon], { isLftwRoute: true, magneticBearing: magneticBearing });
+}
+
+function toggleDeptsLayerVisibility() {
+    if (showDeptsLayer) {
+        if (deptsLayer && !map.hasLayer(deptsLayer)) {
+            map.addLayer(deptsLayer);
+        }
+    } else {
+        if (deptsLayer && map.hasLayer(deptsLayer)) {
+            map.removeLayer(deptsLayer);
+        }
+    }
+    updateDeptsButtonState();
+}
+
+function updateDeptsButtonState() {
+    const deptsButton = document.getElementById('depts-layer-button');
+    if (deptsButton) {
+        deptsButton.classList.toggle('active', showDeptsLayer);
+    }
 }
 
 function toggleGaarVisibility() { isGaarMode = !isGaarMode; updateGaarButtonState(); if (isGaarMode) { redrawGaarCircuits(); } else { gaarLayer.clearLayers(); if (isDrawingMode) { toggleGaarDrawingMode(); } } }
@@ -719,6 +672,7 @@ function updateCalculatorData() {
 }
 
 function soundex(s) { if (!s) return ""; const a = s.toLowerCase().split(""), f = a.shift(); if (!f) return ""; let r = ""; const codes = { a: "", e: "", i: "", o: "", u: "", b: 1, f: 1, p: 1, v: 1, c: 2, g: 2, j: 2, k: 2, q: 2, s: 2, x: 2, z: 2, d: 3, t: 3, l: 4, m: 5, n: 5, r: 6 }; return r = f + a.map(v => codes[v]).filter((v, i, a) => 0 === i ? v !== codes[f] : v !== a[i - 1]).join(""), (r + "000").slice(0, 4).toUpperCase() }
+
 // =========================================================================
 // GESTION DES CARTES HORS-LIGNE
 // =========================================================================
@@ -1194,14 +1148,9 @@ function initializeCalculator() {
     const lftwAirport = pelicanAirports.find(ap => ap.oaci === 'LFTW');
     const refreshGpsBtn = document.getElementById('refresh-gps-btn');
     refreshGpsBtn.addEventListener('click', () => {
-        // On vérifie simplement si une position GPS est déjà affichée
         if (userMarker && userMarker.getLatLng()) {
-            // Pas besoin de demander une nouvelle position, on utilise celle qui est affichée.
-            // La fonction updateCalculatorData lira la position de userMarker.
             updateCalculatorData();
-            // On force le recalcul de tous les onglets.
             masterRecalculate();
-            // On peut ajouter un petit feedback visuel pour confirmer l'action
             refreshGpsBtn.classList.add('active');
             setTimeout(() => {
                 refreshGpsBtn.classList.remove('active');
