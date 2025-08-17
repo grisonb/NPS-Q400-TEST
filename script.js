@@ -68,31 +68,28 @@ async function initializeApp() {
     await initDB();
     displayInstalledMaps();
     try {
-        const [communesResponse, deptsResponse] = await Promise.all([
-            fetch('./communes.json'),
-            fetch('./departements.geojson')
-        ]);
-
-        if (!communesResponse.ok) throw new Error(`communes.json: HTTP ${communesResponse.status}`);
-        if (!deptsResponse.ok) throw new Error(`departements.geojson: HTTP ${deptsResponse.status}`);
-
-        const communesData = await communesResponse.json();
-        const deptsData = await deptsResponse.json();
+        // --- CORRECTION : Chargement séquentiel pour plus de stabilité ---
         
+        // 1. Charger les communes
+        const communesResponse = await fetch('./communes.json');
+        if (!communesResponse.ok) throw new Error(`communes.json: HTTP ${communesResponse.status}`);
+        const communesData = await communesResponse.json();
         if (!communesData || !communesData.data) throw new Error("Format JSON invalide pour communes.json.");
         allCommunes = communesData.data.map(c => ({ ...c, normalized_name: simplifyString(c.nom_standard), search_parts: simplifyString(c.nom_standard).split(' ').filter(Boolean), soundex_parts: simplifyString(c.nom_standard).split(' ').filter(Boolean).map(part => soundex(part)) }));
         
+        // 2. Charger les départements
+        const deptsResponse = await fetch('./departements.geojson');
+        if (!deptsResponse.ok) throw new Error(`departements.geojson: HTTP ${deptsResponse.status}`);
+        const deptsData = await deptsResponse.json();
+
+        // 3. Maintenant que tout est chargé, on initialise la carte et les interactions
         statusMessage.style.display = 'none';
         searchSection.style.display = 'block';
         initMap();
 
         deptsLayer = L.geoJSON(deptsData, {
-            style: {
-                color: "#000",
-                weight: 1,
-                opacity: 0.4,
-                fillOpacity: 0.0
-            }
+            style: { color: "#000", weight: 1, opacity: 0.4, fillOpacity: 0.0 },
+            pane: 'tilePane' // Assure que le calque est sous les routes, etc.
         }).bindTooltip(layer => layer.feature.properties.code, {
             permanent: true,
             direction: 'center',
@@ -104,7 +101,6 @@ async function initializeApp() {
         const savedDeptsState = localStorage.getItem('showDeptsLayer');
         showDeptsLayer = savedDeptsState === 'true';
         toggleDeptsLayerVisibility();
-
 
         if (localStorage.getItem('liveGpsActive') === 'true') {
             toggleLiveGps();
@@ -173,7 +169,7 @@ function setupEventListeners() {
     if (mainActionButtons) {
         const versionDisplay = document.createElement('div');
         versionDisplay.className = 'version-display';
-        versionDisplay.innerText = 'v56.0';
+        versionDisplay.innerText = 'v56.2';
         mainActionButtons.appendChild(versionDisplay);
     }
 
