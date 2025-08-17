@@ -119,6 +119,27 @@ function initMap() {
     });
 }
 
+function clearCurrentSelection() {
+    selectedPelicanOACI = null;
+    const searchInput = document.getElementById('search-input');
+    const clearSearchBtn = document.getElementById('clear-search');
+    searchInput.value = '';
+    document.getElementById('results-list').style.display = 'none';
+    clearSearchBtn.style.display = 'none';
+    routesLayer.clearLayers();
+    userToTargetLayer.clearLayers();
+    lftwRouteLayer.clearLayers();
+    drawPermanentAirportMarkers();
+    currentCommune = null;
+    localStorage.removeItem('currentCommune');
+    updateCalculatorData();
+    masterRecalculate();
+    updateCommuneDisplay(null);
+    document.getElementById('bingo-map-display').style.display = 'none';
+    navigator.geolocation.getCurrentPosition(updateUserPosition);
+    map.setView([46.6, 2.2], 5.5);
+}
+
 function setupEventListeners() {
     const searchInput = document.getElementById('search-input');
     const clearSearchBtn = document.getElementById('clear-search');
@@ -143,7 +164,7 @@ function setupEventListeners() {
     if (mainActionButtons) {
         const versionDisplay = document.createElement('div');
         versionDisplay.className = 'version-display';
-        versionDisplay.innerText = 'v55.3';
+        versionDisplay.innerText = 'v55.4';
         mainActionButtons.appendChild(versionDisplay);
     }
 
@@ -192,24 +213,7 @@ function setupEventListeners() {
         displayResults(scoredResults.slice(0, 10));
     });
 
-    clearSearchBtn.addEventListener('click', () => {
-        selectedPelicanOACI = null;
-        searchInput.value = '';
-        document.getElementById('results-list').style.display = 'none';
-        clearSearchBtn.style.display = 'none';
-        routesLayer.clearLayers();
-        userToTargetLayer.clearLayers();
-        lftwRouteLayer.clearLayers();
-        drawPermanentAirportMarkers();
-        currentCommune = null;
-        localStorage.removeItem('currentCommune');
-        updateCalculatorData();
-        masterRecalculate();
-        updateCommuneDisplay(null);
-        document.getElementById('bingo-map-display').style.display = 'none';
-        navigator.geolocation.getCurrentPosition(updateUserPosition);
-        map.setView([46.6, 2.2], 5.5);
-    });
+    clearSearchBtn.addEventListener('click', clearCurrentSelection);
 
     airportCountInput.addEventListener('change', () => {
         if (currentCommune) {
@@ -324,12 +328,20 @@ function updateCommuneDisplay(commune) {
             const now = new Date();
             const times = SunCalc.getTimes(now, commune.latitude_mairie, commune.longitude_mairie);
             const sunsetString = times.sunset.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Paris' });
-            sunsetHTML = `<div class="sunset-info">🌅&nbsp;CS&nbsp;<b>${sunsetString}</b></div>`;
+            // On ajoute le bouton "x" ici
+            const closeButtonHTML = `<span id="clear-commune-btn" class="clear-commune-btn" title="Effacer le feu">×</span>`;
+            sunsetHTML = `<div class="sunset-info">🌅&nbsp;CS&nbsp;<b>${sunsetString}</b></div>${closeButtonHTML}`;
         } catch (e) {
             sunsetHTML = '<div class="sunset-info"></div>';
         }
     }
     communeDisplay.innerHTML = communeNameHTML + sunsetHTML;
+    
+    // On attache l'événement de clic au nouveau bouton
+    const clearCommuneBtn = document.getElementById('clear-commune-btn');
+    if (clearCommuneBtn) {
+        clearCommuneBtn.addEventListener('click', clearCurrentSelection);
+    }
 }
 
 function updateMapBingoDisplay() {
