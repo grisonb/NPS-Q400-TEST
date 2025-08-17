@@ -164,7 +164,7 @@ function setupEventListeners() {
     if (mainActionButtons) {
         const versionDisplay = document.createElement('div');
         versionDisplay.className = 'version-display';
-        versionDisplay.innerText = 'v55.4';
+        versionDisplay.innerText = 'v55.5';
         mainActionButtons.appendChild(versionDisplay);
     }
 
@@ -535,23 +535,88 @@ function drawUserToTargetRoute() {
 function updateUserPosition(pos) {
     const { latitude, longitude, accuracy, heading, speed } = pos.coords;
 
-    if (!userMarker) {
-        const userIconSVG = `<svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg" width="21" height="21"><path d="M50 0 L100 100 L50 75 L0 100 Z" fill="#e3001b" stroke="white" stroke-width="8"/></svg>`;
-        const userIcon = L.divIcon({
-            html: userIconSVG, className: 'user-heading-icon', iconSize: [21, 21], iconAnchor: [10.5, 10.5]
-        });
-        userMarker = L.marker([latitude, longitude], { 
-            icon: userIcon,
-            rotationOrigin: 'center center'
-        }).addTo(map);
-    } else {
-        userMarker.setLatLng([latitude, longitude]);
-    }
-    
-    if (heading !== null) {
-        userMarker.setRotationAngle(heading);
+    if (isGpsDebugMode) {
+        alert(
+            `--- DONNÉES GPS BRUTES ---\n` +
+            `Latitude: ${latitude}\n` + `Longitude: ${longitude}\n` +
+            `Précision: ${accuracy} m\n` + `Cap Fourni: ${heading}\n` +
+            `Vitesse Fournie: ${speed} m/s`
+        );
     }
 
+    // --- 1. Cercle de précision ---
+    if (!accuracyCircle) {
+        accuracyCircle = L.circle([latitude, longitude], {
+            radius: accuracy, weight: 2, color: 'rgba(0, 90, 156, 0.5)', fillColor: 'rgba(0, 90, 156, 0.2)', fillOpacity: 1
+        }).addTo(map);
+    } else {
+        accuracyCircle.setLatLng([latitude, longitude]).setRadius(accuracy);
+    }
+    if (accuracyCircle) accuracyCircle.bringToBack();
+
+    // --- 2. Groupe "cap" (avion + ligne de foi) ---
+    if (!headingLayer) {
+        headingLayer = L.layerGroup().addTo(map);
+    }
+    headingLayer.clearLayers();
+
+    const userIconSVG = `<svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg" width="21" height="21"><path d="M50 0 L100 100 L50 75 L0 100 Z" fill="#e3001b" stroke="white" stroke-width="8"/></svg>`;
+    const userIcon = L.divIcon({
+        html: userIconSVG, className: 'user-heading-icon', iconSize: [21, 21], iconAnchor: [10.5, 10.5]
+    });
+    
+    userMarker = L.marker([latitude, longitude], { 
+        icon: userIcon, rotationOrigin: 'center center'
+    }).addTo(headingLayer);
+    
+    // --- 3. Logique de Cap et Vitesse ---
+    let finalHeading = heading;
+    let finalSpeed = speed;
+
+    if (lastPosition) {
+        const distanceMoved = calculateDistanceInNm(lastPosition.latitude, lastPosition.longitude, latitude, longitude) * 1852;
+        const timeElapsed = (pos.timestamp - lastPosition.timestamp) / 1000;
+
+        if (timeElapsed > 0.1 && distanceMoved > 1) { 
+            if (finalHeading === null) {
+                finalHeading = calculateBearing(lastPosition.latitude, lastPosition.longitude, latitude, longitude);
+            }
+            if (finalSpeed === null) {
+                finalSpeed = distanceMoved / timeElapsed;
+            }
+        }
+    }
+    
+    if (finalHeading === null && lastPosition && lastPosition.heading !== null) {
+        finalHeading = lastPosition.heading;
+    }
+
+    lastPosition = { latitude, longitude, timestamp: pos.timestamp, heading: finalHeading };
+
+    // --- 4. Affichage du cap et de la ligne de foi ---
+    if (finalHeading !== null) {
+        userMarker.setRotationAngle(finalHeading);
+
+        if (finalSpeed !== null && finalSpeed > 0.5) { // Seuil de vitesse pour afficher la ligne
+            const speedKts = finalSpeed * 1.94384;
+            userMarker.bindTooltip(`Cap: ${Math.round(finalHeading)}°<br>Vitesse: ${Math.round(speedKts)} kts`);
+            
+            const dist30minNm = speedKts * (30 / 60);
+            if (dist30minNm > 0) {
+                const endPoint = calculateDestinationPoint(latitude, longitude, finalHeading, dist30minNm);
+                L.polyline([[latitude, longitude], endPoint], { color: '#005a9c', weight: 2, opacity: 0.7 }).addTo(headingLayer);
+
+                for (let min = 5; min <= 30; min += 5) {
+                    const distNm = speedKts * (min / 60);
+                    const point = calculateDestinationPoint(latitude, longitude, finalHeading, distNm);
+                    L.circle(point, { radius: 50, color: '#005a9c', fillOpacity: 1 }).addTo(headingLayer);
+                    L.tooltip({ permanent: true, direction: 'top', className: 'time-marker-tooltip', offset: [0, -10] }).setLatLng(point).setContent(`${min}m`).addTo(headingLayer);
+                }
+            }
+        }
+    }
+
+    // --- 5. Redessiner la route vers la cible ---
     drawUserToTargetRoute();
 }
 
