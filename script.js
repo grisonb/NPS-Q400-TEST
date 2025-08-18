@@ -164,7 +164,7 @@ function setupEventListeners() {
     if (mainActionButtons) {
         const versionDisplay = document.createElement('div');
         versionDisplay.className = 'version-display';
-        versionDisplay.innerText = 'v60.2';
+        versionDisplay.innerText = 'v60.3';
         mainActionButtons.appendChild(versionDisplay);
     }
 
@@ -1089,21 +1089,14 @@ function initializeCalculator() {
     const lftwAirport = pelicanAirports.find(ap => ap.oaci === 'LFTW');
     const refreshGpsBtn = document.getElementById('refresh-gps-btn');
     refreshGpsBtn.addEventListener('click', () => {
-        if (navigator.geolocation) {
-            refreshGpsBtn.textContent = '🛰️ ...';
-            navigator.geolocation.getCurrentPosition(
-                (pos) => {
-                    updateUserPosition(pos);
-                    updateCalculatorData();
-                    masterRecalculate();
-                    refreshGpsBtn.textContent = '🛰️ Rafraîchir GPS';
-                },
-                () => {
-                    alert("Impossible d'obtenir la position GPS.");
-                    refreshGpsBtn.textContent = '🛰️ Rafraîchir GPS';
-                },
-                { enableHighAccuracy: true }
-            );
+        // On vérifie simplement si une position GPS est déjà connue via le marqueur sur la carte
+        if (userMarker && userMarker.getLatLng()) {
+            // Si oui, on lance directement le recalcul des données
+            updateCalculatorData();
+            masterRecalculate();
+        } else {
+            // Si aucune position n'a jamais été reçue, on prévient l'utilisateur
+            alert("Aucune position GPS n'est disponible pour le rafraîchissement.");
         }
     });
 
