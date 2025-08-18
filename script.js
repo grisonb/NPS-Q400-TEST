@@ -20,9 +20,7 @@ let isGaarMode = false;
 let isDrawingMode = false;
 const manualCircuitColors = ['#ff00ff', '#00ffff', '#ff8c00', '#00ff00', '#ff1493'];
 let gaarLayer = null;
-let deptsLayer = null;
-let showDeptsLayer = false;
-let db;
+let db; // Variable pour la connexion à la base de données IndexedDB
 
 const pelicanAirports = [
     { oaci: "LFLU", name: "Valence-Chabeuil", lat: 44.920, lon: 4.968 }, { oaci: "LFMU", name: "Béziers-Vias", lat: 43.323, lon: 3.354 }, { oaci: "LFJR", name: "Angers-Marcé", lat: 47.560, lon: -0.312 }, { oaci: "LFHO", name: "Aubenas-Ardèche Méridionale", lat: 44.545, lon: 4.385 }, { oaci: "LFLX", name: "Châteauroux-Déols", lat: 46.861, lon: 1.720 }, { oaci: "LFBM", name: "Mont-de-Marsan", lat: 43.894, lon: -0.509 }, { oaci: "LFBL", name: "Limoges-Bellegarde", lat: 45.862, lon: 1.180 }, { oaci: "LFAQ", name: "Albert-Bray", lat: 49.972, lon: 2.698 }, { oaci: "LFBP", name: "Pau-Pyrénées", lat: 43.380, lon: -0.418 }, { oaci: "LFTH", name: "Toulon-Hyères", lat: 43.097, lon: 6.146 }, { oaci: "LFSG", name: "Épinal-Mirecourt", lat: 48.325, lon: 6.068 }, { oaci: "LFKC", name: "Calvi-Sainte-Catherine", lat: 42.530, lon: 8.793 }, { oaci: "LFMD", name: "Cannes-Mandelieu", lat: 43.542, lon: 6.956 }, { oaci: "LFKB", name: "Bastia-Poretta", lat: 42.552, lon: 9.483 }, { oaci: "LFMH", name: "Saint-Étienne-Bouthéon", lat: 45.541, lon: 4.296 }, { oaci: "LFKF", name: "Figari-Sud-Corse", lat: 41.500, lon: 9.097 }, { oaci: "LFCC", name: "Cahors-Lalbenque", lat: 44.351, lon: 1.475 }, { oaci: "LFML", name: "Marseille-Provence", lat: 43.436, lon: 5.215 }, { oaci: "LFKJ", name: "Ajaccio-Napoléon-Bonaparte", lat: 41.923, lon: 8.802 }, { oaci: "LFMK", name: "Carcassonne-Salvaza", lat: 43.215, lon: 2.306 }, { oaci: "LFRV", name: "Vannes-Meucon", lat: 47.720, lon: -2.721 }, { oaci: "LFTW", name: "Nîmes-Garons", lat: 43.757, lon: 4.416 }, { oaci: "LFMP", name: "Perpignan-Rivesaltes", lat: 42.740, lon: 2.870 }, { oaci: "LFBD", name: "Bordeaux-Mérignac", lat: 44.828, lon: -0.691 }
@@ -47,8 +45,10 @@ const calculateDestinationPoint = (lat, lon, bearing, distanceNm) => {
     const lonRad = toRad(lon);
     const bearingRad = toRad(bearing);
     const distRad = distanceNm / R;
+
     const destLatRad = Math.asin(Math.sin(latRad) * Math.cos(distRad) + Math.cos(latRad) * Math.sin(distRad) * Math.cos(bearingRad));
     let destLonRad = lonRad + Math.atan2(Math.sin(bearingRad) * Math.sin(distRad) * Math.cos(latRad), Math.cos(distRad) - Math.sin(latRad) * Math.sin(destLatRad));
+
     return [toDeg(destLatRad), toDeg(destLonRad)];
 };
 
@@ -68,40 +68,15 @@ async function initializeApp() {
     await initDB();
     displayInstalledMaps();
     try {
-        // --- CORRECTION : Chargement séquentiel pour plus de stabilité ---
-        
-        // 1. Charger les communes
-        const communesResponse = await fetch('./communes.json');
-        if (!communesResponse.ok) throw new Error(`communes.json: HTTP ${communesResponse.status}`);
-        const communesData = await communesResponse.json();
-        if (!communesData || !communesData.data) throw new Error("Format JSON invalide pour communes.json.");
-        allCommunes = communesData.data.map(c => ({ ...c, normalized_name: simplifyString(c.nom_standard), search_parts: simplifyString(c.nom_standard).split(' ').filter(Boolean), soundex_parts: simplifyString(c.nom_standard).split(' ').filter(Boolean).map(part => soundex(part)) }));
-        
-        // 2. Charger les départements
-        const deptsResponse = await fetch('./departements.geojson');
-        if (!deptsResponse.ok) throw new Error(`departements.geojson: HTTP ${deptsResponse.status}`);
-        const deptsData = await deptsResponse.json();
-
-        // 3. Maintenant que tout est chargé, on initialise la carte et les interactions
+        const response = await fetch('./communes.json');
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        const data = await response.json();
+        if (!data || !data.data) throw new Error("Format JSON invalide.");
+        allCommunes = data.data.map(c => ({ ...c, normalized_name: simplifyString(c.nom_standard), search_parts: simplifyString(c.nom_standard).split(' ').filter(Boolean), soundex_parts: simplifyString(c.nom_standard).split(' ').filter(Boolean).map(part => soundex(part)) }));
         statusMessage.style.display = 'none';
         searchSection.style.display = 'block';
         initMap();
-
-        deptsLayer = L.geoJSON(deptsData, {
-            style: { color: "#000", weight: 1, opacity: 0.4, fillOpacity: 0.0 },
-            pane: 'tilePane' // Assure que le calque est sous les routes, etc.
-        }).bindTooltip(layer => layer.feature.properties.code, {
-            permanent: true,
-            direction: 'center',
-            className: 'department-label'
-        });
-
         setupEventListeners();
-
-        const savedDeptsState = localStorage.getItem('showDeptsLayer');
-        showDeptsLayer = savedDeptsState === 'true';
-        toggleDeptsLayerVisibility();
-
         if (localStorage.getItem('liveGpsActive') === 'true') {
             toggleLiveGps();
         } else {
@@ -129,7 +104,7 @@ function initMap() {
     gaarLayer = L.layerGroup().addTo(map);
     drawPermanentAirportMarkers();
     redrawGaarCircuits();
-    
+
     map.on('click', handleGaarMapClick);
 
     map.on('contextmenu', (e) => {
@@ -142,6 +117,27 @@ function initMap() {
         localStorage.setItem('currentCommune', JSON.stringify(manualCommune));
         displayCommuneDetails(manualCommune, false);
     });
+}
+
+function clearCurrentSelection() {
+    selectedPelicanOACI = null;
+    const searchInput = document.getElementById('search-input');
+    const clearSearchBtn = document.getElementById('clear-search');
+    searchInput.value = '';
+    document.getElementById('results-list').style.display = 'none';
+    clearSearchBtn.style.display = 'none';
+    routesLayer.clearLayers();
+    userToTargetLayer.clearLayers();
+    lftwRouteLayer.clearLayers();
+    drawPermanentAirportMarkers();
+    currentCommune = null;
+    localStorage.removeItem('currentCommune');
+    updateCalculatorData();
+    masterRecalculate();
+    updateCommuneDisplay(null);
+    document.getElementById('bingo-map-display').style.display = 'none';
+    navigator.geolocation.getCurrentPosition(updateUserPosition);
+    map.setView([46.6, 2.2], 5.5);
 }
 
 function setupEventListeners() {
@@ -164,12 +160,11 @@ function setupEventListeners() {
     const closeOfflineMapButton = document.getElementById('close-offline-map-btn');
     const zipImporterInput = document.getElementById('zip-importer-input');
     const gpsDebugButton = document.getElementById('gps-debug-button');
-    const deptsLayerButton = document.getElementById('depts-layer-button');
 
     if (mainActionButtons) {
         const versionDisplay = document.createElement('div');
         versionDisplay.className = 'version-display';
-        versionDisplay.innerText = 'v55.8.1';
+        versionDisplay.innerText = 'v55.4.1';
         mainActionButtons.appendChild(versionDisplay);
     }
 
@@ -281,11 +276,6 @@ function setupEventListeners() {
     closeOfflineMapButton.addEventListener('click', () => { offlineMapModal.style.display = 'none'; });
     offlineMapModal.addEventListener('click', (e) => { if (e.target === offlineMapModal) { offlineMapModal.style.display = 'none'; } });
     window.addEventListener('keydown', (e) => { if (e.key === 'Escape' && offlineMapModal.style.display === 'flex') { offlineMapModal.style.display = 'none'; } });
-    deptsLayerButton.addEventListener('click', () => {
-        showDeptsLayer = !showDeptsLayer;
-        localStorage.setItem('showDeptsLayer', showDeptsLayer);
-        toggleDeptsLayerVisibility();
-    });
     zipImporterInput.addEventListener('change', (event) => {
         const file = event.target.files[0];
         handleZipImport(file);
@@ -302,27 +292,6 @@ function setupEventListeners() {
 
     updateLftwButtonState();
     updateGaarButtonState();
-}
-
-function clearCurrentSelection() {
-    selectedPelicanOACI = null;
-    const searchInput = document.getElementById('search-input');
-    const clearSearchBtn = document.getElementById('clear-search');
-    searchInput.value = '';
-    document.getElementById('results-list').style.display = 'none';
-    clearSearchBtn.style.display = 'none';
-    routesLayer.clearLayers();
-    userToTargetLayer.clearLayers();
-    lftwRouteLayer.clearLayers();
-    drawPermanentAirportMarkers();
-    currentCommune = null;
-    localStorage.removeItem('currentCommune');
-    updateCalculatorData();
-    masterRecalculate();
-    updateCommuneDisplay(null);
-    document.getElementById('bingo-map-display').style.display = 'none';
-    navigator.geolocation.getCurrentPosition(updateUserPosition);
-    map.setView([46.6, 2.2], 5.5);
 }
 
 function displayResults(results) {
@@ -359,6 +328,7 @@ function updateCommuneDisplay(commune) {
             const now = new Date();
             const times = SunCalc.getTimes(now, commune.latitude_mairie, commune.longitude_mairie);
             const sunsetString = times.sunset.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Paris' });
+            // On ajoute le bouton "x" ici
             const closeButtonHTML = `<span id="clear-commune-btn" class="clear-commune-btn" title="Effacer le feu">×</span>`;
             sunsetHTML = `<div class="sunset-info">🌅&nbsp;CS&nbsp;<b>${sunsetString}</b></div>${closeButtonHTML}`;
         } catch (e) {
@@ -367,6 +337,7 @@ function updateCommuneDisplay(commune) {
     }
     communeDisplay.innerHTML = communeNameHTML + sunsetHTML;
     
+    // On attache l'événement de clic au nouveau bouton
     const clearCommuneBtn = document.getElementById('clear-commune-btn');
     if (clearCommuneBtn) {
         clearCommuneBtn.addEventListener('click', clearCurrentSelection);
@@ -382,7 +353,7 @@ function updateMapBingoDisplay() {
 
     const bingoBase = calculateBingo(CALCULATOR_DATA.distBaseFeu);
     const bingoPelic = calculateBingo(CALCULATOR_DATA.distPelicFeu);
-    
+
     const lftwEl = document.getElementById('map-bingo-lftw');
     const pelicEl = document.getElementById('map-bingo-pelic');
 
@@ -394,7 +365,7 @@ function updateMapBingoDisplay() {
     } else {
         pelicEl.style.display = 'none';
     }
-    
+
     bingoDisplay.style.display = 'flex';
 }
 
@@ -402,36 +373,36 @@ function displayCommuneDetails(commune, shouldFitBounds = true) {
     routesLayer.clearLayers();
     lftwRouteLayer.clearLayers();
     drawPermanentAirportMarkers();
-    
+
     updateCommuneDisplay(commune);
-    
+
     const { latitude_mairie: lat, longitude_mairie: lon, nom_standard: name } = commune;
     document.getElementById('search-input').value = name;
     document.getElementById('results-list').style.display = 'none';
     document.getElementById('clear-search').style.display = 'block';
-    
+
     const allPoints = [[lat, lon]];
     const fireIcon = L.divIcon({ className: 'custom-marker-icon fire-marker', html: '🔥' });
     L.marker([lat, lon], { icon: fireIcon }).bindPopup(`<b>${name}</b><br>${convertToDMM(lat, 'lat')}<br>${convertToDMM(lon, 'lon')}`).addTo(routesLayer);
-    
+
     const numAirports = parseInt(document.getElementById('airport-count').value, 10);
     const closestAirports = getClosestAirports(lat, lon, numAirports);
-    
+
     const closestOACIs = new Set(closestAirports.map(ap => ap.oaci));
     if (!selectedPelicanOACI || !closestOACIs.has(selectedPelicanOACI)) {
         selectedPelicanOACI = closestAirports.length > 0 ? closestAirports[0].oaci : null;
     }
-    
+
     closestAirports.forEach(ap => {
         allPoints.push([ap.lat, ap.lon]);
         drawRoute([lat, lon], [ap.lat, ap.lon], { oaci: ap.oaci });
     });
-    
+
     const isLftwInClosest = closestAirports.some(ap => ap.oaci === 'LFTW');
     if (showLftwRoute && !isLftwInClosest) {
         drawLftwRoute();
     }
-    
+
     updateCalculatorData();
     updateMapBingoDisplay();
     navigator.geolocation.getCurrentPosition(updateUserPosition, () => {}, { enableHighAccuracy: true });
@@ -449,7 +420,7 @@ function displayCommuneDetails(commune, shouldFitBounds = true) {
             }
         }, 300);
     }
-    
+
     document.dispatchEvent(new Event('communeSelected'));
 }
 
@@ -484,7 +455,7 @@ function drawRoute(startLatLng, endLatLng, options = {}) {
     } else {
         labelText = `${Math.round(distance)} Nm`;
     }
-    
+
     const polyline = L.polyline([startLatLng, endLatLng], { color, weight: 3, opacity: 0.8, dashArray }).addTo(layer);
 
     if (isUser) {
@@ -553,8 +524,10 @@ function drawUserToTargetRoute() {
     if (currentCommune && userMarker && userMarker.getLatLng()) {
         const { latitude_mairie: lat, longitude_mairie: lon } = currentCommune;
         const userLatLng = userMarker.getLatLng();
+
         const trueBearingToTarget = calculateBearing(userLatLng.lat, userLatLng.lng, lat, lon);
         const magneticBearing = (trueBearingToTarget - MAGNETIC_DECLINATION + 360) % 360;
+
         drawRoute([userLatLng.lat, userLatLng.lng], [lat, lon], { isUser: true, magneticBearing: magneticBearing });
     }
 }
@@ -574,7 +547,7 @@ function updateUserPosition(pos) {
     } else {
         userMarker.setLatLng([latitude, longitude]);
     }
-    
+
     if (heading !== null) {
         userMarker.setRotationAngle(heading);
     }
@@ -617,26 +590,6 @@ function drawLftwRoute() {
     drawRoute([lat, lon], [lftwLat, lftwLon], { isLftwRoute: true, magneticBearing: magneticBearing });
 }
 
-function toggleDeptsLayerVisibility() {
-    if (showDeptsLayer) {
-        if (deptsLayer && !map.hasLayer(deptsLayer)) {
-            map.addLayer(deptsLayer);
-        }
-    } else {
-        if (deptsLayer && map.hasLayer(deptsLayer)) {
-            map.removeLayer(deptsLayer);
-        }
-    }
-    updateDeptsButtonState();
-}
-
-function updateDeptsButtonState() {
-    const deptsButton = document.getElementById('depts-layer-button');
-    if (deptsButton) {
-        deptsButton.classList.toggle('active', showDeptsLayer);
-    }
-}
-
 function toggleGaarVisibility() { isGaarMode = !isGaarMode; updateGaarButtonState(); if (isGaarMode) { redrawGaarCircuits(); } else { gaarLayer.clearLayers(); if (isDrawingMode) { toggleGaarDrawingMode(); } } }
 function updateGaarButtonState() { const gaarButton = document.getElementById('gaar-mode-button'); const gaarControls = document.getElementById('gaar-controls'); gaarButton.classList.toggle('active', isGaarMode); gaarControls.style.display = isGaarMode ? 'flex' : 'none'; }
 function toggleGaarDrawingMode() { const editButton = document.getElementById('edit-circuits-button'); const mapContainer = document.getElementById('map'); const status = document.getElementById('gaar-status'); isDrawingMode = !isDrawingMode; editButton.classList.toggle('active', isDrawingMode); mapContainer.classList.toggle('crosshair-cursor', isDrawingMode); status.textContent = isDrawingMode ? 'Mode modification activé. Cliquez pour ajouter des points.' : ''; }
@@ -668,7 +621,6 @@ function updateCalculatorData() {
 }
 
 function soundex(s) { if (!s) return ""; const a = s.toLowerCase().split(""), f = a.shift(); if (!f) return ""; let r = ""; const codes = { a: "", e: "", i: "", o: "", u: "", b: 1, f: 1, p: 1, v: 1, c: 2, g: 2, j: 2, k: 2, q: 2, s: 2, x: 2, z: 2, d: 3, t: 3, l: 4, m: 5, n: 5, r: 6 }; return r = f + a.map(v => codes[v]).filter((v, i, a) => 0 === i ? v !== codes[f] : v !== a[i - 1]).join(""), (r + "000").slice(0, 4).toUpperCase() }
-
 // =========================================================================
 // GESTION DES CARTES HORS-LIGNE
 // =========================================================================
@@ -735,11 +687,11 @@ async function handleZipImport(file) {
             const batch = allTilesData.slice(i, i + batchSize);
             const transaction = db.transaction('tiles', 'readwrite');
             const store = transaction.objectStore('tiles');
-            
+
             batch.forEach(tileData => {
                 store.put(tileData);
             });
-            
+
             await new Promise((resolve, reject) => {
                 transaction.oncomplete = () => {
                     processedFiles += batch.length;
@@ -750,9 +702,9 @@ async function handleZipImport(file) {
                 transaction.onerror = () => reject(transaction.error);
             });
         }
-        
+
         statusMessage.textContent = `Importation de ${packName} terminée !`;
-        
+
         const installedPacks = JSON.parse(localStorage.getItem('installedMapPacks') || '[]');
         if (!installedPacks.find(p => p.name === packName)) {
             installedPacks.push({ name: packName, date: new Date().toLocaleDateString() });
@@ -798,7 +750,7 @@ window.deleteMapPack = async function(packName) {
         const store = transaction.objectStore('tiles');
         const index = store.index('packName');
         const request = index.openKeyCursor(IDBKeyRange.only(packName));
-        
+
         let deletedCount = 0;
         request.onsuccess = event => {
             const cursor = event.target.result;
@@ -810,13 +762,13 @@ window.deleteMapPack = async function(packName) {
         };
 
         await new Promise(resolve => transaction.oncomplete = resolve);
-        
+
         alert(`${deletedCount} tuiles du pack "${packName}" ont été supprimées.`);
 
         let installedPacks = JSON.parse(localStorage.getItem('installedMapPacks') || '[]');
         installedPacks = installedPacks.filter(p => p.name !== packName);
         localStorage.setItem('installedMapPacks', JSON.stringify(installedPacks));
-        
+
         displayInstalledMaps();
 
     } catch (error) {
@@ -857,7 +809,7 @@ function updateAndSortRotations(container, current, params) {
         const initialFuelForCheck = current.fuel + (params.transitTime && params.consoTransitFromGps ? (params.consoTransitFromGps || 0) : 0);
         const fuelForFirstDropBase = (params.transitTime && params.consoTransitFromGps ? (params.consoTransitFromGps || 0) : 0) + 250 + params.bingoBase;
         const fuelForFirstDropPelic = (params.transitTime && params.consoTransitFromGps ? (params.consoTransitFromGps || 0) : 0) + 250 + params.bingoPelic;
-        
+
         const hasFuelForFirstDropBase = initialFuelForCheck >= fuelForFirstDropBase;
         const hasFuelForFirstDropPelic = initialFuelForCheck >= fuelForFirstDropPelic;
 
@@ -884,13 +836,13 @@ function updateAndSortRotations(container, current, params) {
             formulaString = `HDV sur Feu = ${formatTime(hdvOnSite) || 'N/A'}\n\nFormule : (HDV sur Feu) / Durée Rotation\n\nHDV sur Feu = ${formatTime(params.limiteHDV) || 'N/A'} - ${formatTime(params.transitTime || 0)} (transit)\n\nCalcul : ${formatTime(hdvOnSite) || 'N/A'} / ${params.rotationTime || 'N/A'} min`;
             if (canCalculateTime && hdvOnSite !== null) value = hdvOnSite / params.rotationTime;
         }
-        
+
         if (value === null) {
             valueCell.textContent = '--';
         } else {
             valueCell.textContent = value.toFixed(1); 
         }
-        
+
         valueCell.classList.remove('rotation-value-default', 'rotation-value-green', 'rotation-value-yellow', 'rotation-value-red');
         if (value === null) {
              valueCell.classList.add('rotation-value-default');
@@ -902,9 +854,9 @@ function updateAndSortRotations(container, current, params) {
         } else {
             valueCell.classList.add('rotation-value-red');
         }
-        
+
         if (helpIcon) { helpIcon.onclick = () => alert(formulaString); }
-        
+
         sortable.push({ value: (value !== null) ? value : Infinity, element: line });
     });
 
@@ -920,7 +872,7 @@ function recalculateBlocFuel() {
     let previousBlocArrivee = blocDepart;
     let previousFuelPelic = fuelDepart;
     let cumulativeTpsVol = 0;
-    
+
     const tableRows = document.querySelectorAll('#bloc-fuel tbody tr');
     tableRows.forEach((row) => {
         const blocArrivee = parseTime(row.querySelector('.time-input-wrapper .display-input').value);
@@ -987,22 +939,22 @@ function updatePreviTab() {
     if (bingoBase === 700) { bingoBaseDisplay.innerHTML = '-- kg'; } else { bingoBaseDisplay.innerHTML = `${CALCULATOR_DATA.distBaseFeu} Nm /&nbsp;<b>${bingoBase} kg</b>`; }
     const bingoPelicDisplay = document.getElementById('previ-bingo-pelic');
     if (bingoPelic === 700 || !selectedPelicanOACI) { bingoPelicDisplay.innerHTML = '-- kg'; } else { bingoPelicDisplay.innerHTML = `${selectedPelicanOACI} / ${CALCULATOR_DATA.distPelicFeu} Nm /&nbsp;<b>${bingoPelic} kg</b>`; }
-    
+
     const blocDepart = parseTime(document.getElementById('bloc-depart').querySelector('.display-input').value);
     const fuelDepart = parseNumeric(document.getElementById('fuel-depart').querySelector('.display-input').value);
     const limiteHDV = parseTime(document.getElementById('limite-hdv').querySelector('.display-input').value);
     const tmdTime = parseTime(document.getElementById('tmd').querySelector('.display-input').value);
     const csFeuTime = parseTime(CALCULATOR_DATA.csFeu);
-    
+
     const transitTime = Math.round(calculateTransitTime(CALCULATOR_DATA.distBaseFeu));
     const rotationTime = Math.round(calculateRotationTime(CALCULATOR_DATA.distPelicFeu));
     const consoRotation = calculateConsoRotation(CALCULATOR_DATA.distPelicFeu);
     const consoAller = calculateFuelToGo(CALCULATOR_DATA.distBaseFeu);
     const heureSurFeu = blocDepart !== null ? blocDepart + transitTime : null;
-    
+
     document.getElementById('duree-transit').textContent = formatTime(transitTime) || '--:--';
     setHelp('duree-transit-help', `Formule : Distance * (60 / Vitesse)\n\nCalcul : ${CALCULATOR_DATA.distBaseFeu} Nm * (60 / ${CALCULATOR_DATA.distBaseFeu <= 70 ? 210 : 240})`);
-    
+
     document.getElementById('heure-sur-feu').textContent = formatTime(heureSurFeu) || '--:--';
     setHelp('heure-sur-feu-help', `Formule : BLOC Départ + Durée transit\n\nCalcul : ${formatTime(blocDepart) || 'N/A'} + ${formatTime(transitTime)}`);
 
@@ -1019,7 +971,7 @@ function updatePreviTab() {
     const fuelEstime = fuelDepart ? fuelDepart - consoAller : null;
     if (!isFuelSurFeuManual) { fuelSurFeuInput.value = fuelEstime ? `${fuelEstime} kg` : ''; }
     setHelp('fuel-sur-feu-help', `Formule (AUTO) : FUEL Départ - Conso. transit\n\nCalcul : ${fuelDepart || 'N/A'} - ${consoAller}`);
-    
+
     const fuelSurFeu = parseNumeric(fuelSurFeuInput.value);
 
     document.getElementById('cs-sur-feu').textContent = CALCULATOR_DATA.csFeu;
@@ -1060,7 +1012,7 @@ function updateSuiviTab() {
     const allRows = document.querySelectorAll('#bloc-fuel tbody tr');
     let lastFilledRow = null;
     allRows.forEach(row => { if (parseTime(row.querySelector('.time-input-wrapper .display-input').value) !== null || parseNumeric(row.querySelector('.numeric-input-wrapper .display-input').value) !== null) { lastFilledRow = row; } });
-    
+
     if (!lastFilledRow) {
         document.getElementById('suivi-fuel-actuel').textContent = '-- kg';
         document.querySelectorAll('#suivi-rotation-results-container .value').forEach(el => { el.textContent = '--'; el.className = 'value rotation-value-default'; });
@@ -1069,10 +1021,10 @@ function updateSuiviTab() {
         const currentTime = parseTime(lastFilledRow.querySelector('.time-input-wrapper .display-input').value);
         const currentHdv = parseTime(lastFilledRow.querySelector('.tps-vol-restant-cell').textContent);
         document.getElementById('suivi-fuel-actuel').textContent = currentFuel ? `${currentFuel} kg` : '--';
-        
+
         const consoRotation = parseNumeric(suiviConsoInput.value);
         const rotationTime = parseTime(suiviDureeInput.value);
-        
+
         const csFeuTime = parseTime(CALCULATOR_DATA.csFeu);
         const tmdTime = parseTime(document.getElementById('tmd').querySelector('.display-input').value);
         updateAndSortRotations(document.getElementById('suivi-rotation-results-container'), { fuel: currentFuel, time: currentTime }, { bingoBase, bingoPelic, consoRotation, rotationTime, csFeuTime, tmdTime, limiteHDV: currentHdv, transitTime: 0 });
@@ -1085,7 +1037,7 @@ function updateDeroutementTab() {
         const icon = document.getElementById(id);
         if (icon) { icon.onclick = () => alert(formula || "Données insuffisantes pour le calcul."); }
     };
-    
+
     if (!currentCommune) {
         document.getElementById('derout-bingo-base').innerHTML = '-- kg';
         document.getElementById('derout-bingo-pelic').innerHTML = '-- kg';
@@ -1113,7 +1065,7 @@ function updateDeroutementTab() {
     if (bingoBase === 700) { bingoBaseDisplay.innerHTML = '-- kg'; } else { bingoBaseDisplay.innerHTML = `${CALCULATOR_DATA.distBaseFeu} Nm /&nbsp;<b>${bingoBase} kg</b>`; }
     const bingoPelicDisplay = document.getElementById('derout-bingo-pelic');
     if (bingoPelic === 700 || !selectedPelicanOACI) { bingoPelicDisplay.innerHTML = '-- kg'; } else { bingoPelicDisplay.innerHTML = `${selectedPelicanOACI} / ${CALCULATOR_DATA.distPelicFeu} Nm /&nbsp;<b>${bingoPelic} kg</b>`; }
-    
+
     const fuelMiniBase = consoTransitFromGps + 250 + bingoBase;
     const fuelMiniPelic = consoTransitFromGps + 250 + bingoPelic;
     document.getElementById('derout-fuel-mini-base').textContent = (fuelMiniBase === (950 + consoTransitFromGps)) ? '-- kg' : `${fuelMiniBase} kg`;
@@ -1136,7 +1088,7 @@ function updateDeroutementTab() {
         { bingoBase, bingoPelic, consoRotation, rotationTime, csFeuTime, tmdTime, limiteHDV, transitTime: transitTimeFromGps, consoTransitFromGps: consoTransitFromGps }
     );
 }
-    
+
 function initializeCalculator() {
     const resetButton = document.getElementById('reset-all-btn');
     const onglets = document.querySelectorAll('.onglet-bouton');
@@ -1144,15 +1096,21 @@ function initializeCalculator() {
     const lftwAirport = pelicanAirports.find(ap => ap.oaci === 'LFTW');
     const refreshGpsBtn = document.getElementById('refresh-gps-btn');
     refreshGpsBtn.addEventListener('click', () => {
-        if (userMarker && userMarker.getLatLng()) {
-            updateCalculatorData();
-            masterRecalculate();
-            refreshGpsBtn.classList.add('active');
-            setTimeout(() => {
-                refreshGpsBtn.classList.remove('active');
-            }, 500);
-        } else {
-            alert("Aucune position GPS active à rafraîchir. Veuillez activer le suivi GPS d'abord.");
+        if (navigator.geolocation) {
+            refreshGpsBtn.textContent = '🛰️ ...';
+            navigator.geolocation.getCurrentPosition(
+                (pos) => {
+                    updateUserPosition(pos);
+                    updateCalculatorData();
+                    masterRecalculate();
+                    refreshGpsBtn.textContent = '🛰️ Rafraîchir GPS';
+                },
+                () => {
+                    alert("Impossible d'obtenir la position GPS.");
+                    refreshGpsBtn.textContent = '🛰️ Rafraîchir GPS';
+                },
+                { enableHighAccuracy: true }
+            );
         }
     });
 
@@ -1160,7 +1118,7 @@ function initializeCalculator() {
     updateLftwSunset(); setInterval(updateLftwSunset, 60000);
 
     onglets.forEach(onglet => { onglet.addEventListener('click', () => { document.querySelectorAll('.onglet-bouton').forEach(btn => btn.classList.remove('active')); document.querySelectorAll('.onglet-panneau').forEach(p => p.classList.remove('active')); onglet.classList.add('active'); document.getElementById(onglet.dataset.onglet).classList.add('active'); resetButton.style.display = (onglet.dataset.onglet === 'bloc-fuel') ? 'flex' : 'none'; }); });
-    
+
     function saveCalculatorState() {
         const state = {};
         document.querySelectorAll('#calculator-modal .input-wrapper').forEach(wrapper => {
@@ -1196,7 +1154,7 @@ function initializeCalculator() {
         };
 
         setTimeValue(initialValue);
-        
+
         displayInput.addEventListener('dblclick', (e) => {
             e.preventDefault();
             let timeString;
@@ -1222,7 +1180,7 @@ function initializeCalculator() {
                 }
             });
         }
-        
+
         if (clearBtn) {
             clearBtn.addEventListener('click', () => {
                 const defaultValue = wrapper.id === 'tmd' ? '21:30' : wrapper.id === 'limite-hdv' ? '08:00' : '';
@@ -1245,7 +1203,7 @@ function initializeCalculator() {
         displayInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); displayInput.blur(); } });
         if (clearBtn) { clearBtn.addEventListener('click', () => { displayInput.value = ''; masterRecalculate(); saveCalculatorState(); }); }
     }
-    
+
     const addNewRow = (tableBody, data, isLastRow = false) => {
         const row = document.createElement('tr');
         row.innerHTML = `<td><div class="input-wrapper time-input-wrapper"><input type="text" class="display-input" readonly placeholder="--:--"><span class="clear-btn">&times;</span><span class="clock-icon">🕒</span><input type="time" class="engine-input"></div></td><td><div class="input-wrapper numeric-input-wrapper" data-unit="kg"><input type="text" class="display-input" inputmode="numeric" placeholder="[valeur]"><span class="clear-btn">&times;</span></div></td><td class="duree-rotation-cell"></td><td class="fuel-rotation-cell"></td><td class="tps-vol-cell"></td><td class="tps-vol-restant-cell"></td>`;
@@ -1253,7 +1211,7 @@ function initializeCalculator() {
 
         const timeWrapper = row.querySelector('.time-input-wrapper');
         const numericWrapper = row.querySelector('.numeric-input-wrapper');
-        
+
         initializeTimeInput(timeWrapper, data ? data.time : '');
         initializeNumericInput(numericWrapper, data ? data.fuel : '');
 
@@ -1289,7 +1247,7 @@ function initializeCalculator() {
         initializeNumericInput(document.getElementById('fuel-sur-feu-wrapper'), state['fuel-sur-feu-wrapper']);
         initializeNumericInput(document.getElementById('suivi-conso-rotation-wrapper'), state['suivi-conso-rotation-wrapper']);
         initializeTimeInput(document.getElementById('suivi-duree-rotation-wrapper'), state['suivi-duree-rotation-wrapper']);
-        
+
         const tableData = state.calculator_table_data || [];
         tableData.forEach(rowData => {
             addNewRow(tableBody, rowData, false);
@@ -1303,7 +1261,7 @@ function initializeCalculator() {
     }
 
     loadCalculatorState();
-    
+
     function setupManualButton(btnId, wrapperId, flagSetter) {
         const btn = document.getElementById(btnId); const input = document.getElementById(wrapperId).querySelector('.display-input');
         btn.addEventListener('click', () => { const isManual = flagSetter(); if (isManual) { btn.textContent = 'MANUEL'; btn.classList.add('active'); input.readOnly = false; } else { btn.textContent = 'AUTO'; btn.classList.remove('active'); input.readOnly = true; } masterRecalculate(); });
@@ -1319,9 +1277,9 @@ function initializeCalculator() {
             masterRecalculate();
         }
     });
-    
+
     masterRecalculate = () => { recalculateBlocFuel(); updatePreviTab(); updateSuiviTab(); updateDeroutementTab(); };
-    
+
     masterRecalculate();
 }
 
