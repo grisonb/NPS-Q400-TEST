@@ -12,7 +12,7 @@ document.addEventListener('DOMContentLoaded', () => {
 let allCommunes = [], map, permanentAirportLayer, routesLayer, currentCommune = null, selectedPelicanOACI = null;
 let disabledAirports = new Set(), waterAirports = new Set();
 const MAGNETIC_DECLINATION = 1.0;
-let userMarker = null, watchId = null, accuracyCircle = null, headingLayer = null, lastPosition = null, isGpsDebugMode = false;
+let userMarker = null, watchId = null, accuracyCircle = null, headingLayer = null, lastPosition = null;
 let userToTargetLayer = null, lftwRouteLayer = null;
 let showLftwRoute = true;
 let gaarCircuits = [];
@@ -159,12 +159,11 @@ function setupEventListeners() {
     const offlineMapModal = document.getElementById('offline-map-modal');
     const closeOfflineMapButton = document.getElementById('close-offline-map-btn');
     const zipImporterInput = document.getElementById('zip-importer-input');
-    const gpsDebugButton = document.getElementById('gps-debug-button');
-
+    
     if (mainActionButtons) {
         const versionDisplay = document.createElement('div');
         versionDisplay.className = 'version-display';
-        versionDisplay.innerText = 'v60.3';
+        versionDisplay.innerText = 'v60.4';
         mainActionButtons.appendChild(versionDisplay);
     }
 
@@ -280,14 +279,6 @@ function setupEventListeners() {
         const file = event.target.files[0];
         handleZipImport(file);
         event.target.value = '';
-    });
-    gpsDebugButton.addEventListener('click', () => {
-        isGpsDebugMode = !isGpsDebugMode;
-        gpsDebugButton.textContent = isGpsDebugMode ? 'Debug GPS ON' : 'Debug GPS OFF';
-        gpsDebugButton.classList.toggle('active', isGpsDebugMode);
-        if (isGpsDebugMode) {
-            alert("Mode Debug GPS activé. Une alerte s'affichera à chaque mise à jour de la position.");
-        }
     });
 
     updateLftwButtonState();
