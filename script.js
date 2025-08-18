@@ -164,7 +164,7 @@ function setupEventListeners() {
     if (mainActionButtons) {
         const versionDisplay = document.createElement('div');
         versionDisplay.className = 'version-display';
-        versionDisplay.innerText = 'v60.1';
+        versionDisplay.innerText = 'v60.2';
         mainActionButtons.appendChild(versionDisplay);
     }
 
@@ -535,9 +535,10 @@ function drawUserToTargetRoute() {
 function updateUserPosition(pos) {
     const { latitude, longitude } = pos.coords;
 
-    // On utilise l'ancien marqueur, plus simple et stable
     if (!userMarker) {
-        const userIcon = L.divIcon({ className: 'custom-marker-icon user-marker', html: '👤' });
+        // La classe 'user-marker' dans style.css définit déjà un rond rouge. 
+        // En laissant 'html' vide, on n'affiche que le fond.
+        const userIcon = L.divIcon({ className: 'custom-marker-icon user-marker', html: '' });
         userMarker = L.marker([latitude, longitude], { icon: userIcon }).bindPopup('Votre position').addTo(map);
     } else {
         userMarker.setLatLng([latitude, longitude]);
