@@ -164,7 +164,7 @@ function setupEventListeners() {
     if (mainActionButtons) {
         const versionDisplay = document.createElement('div');
         versionDisplay.className = 'version-display';
-        versionDisplay.innerText = 'v60.0';
+        versionDisplay.innerText = 'v60.1';
         mainActionButtons.appendChild(versionDisplay);
     }
 
@@ -533,26 +533,18 @@ function drawUserToTargetRoute() {
 }
 
 function updateUserPosition(pos) {
-    const { latitude, longitude, accuracy, heading, speed } = pos.coords;
+    const { latitude, longitude } = pos.coords;
 
+    // On utilise l'ancien marqueur, plus simple et stable
     if (!userMarker) {
-        const userIconSVG = `<svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg" width="21" height="21"><path d="M50 0 L100 100 L50 75 L0 100 Z" fill="#e3001b" stroke="white" stroke-width="8"/></svg>`;
-        const userIcon = L.divIcon({
-            html: userIconSVG, className: 'user-heading-icon', iconSize: [21, 21], iconAnchor: [10.5, 10.5]
-        });
-        userMarker = L.marker([latitude, longitude], { 
-            icon: userIcon,
-            rotationOrigin: 'center center'
-        }).addTo(map);
+        const userIcon = L.divIcon({ className: 'custom-marker-icon user-marker', html: '👤' });
+        userMarker = L.marker([latitude, longitude], { icon: userIcon }).bindPopup('Votre position').addTo(map);
     } else {
         userMarker.setLatLng([latitude, longitude]);
     }
 
-    if (heading !== null) {
-        userMarker.setRotationAngle(heading);
-    }
-
-    drawUserToTargetRoute(); // <-- LIGNE CORRIGÉE
+    // On appelle toujours la fonction qui redessine la route
+    drawUserToTargetRoute();
 }
 
 function findClosestCommuneName(lat, lon) {
