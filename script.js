@@ -164,7 +164,7 @@ function setupEventListeners() {
     if (mainActionButtons) {
         const versionDisplay = document.createElement('div');
         versionDisplay.className = 'version-display';
-        versionDisplay.innerText = 'v55.4.1';
+        versionDisplay.innerText = 'v60.0';
         mainActionButtons.appendChild(versionDisplay);
     }
 
@@ -405,8 +405,8 @@ function displayCommuneDetails(commune, shouldFitBounds = true) {
 
     updateCalculatorData();
     updateMapBingoDisplay();
-    navigator.geolocation.getCurrentPosition(updateUserPosition, () => {}, { enableHighAccuracy: true });
-    drawUserToTargetRoute(); // On redessine la ligne rouge immédiatement
+    // Nous appelons directement la fonction de dessin. Si le GPS est actif, elle utilisera la dernière position.
+    drawUserToTargetRoute();
 
     if (shouldFitBounds) {
         setTimeout(() => {
@@ -552,7 +552,7 @@ function updateUserPosition(pos) {
         userMarker.setRotationAngle(heading);
     }
 
-    drawUserToTargetRoute();
+    drawUserToTargetRoute(); // <-- LIGNE CORRIGÉE
 }
 
 function findClosestCommuneName(lat, lon) {
