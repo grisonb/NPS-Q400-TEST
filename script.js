@@ -777,15 +777,15 @@ const formatTime = (totalMinutes) => { if (totalMinutes === null || isNaN(totalM
 const parseNumeric = (numericString) => { if (!numericString) return null; const value = parseInt(numericString.replace(/[^0-9]/g, ''), 10); return isNaN(value) ? null : value; };
 
 function updateAndSortRotations(container, current, params) {
-    const lines = container.querySelectorAll('.result-line');
-    const sortable = [];
+    const lines = Array.from(container.querySelectorAll('.result-line'));
+    const resultsData = [];
+    let minTimeLimit = Infinity;
 
+    // --- Première passe : Calculer toutes les valeurs et trouver la limite temporelle ---
     lines.forEach(line => {
         const type = line.dataset.rotationType;
         let value = null;
         let formulaString = "Données insuffisantes pour le calcul.";
-        const valueCell = line.querySelector('.value');
-        const helpIcon = line.querySelector('.formula-help-icon');
 
         const canCalculateFuel = current.fuel !== null && params.consoRotation !== null && params.consoRotation > 0;
         const canCalculateTime = current.time !== null && params.rotationTime !== null && params.rotationTime > 0;
@@ -821,6 +821,22 @@ function updateAndSortRotations(container, current, params) {
             if (canCalculateTime && hdvOnSite !== null) value = hdvOnSite / params.rotationTime;
         }
 
+        resultsData.push({ type, value, element: line, formulaString });
+        
+        if ((type === 'cs' || type === 'tmd') && value !== null && value >= 0) {
+            minTimeLimit = Math.min(minTimeLimit, value);
+        }
+    });
+
+    // --- Deuxième passe : Appliquer les styles et mettre à jour le DOM ---
+    resultsData.forEach(result => {
+        const { type, value, element, formulaString } = result;
+        const valueCell = element.querySelector('.value');
+        const helpIcon = element.querySelector('.formula-help-icon');
+
+        // La nouvelle logique de coloration
+        const isTimeLimited = (type !== 'cs' && type !== 'tmd' && value !== null && value > minTimeLimit);
+
         if (value === null) {
             valueCell.textContent = '--';
         } else {
@@ -828,24 +844,35 @@ function updateAndSortRotations(container, current, params) {
         }
 
         valueCell.classList.remove('rotation-value-default', 'rotation-value-green', 'rotation-value-yellow', 'rotation-value-red');
-        if (value === null) {
-             valueCell.classList.add('rotation-value-default');
-             valueCell.textContent = '--';
-        } else if (value > 1.5) {
-            valueCell.classList.add('rotation-value-green');
-        } else if (value >= 1.1) {
-            valueCell.classList.add('rotation-value-yellow');
-        } else {
+        
+        if (isTimeLimited) {
+            // Si la valeur est supérieure à la limite de temps, on force le rouge
             valueCell.classList.add('rotation-value-red');
+        } else {
+            // Sinon, on applique la logique de couleur standard
+            if (value === null) {
+                 valueCell.classList.add('rotation-value-default');
+                 valueCell.textContent = '--';
+            } else if (value > 1.5) {
+                valueCell.classList.add('rotation-value-green');
+            } else if (value >= 1.1) {
+                valueCell.classList.add('rotation-value-yellow');
+            } else {
+                valueCell.classList.add('rotation-value-red');
+            }
         }
 
         if (helpIcon) { helpIcon.onclick = () => alert(formulaString); }
-
-        sortable.push({ value: (value !== null) ? value : Infinity, element: line });
     });
 
-    sortable.sort((a, b) => a.value - b.value);
-    sortable.forEach(item => container.appendChild(item.element));
+    // --- Trier et ré-insérer les éléments dans le DOM ---
+    resultsData.sort((a, b) => {
+        const valA = a.value !== null ? a.value : Infinity;
+        const valB = b.value !== null ? b.value : Infinity;
+        return valA - valB;
+    });
+
+    resultsData.forEach(item => container.appendChild(item.element));
 }
 
 function recalculateBlocFuel() {
