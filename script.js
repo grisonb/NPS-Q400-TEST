@@ -834,8 +834,11 @@ function updateAndSortRotations(container, current, params) {
         const valueCell = element.querySelector('.value');
         const helpIcon = element.querySelector('.formula-help-icon');
 
-        // La nouvelle logique de coloration
-        const isTimeLimited = (type !== 'cs' && type !== 'tmd' && value !== null && value > minTimeLimit);
+        // ========================= MODIFICATION ICI =========================
+        // La condition est simplifiée pour s'appliquer à TOUTES les lignes,
+        // y compris CS et TMD eux-mêmes.
+        const isTimeLimited = (value !== null && value > minTimeLimit);
+        // ======================= FIN DE LA MODIFICATION =======================
 
         if (value === null) {
             valueCell.textContent = '--';
