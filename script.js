@@ -337,6 +337,11 @@ function updateCommuneDisplay(commune) {
 
 function updateMapBingoDisplay() {
     const bingoDisplay = document.getElementById('bingo-map-display');
+    if (!bingoDisplay) {
+        console.error("Élément 'bingo-map-display' introuvable dans le DOM.");
+        return; // Rien à afficher si le conteneur principal n'existe pas.
+    }
+
     if (!currentCommune) {
         bingoDisplay.style.display = 'none';
         return;
@@ -345,19 +350,32 @@ function updateMapBingoDisplay() {
     const bingoBase = calculateBingo(CALCULATOR_DATA.distBaseFeu);
     const bingoPelic = calculateBingo(CALCULATOR_DATA.distPelicFeu);
 
-    const baseEl = document.getElementById('map-bingo-base'); // New ID for base bingo
+    const baseEl = document.getElementById('map-bingo-base');
     const pelicEl = document.getElementById('map-bingo-pelic');
 
-    baseEl.innerHTML = `BINGO ${currentBaseOACI}: <b>${bingoBase} kg</b>`; // Dynamic OACI
-
-    if (bingoPelic !== 700 && selectedPelicanOACI) {
-        pelicEl.innerHTML = `BINGO ${selectedPelicanOACI}: <b>${bingoPelic} kg</b>`;
-        pelicEl.style.display = 'inline-block';
-    } else {
-        pelicEl.style.display = 'none';
+    if (!baseEl) {
+        console.error("Élément 'map-bingo-base' introuvable dans le DOM. Vérifiez index.html.");
+        bingoDisplay.style.display = 'none'; // Cache le bandeau si l'élément de base est manquant
+        return;
+    }
+    if (!pelicEl) {
+        console.error("Élément 'map-bingo-pelic' introuvable dans le DOM. Vérifiez index.html.");
+        // Continue l'affichage de la base même si le pélicandrome est manquant,
+        // mais le pelicEl ne sera pas mis à jour.
     }
 
-    bingoDisplay.style.display = 'flex';
+    baseEl.innerHTML = `BINGO ${currentBaseOACI}: <b>${bingoBase} kg</b>`;
+
+    if (pelicEl) { // Seulement si l'élément pelicEl existe
+        if (bingoPelic !== 700 && selectedPelicanOACI) {
+            pelicEl.innerHTML = `BINGO ${selectedPelicanOACI}: <b>${bingoPelic} kg</b>`;
+            pelicEl.style.display = 'inline-block';
+        } else {
+            pelicEl.style.display = 'none';
+        }
+    }
+
+    bingoDisplay.style.display = 'flex'; // Cela doit le rendre visible
 }
 
 function displayCommuneDetails(commune, shouldFitBounds = true) {
