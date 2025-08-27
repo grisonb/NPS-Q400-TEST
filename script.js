@@ -14,7 +14,7 @@ let disabledAirports = new Set(), waterAirports = new Set();
 const MAGNETIC_DECLINATION = 1.0;
 let userMarker = null, watchId = null, accuracyCircle = null, headingLayer = null, lastPosition = null;
 let userToTargetLayer = null, lftwRouteLayer = null;
-let currentBaseOACI = "LFTW"; // Default base airport
+let showLftwRoute = true;
 let gaarCircuits = [];
 let isGaarMode = false;
 let isDrawingMode = false;
@@ -59,10 +59,8 @@ async function initializeApp() {
     const statusMessage = document.getElementById('status-message');
     const searchSection = document.getElementById('search-section');
     loadState();
-        const savedBaseOACI = localStorage.getItem('currentBaseOACI');
-    if (savedBaseOACI) {
-        currentBaseOACI = savedBaseOACI;
-    }
+    const savedLftwState = localStorage.getItem('showLftwRoute');
+    showLftwRoute = savedLftwState === null ? true : (savedLftwState === 'true');
     const savedGaarJSON = localStorage.getItem('gaarCircuits');
     if (savedGaarJSON) {
         gaarCircuits = JSON.parse(savedGaarJSON);
@@ -165,7 +163,7 @@ function setupEventListeners() {
     if (mainActionButtons) {
         const versionDisplay = document.createElement('div');
         versionDisplay.className = 'version-display';
-        versionDisplay.innerText = 'v61.1';
+        versionDisplay.innerText = 'v62.0';
         mainActionButtons.appendChild(versionDisplay);
     }
 
@@ -240,6 +238,7 @@ function setupEventListeners() {
     });
 
     liveGpsButton.addEventListener('click', toggleLiveGps);
+    lftwRouteButton.addEventListener('click', toggleLftwRoute);
     gaarModeButton.addEventListener('click', toggleGaarVisibility);
     editCircuitsButton.addEventListener('click', toggleGaarDrawingMode);
     deleteCircuitsButton.addEventListener('click', () => { if (confirm("Voulez-vous vraiment supprimer tous les circuits GAAR ?")) { clearAllGaarCircuits(); } });
@@ -282,6 +281,7 @@ function setupEventListeners() {
         event.target.value = '';
     });
 
+    updateLftwButtonState();
     updateGaarButtonState();
 }
 
@@ -337,11 +337,6 @@ function updateCommuneDisplay(commune) {
 
 function updateMapBingoDisplay() {
     const bingoDisplay = document.getElementById('bingo-map-display');
-    if (!bingoDisplay) {
-        console.error("Élément 'bingo-map-display' introuvable dans le DOM.");
-        return; // Rien à afficher si le conteneur principal n'existe pas.
-    }
-
     if (!currentCommune) {
         bingoDisplay.style.display = 'none';
         return;
@@ -350,32 +345,19 @@ function updateMapBingoDisplay() {
     const bingoBase = calculateBingo(CALCULATOR_DATA.distBaseFeu);
     const bingoPelic = calculateBingo(CALCULATOR_DATA.distPelicFeu);
 
-    const baseEl = document.getElementById('map-bingo-base');
+    const lftwEl = document.getElementById('map-bingo-lftw');
     const pelicEl = document.getElementById('map-bingo-pelic');
 
-    if (!baseEl) {
-        console.error("Élément 'map-bingo-base' introuvable dans le DOM. Vérifiez index.html.");
-        bingoDisplay.style.display = 'none'; // Cache le bandeau si l'élément de base est manquant
-        return;
-    }
-    if (!pelicEl) {
-        console.error("Élément 'map-bingo-pelic' introuvable dans le DOM. Vérifiez index.html.");
-        // Continue l'affichage de la base même si le pélicandrome est manquant,
-        // mais le pelicEl ne sera pas mis à jour.
+    lftwEl.innerHTML = `BINGO LFTW: <b>${bingoBase} kg</b>`;
+
+    if (bingoPelic !== 700 && selectedPelicanOACI) {
+        pelicEl.innerHTML = `BINGO ${selectedPelicanOACI}: <b>${bingoPelic} kg</b>`;
+        pelicEl.style.display = 'inline-block';
+    } else {
+        pelicEl.style.display = 'none';
     }
 
-    baseEl.innerHTML = `BINGO ${currentBaseOACI}: <b>${bingoBase} kg</b>`;
-
-    if (pelicEl) { // Seulement si l'élément pelicEl existe
-        if (bingoPelic !== 700 && selectedPelicanOACI) {
-            pelicEl.innerHTML = `BINGO ${selectedPelicanOACI}: <b>${bingoPelic} kg</b>`;
-            pelicEl.style.display = 'inline-block';
-        } else {
-            pelicEl.style.display = 'none';
-        }
-    }
-
-    bingoDisplay.style.display = 'flex'; // Cela doit le rendre visible
+    bingoDisplay.style.display = 'flex';
 }
 
 function displayCommuneDetails(commune, shouldFitBounds = true) {
@@ -407,9 +389,9 @@ function displayCommuneDetails(commune, shouldFitBounds = true) {
         drawRoute([lat, lon], [ap.lat, ap.lon], { oaci: ap.oaci });
     });
 
-        const isBaseInClosest = closestAirports.some(ap => ap.oaci === currentBaseOACI);
-    if (!isBaseInClosest) { // Always show base route if not already a 'closest' pelican
-        drawBaseRoute(); // Call the new base route function
+    const isLftwInClosest = closestAirports.some(ap => ap.oaci === 'LFTW');
+    if (showLftwRoute && !isLftwInClosest) {
+        drawLftwRoute();
     }
 
     updateCalculatorData();
@@ -434,7 +416,7 @@ function displayCommuneDetails(commune, shouldFitBounds = true) {
 }
 
 function drawRoute(startLatLng, endLatLng, options = {}) {
-    const { oaci, isUser, isBaseRoute, magneticBearing } = options; // isLftwRoute changed to isBaseRoute
+    const { oaci, isUser, isLftwRoute, magneticBearing } = options;
     const distance = calculateDistanceInNm(startLatLng[0], startLatLng[1], endLatLng[0], endLatLng[1]);
     let labelText, color = 'var(--primary-color)', dashArray = '', layer = routesLayer;
 
@@ -443,11 +425,11 @@ function drawRoute(startLatLng, endLatLng, options = {}) {
         color = 'var(--secondary-color)';
         dashArray = '5, 10';
         layer = userToTargetLayer;
-    } else if (isBaseRoute) { // New condition for base route
-        labelText = `${oaci}: ${Math.round(magneticBearing)}° / ${Math.round(distance)} Nm`; // Dynamic OACI
+    } else if (isLftwRoute) {
+        labelText = `LFTW: ${Math.round(magneticBearing)}° / ${Math.round(distance)} Nm`;
         color = 'var(--success-color)';
         dashArray = '5, 10';
-        layer = lftwRouteLayer; // Repurpose lftwRouteLayer for base route
+        layer = lftwRouteLayer;
     } else if (oaci) {
         const isSelected = selectedPelicanOACI === oaci;
         color = isSelected ? 'var(--success-color)' : 'var(--primary-color)';
@@ -469,7 +451,7 @@ function drawRoute(startLatLng, endLatLng, options = {}) {
 
     if (isUser) {
         polyline.bindTooltip(labelText, { permanent: true, direction: 'center', className: 'route-tooltip route-tooltip-user', sticky: true });
-    } else if (oaci || isBaseRoute) { // Also check isBaseRoute for tooltip
+    } else if (oaci || isLftwRoute) {
         L.tooltip({ permanent: true, direction: 'right', offset: [10, 0], className: 'route-tooltip' }).setLatLng(endLatLng).setContent(labelText).addTo(layer);
     }
 }
@@ -494,55 +476,16 @@ function drawPermanentAirportMarkers() {
     pelicanAirports.forEach(airport => {
         const isDisabled = disabledAirports.has(airport.oaci);
         const isWater = waterAirports.has(airport.oaci);
-        let iconClass = "custom-marker-icon airport-marker-base ";
-        let iconHTML = "✈️";
-
-        if (isDisabled) {
-            iconClass += "airport-marker-disabled";
-            iconHTML = "<b>+</b>";
-        } else if (isWater) {
-            iconClass += "airport-marker-water";
-            iconHTML = "💧";
-        } else if (airport.oaci === currentBaseOACI) { // New: highlight current base
-            iconClass += "airport-marker-base-active"; // Use a specific class for the base
-            iconHTML = "🏠"; // Home icon for the base
-        } else {
-            iconClass += "airport-marker-active";
-        }
-
+        let iconClass = "custom-marker-icon airport-marker-base ", iconHTML = "✈️";
+        isDisabled ? (iconClass += "airport-marker-disabled", iconHTML = "<b>+</b>") : isWater ? (iconClass += "airport-marker-water", iconHTML = "💧") : iconClass += "airport-marker-active";
         const icon = L.divIcon({ className: iconClass, html: iconHTML });
         const marker = L.marker([airport.lat, airport.lon], { icon: icon });
-
         const disableButtonText = isDisabled ? "Activer" : "Désactiver";
         const disableButtonClass = isDisabled ? "enable-btn" : "disable-btn";
-        
-        const baseButtonClass = (airport.oaci === currentBaseOACI) ? "base-btn active" : "base-btn";
-        const baseButtonText = (airport.oaci === currentBaseOACI) ? "Base Actuelle" : "Définir comme Base";
-
-        marker.bindPopup(
-            `<div class="airport-popup"><b>${airport.oaci}</b><br>${airport.name}` +
-            `<div class="popup-buttons">` +
-                `<button class="water-btn" onclick="window.toggleWater('${airport.oaci}')">Eau</button>` +
-                `<button class="${disableButtonClass}" onclick="window.toggleAirport('${airport.oaci}')">${disableButtonText}</button>` +
-                `<button class="${baseButtonClass}" onclick="window.toggleBase('${airport.oaci}')">${baseButtonText}</button>` + // New BASE button
-            `</div></div>`
-        );
+        marker.bindPopup(`<div class="airport-popup"><b>${airport.oaci}</b><br>${airport.name}<div class="popup-buttons"><button class="water-btn" onclick="window.toggleWater('${airport.oaci}')">Eau</button><button class="${disableButtonClass}" onclick="window.toggleAirport('${airport.oaci}')">${disableButtonText}</button></div></div>`);
         marker.addTo(permanentAirportLayer);
     });
 }
-
-// Add the new toggleBase function
-window.toggleBase = (oaci) => {
-    if (currentBaseOACI === oaci) {
-        // If already the base, do nothing or provide feedback
-        console.log(`${oaci} est déjà la base.`);
-        return;
-    }
-    currentBaseOACI = oaci;
-    localStorage.setItem('currentBaseOACI', currentBaseOACI);
-    refreshUI(); // Redraw markers and routes to reflect the new base
-    map.closePopup(); // Close any open popups
-};
 const loadState = () => { const savedDisabled = localStorage.getItem('disabled_airports'); if (savedDisabled) disabledAirports = new Set(JSON.parse(savedDisabled)); const savedWater = localStorage.getItem('water_airports'); if (savedWater) waterAirports = new Set(JSON.parse(savedWater)); };
 const saveState = () => { localStorage.setItem('disabled_airports', JSON.stringify([...disabledAirports])); localStorage.setItem('water_airports', JSON.stringify([...waterAirports])); };
 window.toggleAirport = oaci => { disabledAirports.has(oaci) ? disabledAirports.delete(oaci) : (disabledAirports.add(oaci), waterAirports.delete(oaci)), saveState(), refreshUI() };
@@ -615,23 +558,20 @@ function toggleLftwRoute() {
 }
 
 function updateLftwButtonState() {
+    const lftwRouteButton = document.getElementById('lftw-route-button');
     lftwRouteButton.classList.toggle('active', showLftwRoute);
 }
 
-function drawBaseRoute() {
-    lftwRouteLayer.clearLayers(); // This layer now handles the base route
-    if (!currentCommune) return;
-
-    const baseAirport = pelicanAirports.find(ap => ap.oaci === currentBaseOACI);
-    if (!baseAirport) return;
-
+function drawLftwRoute() {
+    lftwRouteLayer.clearLayers();
+    if (!showLftwRoute || !currentCommune) return;
+    const lftwAirport = pelicanAirports.find(ap => ap.oaci === 'LFTW');
+    if (!lftwAirport) return;
     const { latitude_mairie: lat, longitude_mairie: lon } = currentCommune;
-    const { lat: baseLat, lon: baseLon } = baseAirport;
-
-    const trueBearing = calculateBearing(lat, lon, baseLat, baseLon);
+    const { lat: lftwLat, lon: lftwLon } = lftwAirport;
+    const trueBearing = calculateBearing(lat, lon, lftwLat, lftwLon);
     const magneticBearing = (trueBearing - MAGNETIC_DECLINATION + 360) % 360;
-
-    drawRoute([lat, lon], [baseLat, baseLon], { isBaseRoute: true, magneticBearing: magneticBearing, oaci: currentBaseOACI });
+    drawRoute([lat, lon], [lftwLat, lftwLon], { isLftwRoute: true, magneticBearing: magneticBearing });
 }
 
 function toggleGaarVisibility() { isGaarMode = !isGaarMode; updateGaarButtonState(); if (isGaarMode) { redrawGaarCircuits(); } else { gaarLayer.clearLayers(); if (isDrawingMode) { toggleGaarDrawingMode(); } } }
@@ -646,13 +586,13 @@ function clearAllGaarCircuits() { gaarCircuits = []; gaarLayer.clearLayers(); sa
 function saveGaarCircuits() { localStorage.setItem('gaarCircuits', JSON.stringify(gaarCircuits)); }
 
 function updateCalculatorData() {
-       if (!currentCommune) {
+    if (!currentCommune) {
         CALCULATOR_DATA = { distBaseFeu: 0, distPelicFeu: 0, csFeu: '--:--', distGpsFeu: 0 };
     } else {
-        const currentBaseAirport = pelicanAirports.find(ap => ap.oaci === currentBaseOACI); // Use currentBaseOACI
+        const lftw = pelicanAirports.find(ap => ap.oaci === 'LFTW');
         const selectedPelican = pelicanAirports.find(ap => ap.oaci === selectedPelicanOACI);
         const { latitude_mairie: feuLat, longitude_mairie: feuLon } = currentCommune;
-        let distBaseFeu = 0; if (currentBaseAirport) { distBaseFeu = calculateDistanceInNm(currentBaseAirport.lat, currentBaseAirport.lon, feuLat, feuLon); }
+        let distBaseFeu = 0; if (lftw) { distBaseFeu = calculateDistanceInNm(lftw.lat, lftw.lon, feuLat, feuLon); }
         let distPelicFeu = 0; if (selectedPelican) { distPelicFeu = calculateDistanceInNm(selectedPelican.lat, selectedPelican.lon, feuLat, feuLon); }
         let csFeu = '--:--'; if (typeof SunCalc !== 'undefined') { try { const now = new Date(); const times = SunCalc.getTimes(now, feuLat, feuLon); csFeu = times.sunset.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Paris' }); } catch (e) { /* ignore */ } }
         let distGpsFeu = 0; if (userMarker && userMarker.getLatLng()) { const userLatLng = userMarker.getLatLng(); distGpsFeu = calculateDistanceInNm(userLatLng.lat, userLatLng.lng, feuLat, feuLon); }
@@ -1009,8 +949,8 @@ function updatePreviTab() {
 
     const bingoBase = calculateBingo(CALCULATOR_DATA.distBaseFeu);
     const bingoPelic = calculateBingo(CALCULATOR_DATA.distPelicFeu);
-        const bingoBaseDisplay = document.getElementById('previ-bingo-base');
-    if (bingoBase === 700) { bingoBaseDisplay.innerHTML = '-- kg'; } else { bingoBaseDisplay.innerHTML = `${currentBaseOACI} / ${CALCULATOR_DATA.distBaseFeu} Nm /&nbsp;<b>${bingoBase} kg</b>`; }
+    const bingoBaseDisplay = document.getElementById('previ-bingo-base');
+    if (bingoBase === 700) { bingoBaseDisplay.innerHTML = '-- kg'; } else { bingoBaseDisplay.innerHTML = `${CALCULATOR_DATA.distBaseFeu} Nm /&nbsp;<b>${bingoBase} kg</b>`; }
     const bingoPelicDisplay = document.getElementById('previ-bingo-pelic');
     if (bingoPelic === 700 || !selectedPelicanOACI) { bingoPelicDisplay.innerHTML = '-- kg'; } else { bingoPelicDisplay.innerHTML = `${selectedPelicanOACI} / ${CALCULATOR_DATA.distPelicFeu} Nm /&nbsp;<b>${bingoPelic} kg</b>`; }
 
@@ -1069,8 +1009,8 @@ function updateSuiviTab() {
     }
     const bingoBase = calculateBingo(CALCULATOR_DATA.distBaseFeu);
     const bingoPelic = calculateBingo(CALCULATOR_DATA.distPelicFeu);
-        const bingoBaseDisplay = document.getElementById('suivi-bingo-base');
-    if (bingoBase === 700) { bingoBaseDisplay.innerHTML = '-- kg'; } else { bingoBaseDisplay.innerHTML = `${currentBaseOACI} / ${CALCULATOR_DATA.distBaseFeu} Nm /&nbsp;<b>${bingoBase} kg</b>`; }
+    const bingoBaseDisplay = document.getElementById('suivi-bingo-base');
+    if (bingoBase === 700) { bingoBaseDisplay.innerHTML = '-- kg'; } else { bingoBaseDisplay.innerHTML = `${CALCULATOR_DATA.distBaseFeu} Nm /&nbsp;<b>${bingoBase} kg</b>`; }
     const bingoPelicDisplay = document.getElementById('suivi-bingo-pelic');
     if (bingoPelic === 700 || !selectedPelicanOACI) { bingoPelicDisplay.innerHTML = '-- kg'; } else { bingoPelicDisplay.innerHTML = `${selectedPelicanOACI} / ${CALCULATOR_DATA.distPelicFeu} Nm /&nbsp;<b>${bingoPelic} kg</b>`; }
 
@@ -1135,17 +1075,17 @@ function updateDeroutementTab() {
     const transitTimeFromGps = Math.round(calculateTransitTime(CALCULATOR_DATA.distGpsFeu));
     const consoTransitFromGps = calculateFuelToGo(CALCULATOR_DATA.distGpsFeu);
 
-        const bingoBaseDisplay = document.getElementById('derout-bingo-base');
-    if (bingoBase === 700) { bingoBaseDisplay.innerHTML = '-- kg'; } else { bingoBaseDisplay.innerHTML = `${currentBaseOACI} / ${CALCULATOR_DATA.distBaseFeu} Nm /&nbsp;<b>${bingoBase} kg</b>`; }
+    const bingoBaseDisplay = document.getElementById('derout-bingo-base');
+    if (bingoBase === 700) { bingoBaseDisplay.innerHTML = '-- kg'; } else { bingoBaseDisplay.innerHTML = `${CALCULATOR_DATA.distBaseFeu} Nm /&nbsp;<b>${bingoBase} kg</b>`; }
     const bingoPelicDisplay = document.getElementById('derout-bingo-pelic');
     if (bingoPelic === 700 || !selectedPelicanOACI) { bingoPelicDisplay.innerHTML = '-- kg'; } else { bingoPelicDisplay.innerHTML = `${selectedPelicanOACI} / ${CALCULATOR_DATA.distPelicFeu} Nm /&nbsp;<b>${bingoPelic} kg</b>`; }
 
     const fuelMiniBase = consoTransitFromGps + 250 + bingoBase;
     const fuelMiniPelic = consoTransitFromGps + 250 + bingoPelic;
-        document.getElementById('derout-fuel-mini-base').textContent = (fuelMiniBase === (950 + consoTransitFromGps)) ? '-- kg' : `${fuelMiniBase} kg`;
+    document.getElementById('derout-fuel-mini-base').textContent = (fuelMiniBase === (950 + consoTransitFromGps)) ? '-- kg' : `${fuelMiniBase} kg`;
     document.getElementById('derout-fuel-mini-pelic').textContent = (fuelMiniPelic === (950 + consoTransitFromGps)) ? '-- kg' : `${fuelMiniPelic} kg`;
-    setHelp('derout-fuel-mini-base-help', `Formule: Conso(GPS->Feu) + Forfait Largage + BINGO Base (${currentBaseOACI})\n\nCalcul: ${consoTransitFromGps} + 250 + ${bingoBase}`);
-    setHelp('derout-fuel-mini-pelic-help', `Formule: Conso(GPS->Feu) + Forfait Largage + BINGO Pélic (${selectedPelicanOACI || 'N/A'})\n\nCalcul: ${consoTransitFromGps} + 250 + ${bingoPelic}`);
+    setHelp('derout-fuel-mini-base-help', `Formule: Conso(GPS->Feu) + Forfait Largage + BINGO Base\n\nCalcul: ${consoTransitFromGps} + 250 + ${bingoBase}`);
+    setHelp('derout-fuel-mini-pelic-help', `Formule: Conso(GPS->Feu) + Forfait Largage + BINGO Pélic.\n\nCalcul: ${consoTransitFromGps} + 250 + ${bingoPelic}`);
 
     if (fuelActuel === null || heureActuelle === null) {
         resultsContainer.querySelectorAll('.value').forEach(el => { el.textContent = '--'; el.className = 'value rotation-value-default'; });
@@ -1166,8 +1106,8 @@ function updateDeroutementTab() {
 function initializeCalculator() {
     const resetButton = document.getElementById('reset-all-btn');
     const onglets = document.querySelectorAll('.onglet-bouton');
-        const csBaseDisplay = document.getElementById('cs-base-display'); // New ID for base CS
-    const csBaseOACILabel = document.getElementById('cs-base-oaci'); // Span for OACI code
+    const csLftwDisplay = document.getElementById('cs-lftw-display');
+    const lftwAirport = pelicanAirports.find(ap => ap.oaci === 'LFTW');
     const refreshGpsBtn = document.getElementById('refresh-gps-btn');
     refreshGpsBtn.addEventListener('click', () => {
         // On vérifie simplement si une position GPS est déjà connue via le marqueur sur la carte
@@ -1181,26 +1121,8 @@ function initializeCalculator() {
         }
     });
 
-        function updateBaseSunset() {
-        const baseAirport = pelicanAirports.find(ap => ap.oaci === currentBaseOACI);
-        if (baseAirport && typeof SunCalc !== 'undefined') {
-            try {
-                const now = new Date();
-                const times = SunCalc.getTimes(now, baseAirport.lat, baseAirport.lon);
-                const sunsetString = times.sunset.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Paris' });
-                csBaseDisplay.value = sunsetString;
-                csBaseOACILabel.textContent = currentBaseOACI; // Update OACI label
-            } catch (e) {
-                csBaseDisplay.value = '--:--';
-                csBaseOACILabel.textContent = currentBaseOACI;
-            }
-        } else {
-            csBaseDisplay.value = '--:--';
-            csBaseOACILabel.textContent = currentBaseOACI;
-        }
-    }
-    updateBaseSunset();
-    setInterval(updateBaseSunset, 60000); // Update every minute
+    function updateLftwSunset() { if (lftwAirport && typeof SunCalc !== 'undefined') { try { const now = new Date(); const times = SunCalc.getTimes(now, lftwAirport.lat, lftwAirport.lon); const sunsetString = times.sunset.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Paris' }); csLftwDisplay.value = sunsetString; } catch (e) { csLftwDisplay.value = '--:--'; } } }
+    updateLftwSunset(); setInterval(updateLftwSunset, 60000);
 
     onglets.forEach(onglet => { onglet.addEventListener('click', () => { document.querySelectorAll('.onglet-bouton').forEach(btn => btn.classList.remove('active')); document.querySelectorAll('.onglet-panneau').forEach(p => p.classList.remove('active')); onglet.classList.add('active'); document.getElementById(onglet.dataset.onglet).classList.add('active'); resetButton.style.display = (onglet.dataset.onglet === 'bloc-fuel') ? 'flex' : 'none'; }); });
 
@@ -1363,13 +1285,7 @@ function initializeCalculator() {
         }
     });
 
-        masterRecalculate = () => {
-        recalculateBlocFuel();
-        updatePreviTab();
-        updateSuiviTab();
-        updateDeroutementTab();
-        updateBaseSunset(); // Add this call
-    };
+    masterRecalculate = () => { recalculateBlocFuel(); updatePreviTab(); updateSuiviTab(); updateDeroutementTab(); };
 
     masterRecalculate();
 }
