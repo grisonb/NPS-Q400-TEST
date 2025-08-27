@@ -101,6 +101,20 @@ html, body {
 #toggle-search-button.active { border-color: var(--primary-color); background-color: rgba(233, 245, 255, 0.9); }
 .version-display { font-size: 14px; font-weight: bold; color: #333; text-shadow: 0 0 3px white, 0 0 3px white; background-color: rgba(255, 255, 255, 0.6); padding: 2px 8px; border-radius: 6px; margin-top: -5px; }
 #live-gps-button.active { background-color: var(--primary-color); color: white; border-color: var(--primary-color); animation: pulse 2s infinite; }
+/* In style.css, after .airport-marker-active */
+.airport-marker-base-active {
+    background-color: var(--primary-color); /* Primary color for the active base */
+    border-color: white;
+    color: white;
+    font-size: 1.2em; /* Ensure icon is visible */
+    line-height: 32px;
+}
+.airport-popup button.base-btn {
+    background-color: #6c757d; /* Grey for regular base button */
+}
+.airport-popup button.base-btn.active {
+    background-color: var(--primary-color); /* Blue for active base button */
+}
 @keyframes pulse { 0% { box-shadow: 0 0 0 0 rgba(0, 90, 156, 0.7); } 70% { box-shadow: 0 0 0 10px rgba(0, 90, 156, 0); } 100% { box-shadow: 0 0 0 0 rgba(0, 90, 156, 0); } }
 .extra-controls, #gaar-controls { margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--border-color); display: flex; justify-content: center; gap: 15px; }
 .toggle-button { padding: 8px 16px; font-size: 14px; font-weight: bold; border: 1px solid var(--primary-color); border-radius: var(--border-radius); cursor: pointer; background-color: transparent; color: var(--primary-color); transition: background-color 0.2s, color 0.2s; }
