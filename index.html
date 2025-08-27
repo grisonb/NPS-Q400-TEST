@@ -29,8 +29,8 @@
         <button id="calculator-button" title="Ouvrir le calculateur de mission">✈️</button>
         <button id="gps-feu-button" title="Créer un feu à ma position">🎯</button>
     </div>
-      <div id="bingo-map-display" style="display: none;">
-        <span id="map-bingo-lftw"></span>
+            <div id="bingo-map-display" style="display: none;">
+        <span id="map-bingo-base"></span> <!-- ID changé pour le bingo de la base -->
         <span id="map-bingo-pelic"></span>
     </div>
     <div id="commune-info-display"></div>
@@ -51,7 +51,7 @@
             <ul id="results-list" style="display: none;"></ul>
                
 <div class="extra-controls">
-                <button id="lftw-route-button" class="toggle-button active" title="Afficher/Masquer la route vers LFTW">Route LFTW</button>
+                <!-- <button id="lftw-route-button" class="toggle-button active" title="Afficher/Masquer la route vers LFTW">Route LFTW</button> (Supprimé) -->
                 <button id="gaar-mode-button" class="toggle-button" title="Afficher/Masquer les circuits GAAR">Circuits GAAR</button>
                 <button id="offline-maps-button" class="toggle-button" title="Gérer les cartes hors-ligne">Cartes offline</button>
             </div>
@@ -86,7 +86,7 @@
                     <div class="header-section">
                         <div class="header-item"><label>BLOC Départ</label><div id="bloc-depart" class="input-wrapper time-input-wrapper"><input type="text" class="display-input" readonly placeholder="--:--"><span class="clear-btn">&times;</span><span class="clock-icon">🕒</span><input type="time" class="engine-input"></div></div>
                         <div class="header-item"><label>FUEL Départ</label><div id="fuel-depart" class="input-wrapper numeric-input-wrapper" data-unit="kg"><input type="text" class="display-input" inputmode="numeric" placeholder="[valeur]"><span class="clear-btn">&times;</span></div></div>
-                        <div class="header-item"><label>CS LFTW</label><div class="input-wrapper"><input type="text" id="cs-lftw-display" class="display-input" readonly></div></div>
+                        <div class="header-item"><label>CS <span id="cs-base-oaci">LFTW</span></label><div class="input-wrapper"><input type="text" id="cs-base-display" class="display-input" readonly></div></div>
                         <div class="header-item"><label>TMD</label><div id="tmd" class="input-wrapper time-input-wrapper"><input type="text" class="display-input" readonly><span class="clear-btn">&times;</span><span class="clock-icon">🕒</span><input type="time" class="engine-input"></div></div>
                         <div class="header-item"><label>LIMITE HDV</label><div id="limite-hdv" class="input-wrapper time-input-wrapper"><input type="text" class="display-input" readonly><span class="clear-btn">&times;</span><span class="clock-icon">🕒</span><input type="time" class="engine-input"></div></div>
                     </div>
@@ -96,7 +96,7 @@
 <div class="onglet-panneau" id="previ-rotations">
                     <div class="analyse-grid">
                         <div class="analyse-col">
-                            <div class="bingo-group"><div class="result-line"><span class="label">BINGO LFTW</span><span class="value" id="previ-bingo-base">-- kg</span></div></div><hr class="analyse-separator">
+                        <div class="bingo-group"><div class="result-line"><span class="label">BINGO BASE</span><span class="value" id="previ-bingo-base">-- kg</span></div></div><hr class="analyse-separator">
                             <div class="rotations-group">
                                 <h3 class="analyse-col-title">NBR ROTATIONS POSSIBLES</h3>
                                 <div id="previ-rotation-results-container">
@@ -126,8 +126,8 @@
   
                 <div class="onglet-panneau" id="suivi-rotations">
                     <div class="analyse-grid">
-                        <div class="analyse-col">
-                            <div class="bingo-group"><div class="result-line"><span class="label">BINGO LFTW</span><span class="value" id="suivi-bingo-base">-- kg</span></div></div><hr class="analyse-separator">
+                                                 <div class="analyse-col">
+                            <div class="bingo-group"><div class="result-line"><span class="label">BINGO BASE</span><span class="value" id="derout-bingo-base">-- kg</span></div></div><hr class="analyse-separator">
                             <div class="rotations-group">
                                 <h3 class="analyse-col-title">Nbr Rotations Restantes</h3>
                                     
@@ -175,7 +175,7 @@
                                  <h3 class="analyse-col-title" style="visibility: hidden;">&nbsp;</h3>
                                 <div class="result-line"><span class="label">Fuel actuel :</span><div id="deroutement-fuel-wrapper" class="input-wrapper numeric-input-wrapper" data-unit="kg"><input type="text" class="display-input manual-input" inputmode="numeric"><span class="clear-btn">&times;</span></div></div>
                                 <div class="result-line"><span class="label">Heure actuelle :</span><div id="deroutement-heure-wrapper" class="input-wrapper time-input-wrapper"><input type="text" class="display-input" readonly><span class="clear-btn">&times;</span><span class="clock-icon">🕒</span><input type="time" class="engine-input"></div></div>
-                                <div class="result-line"><span class="label">Fuel mini 1 largage / LFTW :<span id="derout-fuel-mini-base-help" class="formula-help-icon">?</span></span><span class="value" id="derout-fuel-mini-base">-- kg</span></div>
+                                                                <div class="result-line"><span class="label">Fuel mini 1 largage / Base :<span id="derout-fuel-mini-base-help" class="formula-help-icon">?</span></span><span class="value" id="derout-fuel-mini-base">-- kg</span></div>
                                 <div class="result-line"><span class="label">Fuel mini 1 largage / Pélic :<span id="derout-fuel-mini-pelic-help" class="formula-help-icon">?</span></span><span class="value" id="derout-fuel-mini-pelic">-- kg</span></div>
                                 <button id="refresh-gps-btn">🛰️ Rafraîchir GPS</button>
                             </div>
