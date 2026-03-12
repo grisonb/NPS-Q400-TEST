@@ -163,7 +163,7 @@ function setupEventListeners() {
     if (mainActionButtons) {
         const versionDisplay = document.createElement('div');
         versionDisplay.className = 'version-display';
-        versionDisplay.innerText = 'v6.1';
+        versionDisplay.innerText = 'v6.4';
         mainActionButtons.appendChild(versionDisplay);
     }
 
@@ -637,7 +637,16 @@ async function handleZipImport(file) {
         return;
     }
 
-    const packName = file.name.replace('.zip', '');
+    if (!db) {
+        try {
+            await initDB();
+        } catch (error) {
+            alert(`ERREUR : Impossible d'ouvrir la base locale (${error.message || error}).`);
+            return;
+        }
+    }
+
+    const packName = file.name.replace(/\.zip$/i, '');
     const progressSection = document.getElementById('import-progress-section');
     const statusMessage = document.getElementById('import-status-message');
     const progressBar = document.getElementById('import-progress-bar');
@@ -657,18 +666,19 @@ async function handleZipImport(file) {
 
         statusMessage.textContent = `Préparation de ${totalFiles} tuiles pour l'importation...`;
 
-        const allTilesData = [];
-        for (const tileFile of tileFiles) {
-            const blob = await tileFile.async('blob');
-            const url = `https://a.tile.openstreetmap.org/${tileFile.name}`;
-            allTilesData.push({ url: url, tile: blob, packName: packName });
-        }
-
         const batchSize = 100;
         let processedFiles = 0;
 
-        for (let i = 0; i < allTilesData.length; i += batchSize) {
-            const batch = allTilesData.slice(i, i + batchSize);
+        for (let i = 0; i < tileFiles.length; i += batchSize) {
+            const batchEntries = tileFiles.slice(i, i + batchSize);
+            const batch = await Promise.all(batchEntries.map(async tileFile => {
+                const blob = await tileFile.async('blob');
+                return {
+                    url: `https://a.tile.openstreetmap.org/${tileFile.name}`,
+                    tile: blob,
+                    packName: packName
+                };
+            }));
             const transaction = db.transaction('tiles', 'readwrite');
             const store = transaction.objectStore('tiles');
 
@@ -1045,7 +1055,8 @@ function updateSuiviTab() {
 
         const csFeuTime = parseTime(CALCULATOR_DATA.csFeu);
         const tmdTime = parseTime(document.getElementById('tmd').querySelector('.display-input').value);
-        updateAndSortRotations(document.getElementById('suivi-rotation-results-container'), { fuel: currentFuel, time: currentTime }, { bingoBase, bingoPelic, consoRotation, rotationTime, csFeuTime, tmdTime, limiteHDV: currentHdv, transitTime: 0 });
+        const transitTimeRetourBase = Math.round(calculateTransitTime(CALCULATOR_DATA.distBaseFeu));
+        updateAndSortRotations(document.getElementById('suivi-rotation-results-container'), { fuel: currentFuel, time: currentTime }, { bingoBase, bingoPelic, consoRotation, rotationTime, csFeuTime, tmdTime, limiteHDV: currentHdv, transitTime: transitTimeRetourBase });
     }
 }
 
