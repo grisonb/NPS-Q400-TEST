@@ -351,7 +351,7 @@ function updateMapBingoDisplay() {
     const lftwEl = document.getElementById('map-bingo-lftw');
     const pelicEl = document.getElementById('map-bingo-pelic');
 
-    lftwEl.innerHTML = `BINGO BASE (${selectedBaseOACI}): <b>${bingoBase} kg</b>`;
+    lftwEl.innerHTML = `BINGO BASE ${selectedBaseOACI}: <b>${bingoBase} kg</b>`;
 
     if (bingoPelic !== 700 && selectedPelicanOACI) {
         pelicEl.innerHTML = `BINGO ${selectedPelicanOACI}: <b>${bingoPelic} kg</b>`;
@@ -472,7 +472,7 @@ function updateBaseLabels() {
     const csBaseLabel = document.getElementById('cs-base-label');
     if (csBaseLabel) csBaseLabel.textContent = `CS BASE (${selectedBaseOACI})`;
     document.querySelectorAll('.base-bingo-label').forEach(el => {
-        el.textContent = `BINGO BASE (${selectedBaseOACI})`;
+        el.textContent = `BINGO BASE ${selectedBaseOACI}`;
     });
     const deroutFuelMiniBaseLabel = document.getElementById('derout-fuel-mini-base-label');
     if (deroutFuelMiniBaseLabel) deroutFuelMiniBaseLabel.textContent = `Fuel mini 1 largage / BASE (${selectedBaseOACI}) :`;
