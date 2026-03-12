@@ -163,7 +163,7 @@ function setupEventListeners() {
     if (mainActionButtons) {
         const versionDisplay = document.createElement('div');
         versionDisplay.className = 'version-display';
-        versionDisplay.innerText = 'v6.1';
+        versionDisplay.innerText = 'v6.5';
         mainActionButtons.appendChild(versionDisplay);
     }
 
@@ -637,7 +637,16 @@ async function handleZipImport(file) {
         return;
     }
 
-    const packName = file.name.replace('.zip', '');
+    if (!db) {
+        try {
+            await initDB();
+        } catch (error) {
+            alert(`ERREUR : Impossible d'ouvrir la base locale (${error.message || error}).`);
+            return;
+        }
+    }
+
+    const packName = file.name.replace(/\.zip$/i, '');
     const progressSection = document.getElementById('import-progress-section');
     const statusMessage = document.getElementById('import-status-message');
     const progressBar = document.getElementById('import-progress-bar');
@@ -657,18 +666,19 @@ async function handleZipImport(file) {
 
         statusMessage.textContent = `Préparation de ${totalFiles} tuiles pour l'importation...`;
 
-        const allTilesData = [];
-        for (const tileFile of tileFiles) {
-            const blob = await tileFile.async('blob');
-            const url = `https://a.tile.openstreetmap.org/${tileFile.name}`;
-            allTilesData.push({ url: url, tile: blob, packName: packName });
-        }
-
         const batchSize = 100;
         let processedFiles = 0;
 
-        for (let i = 0; i < allTilesData.length; i += batchSize) {
-            const batch = allTilesData.slice(i, i + batchSize);
+        for (let i = 0; i < tileFiles.length; i += batchSize) {
+            const batchEntries = tileFiles.slice(i, i + batchSize);
+            const batch = await Promise.all(batchEntries.map(async tileFile => {
+                const blob = await tileFile.async('blob');
+                return {
+                    url: `https://a.tile.openstreetmap.org/${tileFile.name}`,
+                    tile: blob,
+                    packName: packName
+                };
+            }));
             const transaction = db.transaction('tiles', 'readwrite');
             const store = transaction.objectStore('tiles');
 
@@ -784,6 +794,7 @@ function updateAndSortRotations(container, current, params) {
     const lines = Array.from(container.querySelectorAll('.result-line'));
     const resultsData = [];
     let minTimeLimit = Infinity;
+    let minFuelLimit = Infinity;
 
     // --- Première passe : Calculer toutes les valeurs et trouver la limite temporelle ---
     lines.forEach(line => {
@@ -827,22 +838,24 @@ function updateAndSortRotations(container, current, params) {
 
         resultsData.push({ type, value, element: line, formulaString });
         
-        if ((type === 'cs' || type === 'tmd') && value !== null && value >= 0) {
+        if ((type === 'cs' || type === 'tmd' || type === 'hdv') && value !== null) {
             minTimeLimit = Math.min(minTimeLimit, value);
         }
+        if ((type === 'base' || type === 'pelic') && value !== null) {
+            minFuelLimit = Math.min(minFuelLimit, value);
+        }
     });
+
+    // Si une limite temporelle est la première limite atteinte,
+    // toute valeur suivante (plus élevée) est impossible et passe en rouge.
+    const shouldForceTimeConstraint = minTimeLimit !== Infinity && minTimeLimit <= minFuelLimit;
 
     // --- Deuxième passe : Appliquer les styles et mettre à jour le DOM ---
     resultsData.forEach(result => {
         const { type, value, element, formulaString } = result;
         const valueCell = element.querySelector('.value');
         const helpIcon = element.querySelector('.formula-help-icon');
-
-        // ========================= MODIFICATION ICI =========================
-        // La condition est simplifiée pour s'appliquer à TOUTES les lignes,
-        // y compris CS et TMD eux-mêmes.
-        const isTimeLimited = (value !== null && value > minTimeLimit);
-        // ======================= FIN DE LA MODIFICATION =======================
+        const isTimeLimited = shouldForceTimeConstraint && value !== null && value > minTimeLimit;
 
         if (value === null) {
             valueCell.textContent = '--';
@@ -1045,7 +1058,8 @@ function updateSuiviTab() {
 
         const csFeuTime = parseTime(CALCULATOR_DATA.csFeu);
         const tmdTime = parseTime(document.getElementById('tmd').querySelector('.display-input').value);
-        updateAndSortRotations(document.getElementById('suivi-rotation-results-container'), { fuel: currentFuel, time: currentTime }, { bingoBase, bingoPelic, consoRotation, rotationTime, csFeuTime, tmdTime, limiteHDV: currentHdv, transitTime: 0 });
+        const transitTimeRetourBase = Math.round(calculateTransitTime(CALCULATOR_DATA.distBaseFeu));
+        updateAndSortRotations(document.getElementById('suivi-rotation-results-container'), { fuel: currentFuel, time: currentTime }, { bingoBase, bingoPelic, consoRotation, rotationTime, csFeuTime, tmdTime, limiteHDV: currentHdv, transitTime: transitTimeRetourBase });
     }
 }
 
