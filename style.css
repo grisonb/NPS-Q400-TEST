@@ -129,12 +129,17 @@ html, body {
     line-height: 1;
     transition: transform 0.2s ease;
 }
+#close-calculator-btn::before {
+    content: '';
+    position: absolute;
+    inset: -10px;
+}
 #close-calculator-btn:hover {
     transform: scale(1.1); /* Effet de grossissement au survol */
 }
 .main-container { width: 100%; max-width: 1000px; height: 100%; max-height: 95vh; background-color: #fff; border-radius: var(--border-radius); box-shadow: var(--shadow); overflow: hidden; display: flex; flex-direction: column; position: relative; }
-.onglets-navigation { display: flex; background-color: var(--background-color); border-bottom: 1px solid var(--border-color); }
-.onglet-bouton { flex: 1; padding: 15px; border: none; background: transparent; font-size: 16px; font-weight: 500; color: var(--light-text-color); cursor: pointer; border-bottom: 3px solid transparent; transition: all 0.2s; white-space: nowrap; }
+.onglets-navigation { display: flex; align-items: stretch; background-color: var(--background-color); border-bottom: 1px solid var(--border-color); }
+.onglet-bouton { flex: 1; min-height: 56px; padding: 16px 10px; border: none; background: transparent; font-size: 16px; font-weight: 500; color: var(--light-text-color); cursor: pointer; border-bottom: 3px solid transparent; transition: all 0.2s; white-space: nowrap; display: flex; align-items: center; justify-content: center; touch-action: manipulation; }
 .onglet-bouton.active { color: var(--primary-color); border-bottom-color: var(--primary-color); }
 .onglets-conteneur { flex-grow: 1; position: relative; overflow: hidden; }
 .onglet-panneau { display: none; flex-direction: column; height: 100%; }
@@ -330,6 +335,11 @@ html, body {
     position: absolute; top: 10px; right: 15px; width: 44px; height: 44px;
     font-size: 32px; font-weight: bold; color: var(--light-text-color);
     background: transparent; border: none; cursor: pointer; line-height: 1;
+}
+#offline-map-modal #close-offline-map-btn::before {
+    content: '';
+    position: absolute;
+    inset: -6px;
 }
 
 .modal-content {
