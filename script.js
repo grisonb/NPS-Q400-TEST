@@ -162,8 +162,9 @@ function setupEventListeners() {
     
     if (mainActionButtons) {
         const versionDisplay = document.createElement('div');
-        versionDisplay.className = 'version-display';
-        versionDisplay.innerText = 'v6.6';
+        versionDisplay.className = 'version-display'
+      versionDisplay.innerText = 'v6.7';
+
         mainActionButtons.appendChild(versionDisplay);
     }
 
@@ -483,7 +484,8 @@ function drawPermanentAirportMarkers() {
         const disableButtonText = isDisabled ? "Activer" : "Désactiver";
         const disableButtonClass = isDisabled ? "enable-btn" : "disable-btn";
         const waterButtonText = isWater ? "RETARDANT" : "EAU";
-        marker.bindPopup(`<div class="airport-popup"><b>${airport.oaci}</b><br>${airport.name}<div class="popup-buttons"><button class="water-btn" onclick="window.toggleWater('${airport.oaci}')">${waterButtonText}</button><button class="${disableButtonClass}" onclick="window.toggleAirport('${airport.oaci}')">${disableButtonText}</button></div></div>`);
+        const waterButtonClass = isWater ? "water-btn water-btn-retardant" : "water-btn";
+        marker.bindPopup(`<div class="airport-popup"><b>${airport.oaci}</b><br>${airport.name}<div class="popup-buttons"><button class="${waterButtonClass}" onclick="window.toggleWater('${airport.oaci}')">${waterButtonText}</button><button class="${disableButtonClass}" onclick="window.toggleAirport('${airport.oaci}')">${disableButtonText}</button></div></div>`);
         marker.addTo(permanentAirportLayer);
     });
 }
