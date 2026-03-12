@@ -163,8 +163,7 @@ function setupEventListeners() {
     if (mainActionButtons) {
         const versionDisplay = document.createElement('div');
         versionDisplay.className = 'version-display';
-        versionDisplay.innerText = 'v6.4';
-
+        versionDisplay.innerText = 'v6.5';
         mainActionButtons.appendChild(versionDisplay);
     }
 
@@ -795,6 +794,7 @@ function updateAndSortRotations(container, current, params) {
     const lines = Array.from(container.querySelectorAll('.result-line'));
     const resultsData = [];
     let minTimeLimit = Infinity;
+    let minFuelLimit = Infinity;
 
     // --- Première passe : Calculer toutes les valeurs et trouver la limite temporelle ---
     lines.forEach(line => {
@@ -838,22 +838,24 @@ function updateAndSortRotations(container, current, params) {
 
         resultsData.push({ type, value, element: line, formulaString });
         
-        if ((type === 'cs' || type === 'tmd') && value !== null && value >= 0) {
+        if ((type === 'cs' || type === 'tmd' || type === 'hdv') && value !== null) {
             minTimeLimit = Math.min(minTimeLimit, value);
         }
+        if ((type === 'base' || type === 'pelic') && value !== null) {
+            minFuelLimit = Math.min(minFuelLimit, value);
+        }
     });
+
+    // Si une limite temporelle est la première limite atteinte,
+    // toute valeur suivante (plus élevée) est impossible et passe en rouge.
+    const shouldForceTimeConstraint = minTimeLimit !== Infinity && minTimeLimit <= minFuelLimit;
 
     // --- Deuxième passe : Appliquer les styles et mettre à jour le DOM ---
     resultsData.forEach(result => {
         const { type, value, element, formulaString } = result;
         const valueCell = element.querySelector('.value');
         const helpIcon = element.querySelector('.formula-help-icon');
-
-        // ========================= MODIFICATION ICI =========================
-        // La condition est simplifiée pour s'appliquer à TOUTES les lignes,
-        // y compris CS et TMD eux-mêmes.
-        const isTimeLimited = (value !== null && value > minTimeLimit);
-        // ======================= FIN DE LA MODIFICATION =======================
+        const isTimeLimited = shouldForceTimeConstraint && value !== null && value > minTimeLimit;
 
         if (value === null) {
             valueCell.textContent = '--';
