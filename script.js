@@ -164,6 +164,7 @@ function setupEventListeners() {
         const versionDisplay = document.createElement('div');
         versionDisplay.className = 'version-display';
         versionDisplay.innerText = 'v6.4';
+
         mainActionButtons.appendChild(versionDisplay);
     }
 
