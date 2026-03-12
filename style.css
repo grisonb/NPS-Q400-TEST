@@ -10,6 +10,7 @@
     --border-radius: 12px;
     --success-color: #28a745;
     --water-color: #007bff;
+    --retardant-color: #ff5a3d;
     --safe-area-top: 22px; /* Marge supérieure pour les appareils mobiles */
 }
 
@@ -67,6 +68,7 @@ html, body {
 .airport-popup .popup-buttons { display: flex; gap: 5px; margin-top: 10px; }
 .airport-popup button { flex-grow: 1; padding: 8px; border: none; border-radius: 5px; color: white; font-weight: bold; cursor: pointer; }
 .airport-popup .water-btn { background-color: var(--water-color); }
+.airport-popup .water-btn-retardant { background-color: var(--retardant-color); }
 .airport-popup .enable-btn { background-color: var(--success-color); }
 .airport-popup .disable-btn { background-color: var(--secondary-color); }
 #bingo-map-display {
