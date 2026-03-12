@@ -163,8 +163,7 @@ function setupEventListeners() {
     if (mainActionButtons) {
         const versionDisplay = document.createElement('div');
         versionDisplay.className = 'version-display';
-        versionDisplay.innerText = 'v6.3';
-        mainActionButtons.appendChild(versionDisplay);
+        versionDisplay.innerText = 'v6.3'
     }
 
     searchInput.addEventListener('input', () => {
