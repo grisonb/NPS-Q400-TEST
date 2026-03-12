@@ -129,6 +129,11 @@ html, body {
     line-height: 1;
     transition: transform 0.2s ease;
 }
+#close-calculator-btn::before {
+    content: '';
+    position: absolute;
+    inset: -10px;
+}
 #close-calculator-btn:hover {
     transform: scale(1.1); /* Effet de grossissement au survol */
 }
@@ -330,6 +335,11 @@ html, body {
     position: absolute; top: 10px; right: 15px; width: 52px; height: 52px;
     font-size: 36px; font-weight: bold; color: var(--light-text-color);
     background: transparent; border: none; cursor: pointer; line-height: 1;
+}
+#offline-map-modal #close-offline-map-btn::before {
+    content: '';
+    position: absolute;
+    inset: -6px;
 }
 
 .modal-content {
