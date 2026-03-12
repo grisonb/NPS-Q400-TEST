@@ -15,6 +15,8 @@ const MAGNETIC_DECLINATION = 1.0;
 let userMarker = null, watchId = null, accuracyCircle = null, headingLayer = null, lastPosition = null;
 let userToTargetLayer = null, lftwRouteLayer = null;
 let showLftwRoute = true;
+const DEFAULT_BASE_OACI = 'LFTW';
+let selectedBaseOACI = DEFAULT_BASE_OACI;
 let gaarCircuits = [];
 let isGaarMode = false;
 let isDrawingMode = false;
@@ -162,9 +164,8 @@ function setupEventListeners() {
     
     if (mainActionButtons) {
         const versionDisplay = document.createElement('div');
-        versionDisplay.className = 'version-display'
-      versionDisplay.innerText = 'v6.7';
-
+        versionDisplay.className = 'version-display';
+        versionDisplay.innerText = 'v7.0';
         mainActionButtons.appendChild(versionDisplay);
     }
 
@@ -282,6 +283,7 @@ function setupEventListeners() {
         event.target.value = '';
     });
 
+    updateBaseLabels();
     updateLftwButtonState();
     updateGaarButtonState();
 }
@@ -349,7 +351,7 @@ function updateMapBingoDisplay() {
     const lftwEl = document.getElementById('map-bingo-lftw');
     const pelicEl = document.getElementById('map-bingo-pelic');
 
-    lftwEl.innerHTML = `BINGO LFTW: <b>${bingoBase} kg</b>`;
+    lftwEl.innerHTML = `BINGO BASE (${selectedBaseOACI}): <b>${bingoBase} kg</b>`;
 
     if (bingoPelic !== 700 && selectedPelicanOACI) {
         pelicEl.innerHTML = `BINGO ${selectedPelicanOACI}: <b>${bingoPelic} kg</b>`;
@@ -427,7 +429,7 @@ function drawRoute(startLatLng, endLatLng, options = {}) {
         dashArray = '5, 10';
         layer = userToTargetLayer;
     } else if (isLftwRoute) {
-        labelText = `LFTW: ${Math.round(magneticBearing)}° / ${Math.round(distance)} Nm`;
+        labelText = `BASE ${selectedBaseOACI}: ${Math.round(magneticBearing)}° / ${Math.round(distance)} Nm`;
         color = 'var(--success-color)';
         dashArray = '5, 10';
         layer = lftwRouteLayer;
@@ -458,11 +460,31 @@ function drawRoute(startLatLng, endLatLng, options = {}) {
 }
 
 function getClosestAirports(lat, lon, count) { return pelicanAirports.filter(ap => !disabledAirports.has(ap.oaci)).map(ap => ({ ...ap, distance: calculateDistanceInNm(lat, lon, ap.lat, ap.lon) })).sort((a, b) => a.distance - b.distance).slice(0, count); }
+function getAirportByOaci(oaci) {
+    return [...pelicanAirports, ...otherAirports].find(ap => ap.oaci === oaci) || null;
+}
+function updateBaseLabels() {
+    const routeButton = document.getElementById('lftw-route-button');
+    if (routeButton) {
+        routeButton.textContent = `Route BASE (${selectedBaseOACI})`;
+        routeButton.title = `Afficher/Masquer la route vers la base ${selectedBaseOACI}`;
+    }
+    const csBaseLabel = document.getElementById('cs-base-label');
+    if (csBaseLabel) csBaseLabel.textContent = `CS BASE (${selectedBaseOACI})`;
+    document.querySelectorAll('.base-bingo-label').forEach(el => {
+        el.textContent = `BINGO BASE (${selectedBaseOACI})`;
+    });
+    const deroutFuelMiniBaseLabel = document.getElementById('derout-fuel-mini-base-label');
+    if (deroutFuelMiniBaseLabel) deroutFuelMiniBaseLabel.textContent = `Fuel mini 1 largage / BASE (${selectedBaseOACI}) :`;
+}
 function refreshUI() { drawPermanentAirportMarkers(); if (currentCommune) displayCommuneDetails(currentCommune, false); }
 function drawPermanentAirportMarkers() {
     permanentAirportLayer.clearLayers();
 
     otherAirports.forEach(airport => {
+        const isBase = selectedBaseOACI === airport.oaci;
+        const baseButtonText = isBase ? 'BASE ✓' : 'BASE';
+        const baseButtonClass = isBase ? 'base-btn base-btn-active' : 'base-btn';
         const marker = L.circleMarker([airport.lat, airport.lon], {
             radius: 2.5,
             fillColor: 'black',
@@ -470,7 +492,7 @@ function drawPermanentAirportMarkers() {
             color: 'transparent',
             weight: 15,
             opacity: 0
-        }).bindPopup(`<b>${airport.oaci}</b><br>${airport.name}`);
+        }).bindPopup(`<div class="airport-popup"><b>${airport.oaci}</b><br>${airport.name}<div class="popup-buttons"><button class="${baseButtonClass}" onclick="window.setBaseAirport('${airport.oaci}')">${baseButtonText}</button></div></div>`);
         marker.addTo(permanentAirportLayer);
     });
 
@@ -485,14 +507,42 @@ function drawPermanentAirportMarkers() {
         const disableButtonClass = isDisabled ? "enable-btn" : "disable-btn";
         const waterButtonText = isWater ? "RETARDANT" : "EAU";
         const waterButtonClass = isWater ? "water-btn water-btn-retardant" : "water-btn";
-        marker.bindPopup(`<div class="airport-popup"><b>${airport.oaci}</b><br>${airport.name}<div class="popup-buttons"><button class="${waterButtonClass}" onclick="window.toggleWater('${airport.oaci}')">${waterButtonText}</button><button class="${disableButtonClass}" onclick="window.toggleAirport('${airport.oaci}')">${disableButtonText}</button></div></div>`);
+        const isBase = selectedBaseOACI === airport.oaci;
+        const baseButtonText = isBase ? 'BASE ✓' : 'BASE';
+        const baseButtonClass = isBase ? 'base-btn base-btn-active' : 'base-btn';
+        marker.bindPopup(`<div class="airport-popup"><b>${airport.oaci}</b><br>${airport.name}<div class="popup-buttons"><button class="${waterButtonClass}" onclick="window.toggleWater('${airport.oaci}')">${waterButtonText}</button><button class="${disableButtonClass}" onclick="window.toggleAirport('${airport.oaci}')">${disableButtonText}</button><button class="${baseButtonClass}" onclick="window.setBaseAirport('${airport.oaci}')">${baseButtonText}</button></div></div>`);
         marker.addTo(permanentAirportLayer);
     });
 }
-const loadState = () => { const savedDisabled = localStorage.getItem('disabled_airports'); if (savedDisabled) disabledAirports = new Set(JSON.parse(savedDisabled)); const savedWater = localStorage.getItem('water_airports'); if (savedWater) waterAirports = new Set(JSON.parse(savedWater)); };
-const saveState = () => { localStorage.setItem('disabled_airports', JSON.stringify([...disabledAirports])); localStorage.setItem('water_airports', JSON.stringify([...waterAirports])); };
+const loadState = () => {
+    const savedDisabled = localStorage.getItem('disabled_airports');
+    if (savedDisabled) disabledAirports = new Set(JSON.parse(savedDisabled));
+    const savedWater = localStorage.getItem('water_airports');
+    if (savedWater) waterAirports = new Set(JSON.parse(savedWater));
+    const savedBase = localStorage.getItem('selected_base_oaci');
+    if (savedBase && getAirportByOaci(savedBase)) {
+        selectedBaseOACI = savedBase;
+    }
+};
+const saveState = () => {
+    localStorage.setItem('disabled_airports', JSON.stringify([...disabledAirports]));
+    localStorage.setItem('water_airports', JSON.stringify([...waterAirports]));
+    localStorage.setItem('selected_base_oaci', selectedBaseOACI);
+};
 window.toggleAirport = oaci => { disabledAirports.has(oaci) ? disabledAirports.delete(oaci) : (disabledAirports.add(oaci), waterAirports.delete(oaci)), saveState(), refreshUI() };
 window.toggleWater = oaci => { waterAirports.has(oaci) ? waterAirports.delete(oaci) : (waterAirports.add(oaci), disabledAirports.delete(oaci)), saveState(), refreshUI() };
+window.setBaseAirport = oaci => {
+    if (!getAirportByOaci(oaci)) return;
+    selectedBaseOACI = oaci;
+    saveState();
+    updateBaseLabels();
+    updateCalculatorData();
+    if (typeof window.updateBaseSunsetDisplay === 'function') {
+        window.updateBaseSunsetDisplay();
+    }
+    refreshUI();
+    if (map) map.closePopup();
+};
 
 function toggleLiveGps() {
     const liveGpsButton = document.getElementById('live-gps-button');
@@ -568,13 +618,13 @@ function updateLftwButtonState() {
 function drawLftwRoute() {
     lftwRouteLayer.clearLayers();
     if (!showLftwRoute || !currentCommune) return;
-    const lftwAirport = pelicanAirports.find(ap => ap.oaci === 'LFTW');
-    if (!lftwAirport) return;
+    const baseAirport = getAirportByOaci(selectedBaseOACI);
+    if (!baseAirport) return;
     const { latitude_mairie: lat, longitude_mairie: lon } = currentCommune;
-    const { lat: lftwLat, lon: lftwLon } = lftwAirport;
-    const trueBearing = calculateBearing(lat, lon, lftwLat, lftwLon);
+    const { lat: baseLat, lon: baseLon } = baseAirport;
+    const trueBearing = calculateBearing(lat, lon, baseLat, baseLon);
     const magneticBearing = (trueBearing - MAGNETIC_DECLINATION + 360) % 360;
-    drawRoute([lat, lon], [lftwLat, lftwLon], { isLftwRoute: true, magneticBearing: magneticBearing });
+    drawRoute([lat, lon], [baseLat, baseLon], { isLftwRoute: true, magneticBearing: magneticBearing });
 }
 
 function toggleGaarVisibility() { isGaarMode = !isGaarMode; updateGaarButtonState(); if (isGaarMode) { redrawGaarCircuits(); } else { gaarLayer.clearLayers(); if (isDrawingMode) { toggleGaarDrawingMode(); } } }
@@ -592,10 +642,10 @@ function updateCalculatorData() {
     if (!currentCommune) {
         CALCULATOR_DATA = { distBaseFeu: 0, distPelicFeu: 0, csFeu: '--:--', distGpsFeu: 0 };
     } else {
-        const lftw = pelicanAirports.find(ap => ap.oaci === 'LFTW');
+        const baseAirport = getAirportByOaci(selectedBaseOACI);
         const selectedPelican = pelicanAirports.find(ap => ap.oaci === selectedPelicanOACI);
         const { latitude_mairie: feuLat, longitude_mairie: feuLon } = currentCommune;
-        let distBaseFeu = 0; if (lftw) { distBaseFeu = calculateDistanceInNm(lftw.lat, lftw.lon, feuLat, feuLon); }
+        let distBaseFeu = 0; if (baseAirport) { distBaseFeu = calculateDistanceInNm(baseAirport.lat, baseAirport.lon, feuLat, feuLon); }
         let distPelicFeu = 0; if (selectedPelican) { distPelicFeu = calculateDistanceInNm(selectedPelican.lat, selectedPelican.lon, feuLat, feuLon); }
         let csFeu = '--:--'; if (typeof SunCalc !== 'undefined') { try { const now = new Date(); const times = SunCalc.getTimes(now, feuLat, feuLon); csFeu = times.sunset.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Paris' }); } catch (e) { /* ignore */ } }
         let distGpsFeu = 0; if (userMarker && userMarker.getLatLng()) { const userLatLng = userMarker.getLatLng(); distGpsFeu = calculateDistanceInNm(userLatLng.lat, userLatLng.lng, feuLat, feuLon); }
@@ -1128,7 +1178,6 @@ function initializeCalculator() {
     const resetButton = document.getElementById('reset-all-btn');
     const onglets = document.querySelectorAll('.onglet-bouton');
     const csLftwDisplay = document.getElementById('cs-lftw-display');
-    const lftwAirport = pelicanAirports.find(ap => ap.oaci === 'LFTW');
     const refreshGpsBtn = document.getElementById('refresh-gps-btn');
     refreshGpsBtn.addEventListener('click', () => {
         // On vérifie simplement si une position GPS est déjà connue via le marqueur sur la carte
@@ -1142,8 +1191,24 @@ function initializeCalculator() {
         }
     });
 
-    function updateLftwSunset() { if (lftwAirport && typeof SunCalc !== 'undefined') { try { const now = new Date(); const times = SunCalc.getTimes(now, lftwAirport.lat, lftwAirport.lon); const sunsetString = times.sunset.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Paris' }); csLftwDisplay.value = sunsetString; } catch (e) { csLftwDisplay.value = '--:--'; } } }
-    updateLftwSunset(); setInterval(updateLftwSunset, 60000);
+    function updateLftwSunset() {
+        const baseAirport = getAirportByOaci(selectedBaseOACI);
+        if (baseAirport && typeof SunCalc !== 'undefined') {
+            try {
+                const now = new Date();
+                const times = SunCalc.getTimes(now, baseAirport.lat, baseAirport.lon);
+                const sunsetString = times.sunset.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Paris' });
+                csLftwDisplay.value = sunsetString;
+                return;
+            } catch (e) {
+                // ignore
+            }
+        }
+        csLftwDisplay.value = '--:--';
+    }
+    window.updateBaseSunsetDisplay = updateLftwSunset;
+    updateLftwSunset();
+    setInterval(updateLftwSunset, 60000);
 
     onglets.forEach(onglet => { onglet.addEventListener('click', () => { document.querySelectorAll('.onglet-bouton').forEach(btn => btn.classList.remove('active')); document.querySelectorAll('.onglet-panneau').forEach(p => p.classList.remove('active')); onglet.classList.add('active'); document.getElementById(onglet.dataset.onglet).classList.add('active'); resetButton.style.display = (onglet.dataset.onglet === 'bloc-fuel') ? 'flex' : 'none'; }); });
 
