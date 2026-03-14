@@ -1281,7 +1281,9 @@ function updateDeroutementTab() {
         resultsContainer.querySelectorAll('.value').forEach(el => { el.textContent = '--'; el.className = 'value rotation-value-default'; });
         document.getElementById('derout-fuel-mini-base').textContent = '-- kg';
         document.getElementById('derout-fuel-mini-pelic').textContent = '-- kg';
-        setHelp('derout-fuel-mini-base-help'); setHelp('derout-fuel-mini-pelic-help');
+        document.getElementById('derout-heure-sur-feu').textContent = '--:--';
+        document.getElementById('derout-cs-sur-feu').textContent = '--:--';
+        setHelp('derout-fuel-mini-base-help'); setHelp('derout-fuel-mini-pelic-help'); setHelp('derout-heure-sur-feu-help');
         return;
     }
 
@@ -1310,13 +1312,17 @@ function updateDeroutementTab() {
     setHelp('derout-fuel-mini-base-help', `Formule: Conso(GPS->Feu) + Forfait Largage + BINGO Base\n\nCalcul: ${consoTransitFromGps} + 250 + ${bingoBase}`);
     setHelp('derout-fuel-mini-pelic-help', `Formule: Conso(GPS->Feu) + Forfait Largage + BINGO Pélic.\n\nCalcul: ${consoTransitFromGps} + 250 + ${bingoPelic}`);
 
+    const heureSurFeu = heureActuelle !== null ? heureActuelle + transitTimeFromGps : null;
+    document.getElementById('derout-heure-sur-feu').textContent = formatTime(heureSurFeu) || '--:--';
+    document.getElementById('derout-cs-sur-feu').textContent = CALCULATOR_DATA.csFeu;
+    setHelp('derout-heure-sur-feu-help', `Formule : Heure actuelle + Durée transit GPS->Feu\n\nCalcul : ${formatTime(heureActuelle) || 'N/A'} + ${formatTime(transitTimeFromGps) || 'N/A'}`);
+
     if (fuelActuel === null || heureActuelle === null) {
         resultsContainer.querySelectorAll('.value').forEach(el => { el.textContent = '--'; el.className = 'value rotation-value-default'; });
         resultsContainer.querySelectorAll('.formula-help-icon').forEach(icon => icon.onclick = () => alert("Données insuffisantes pour le calcul."));
         return;
     }
 
-    const heureSurFeu = heureActuelle + transitTimeFromGps;
     const fuelSurFeu = fuelActuel - consoTransitFromGps;
 
     updateAndSortRotations(
