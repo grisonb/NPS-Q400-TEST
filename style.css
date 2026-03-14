@@ -412,6 +412,31 @@ html, body {
     font-style: italic;
 }
 
+
+.offline-toggle-row {
+    margin: 10px 0 14px;
+    padding: 10px 12px;
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    background: #f7fbff;
+    color: var(--primary-color);
+    font-weight: 600;
+}
+
+.offline-toggle-row label {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    cursor: pointer;
+}
+
+#offline-status {
+    margin-top: 8px;
+    color: var(--light-text-color);
+    font-size: 13px;
+    text-align: center;
+}
+
 #installed-maps-list {
     list-style: none;
     padding: 0;
