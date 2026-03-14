@@ -114,6 +114,25 @@ html, body {
 .clear-commune-btn:hover {
     color: #333;
 }
+#nearest-commune-display {
+    position: absolute;
+    bottom: 16px;
+    left: 16px;
+    z-index: 1000;
+    background-color: rgba(255, 255, 255, 0.95);
+    border: 1px solid rgba(0, 0, 0, 0.2);
+    border-radius: var(--border-radius);
+    box-shadow: 0 1px 5px rgba(0, 0, 0, 0.4);
+    padding: 10px 14px;
+    font-size: 15px;
+    color: var(--text-color);
+    max-width: min(360px, calc(100vw - 32px));
+}
+
+#nearest-commune-display b {
+    color: var(--primary-color);
+}
+
 #live-gps-button { flex-shrink: 0; width: 48px; height: 48px; padding: 0; border: 1px solid var(--border-color); border-radius: var(--border-radius); background-color: var(--card-background-color); color: var(--primary-color); font-size: 24px; cursor: pointer; display: flex; align-items: center; justify-content: center; line-height: 1; transition: background-color 0.2s, color 0.2s; }
 #live-gps-button:hover { background-color: #e9f5ff; }
 #main-action-buttons { position: absolute; top: var(--safe-area-top); right: 20px; z-index: 1001; display: flex; flex-direction: column; gap: 15px; align-items: center; }
