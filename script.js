@@ -177,7 +177,7 @@ function setupEventListeners() {
     if (mainActionButtons) {
         const versionDisplay = document.createElement('div');
         versionDisplay.className = 'version-display';
-        versionDisplay.innerText = 'v8.9';
+        versionDisplay.innerText = 'v8.10';
         mainActionButtons.appendChild(versionDisplay);
     }
 
@@ -1230,6 +1230,10 @@ function updateSuiviTab() {
         document.getElementById('suivi-bingo-base').innerHTML = '-- kg';
         document.getElementById('suivi-bingo-pelic').innerHTML = '-- kg';
         document.querySelectorAll('#suivi-rotation-results-container .value').forEach(el => { el.textContent = '--'; el.className = 'value rotation-value-default'; });
+        document.getElementById('suivi-heure-sur-feu').textContent = '--:--';
+        document.getElementById('suivi-cs-sur-feu').textContent = '--:--';
+        const suiviHeureHelpIcon = document.getElementById('suivi-heure-sur-feu-help');
+        if (suiviHeureHelpIcon) { suiviHeureHelpIcon.onclick = () => alert('Données insuffisantes pour le calcul.'); }
         suiviConsoInput.value = '';
         suiviDureeInput.value = '';
         return;
@@ -1256,6 +1260,10 @@ function updateSuiviTab() {
 
     if (!lastFilledRow) {
         document.getElementById('suivi-fuel-actuel').textContent = '-- kg';
+        document.getElementById('suivi-heure-sur-feu').textContent = '--:--';
+        document.getElementById('suivi-cs-sur-feu').textContent = '--:--';
+        const suiviHeureHelpIcon = document.getElementById('suivi-heure-sur-feu-help');
+        if (suiviHeureHelpIcon) { suiviHeureHelpIcon.onclick = () => alert('Données insuffisantes pour le calcul.'); }
         document.querySelectorAll('#suivi-rotation-results-container .value').forEach(el => { el.textContent = '--'; el.className = 'value rotation-value-default'; });
     } else {
         const currentFuel = parseNumeric(lastFilledRow.querySelector('.numeric-input-wrapper .display-input').value);
@@ -1270,6 +1278,12 @@ function updateSuiviTab() {
         const tmdTime = parseTime(document.getElementById('tmd').querySelector('.display-input').value);
         const transitTimeVersFeu = Math.round(calculateTransitTime(CALCULATOR_DATA.distBaseFeu));
         const heureSurFeu = currentTime !== null ? currentTime + transitTimeVersFeu : null;
+        document.getElementById('suivi-heure-sur-feu').textContent = formatTime(heureSurFeu) || '--:--';
+        document.getElementById('suivi-cs-sur-feu').textContent = CALCULATOR_DATA.csFeu;
+        const suiviHeureHelpIcon = document.getElementById('suivi-heure-sur-feu-help');
+        if (suiviHeureHelpIcon) {
+            suiviHeureHelpIcon.onclick = () => alert(`Formule : Heure bloc arrivée + Durée transit base->Feu\n\nCalcul : ${formatTime(currentTime) || 'N/A'} + ${formatTime(transitTimeVersFeu) || 'N/A'}`);
+        }
         updateAndSortRotations(document.getElementById('suivi-rotation-results-container'), { fuel: currentFuel, time: heureSurFeu }, { bingoBase, bingoPelic, consoRotation, rotationTime, csFeuTime, tmdTime, limiteHDV: currentHdv, transitTime: transitTimeVersFeu });
     }
 }
