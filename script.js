@@ -116,8 +116,16 @@ function initMap() {
         if (isDrawingMode) return;
         selectedPelicanOACI = null;
         L.DomEvent.preventDefault(e.originalEvent);
-        const pointName = findClosestCommuneName(e.latlng.lat, e.latlng.lng) || 'Feu manuel';
-        const manualCommune = { nom_standard: pointName, latitude_mairie: e.latlng.lat, longitude_mairie: e.latlng.lng, isManual: true };
+        const closestCommune = findClosestCommune(e.latlng.lat, e.latlng.lng, 27);
+        const pointName = closestCommune?.nom_standard || 'Feu manuel';
+        const manualCommune = {
+            nom_standard: pointName,
+            dep_code: closestCommune?.dep_code || null,
+            dep_nom: closestCommune?.dep_nom || null,
+            latitude_mairie: e.latlng.lat,
+            longitude_mairie: e.latlng.lng,
+            isManual: true
+        };
         currentCommune = manualCommune;
         localStorage.setItem('currentCommune', JSON.stringify(manualCommune));
         displayCommuneDetails(manualCommune, false);
@@ -232,8 +240,16 @@ function setupEventListeners() {
         navigator.geolocation.getCurrentPosition(
             (pos) => {
                 const { latitude, longitude } = pos.coords;
-                const pointName = findClosestCommuneName(latitude, longitude) || 'Feu GPS';
-                const gpsCommune = { nom_standard: pointName, latitude_mairie: latitude, longitude_mairie: longitude, isManual: true };
+                const closestCommune = findClosestCommune(latitude, longitude, 27);
+                const pointName = closestCommune?.nom_standard || 'Feu GPS';
+                const gpsCommune = {
+                    nom_standard: pointName,
+                    dep_code: closestCommune?.dep_code || null,
+                    dep_nom: closestCommune?.dep_nom || null,
+                    latitude_mairie: latitude,
+                    longitude_mairie: longitude,
+                    isManual: true
+                };
                 currentCommune = gpsCommune;
                 localStorage.setItem('currentCommune', JSON.stringify(gpsCommune));
                 displayCommuneDetails(gpsCommune, false);
@@ -327,7 +343,12 @@ function updateCommuneDisplay(commune) {
         communeDisplay.style.display = 'none';
         return;
     }
-    const communeNameHTML = `<span class="commune-name">${commune.nom_standard}</span>`;
+    const fallbackClosest = (!commune.dep_code && commune.latitude_mairie != null && commune.longitude_mairie != null)
+        ? findClosestCommune(commune.latitude_mairie, commune.longitude_mairie, 27)
+        : null;
+    const depCodeValue = commune.dep_code || fallbackClosest?.dep_code || '';
+    const depCode = depCodeValue ? ` (${depCodeValue})` : '';
+    const communeNameHTML = `<span class="commune-name">${commune.nom_standard}${depCode}</span>`;
     let sunsetHTML = '';
     if (typeof SunCalc !== 'undefined') {
         try {
@@ -588,6 +609,41 @@ function drawUserToTargetRoute() {
     }
 }
 
+function updateNearestCommuneDisplay(lat, lon) {
+    const nearestDisplay = document.getElementById('nearest-commune-display');
+    if (!nearestDisplay) return;
+
+    const nearestCommune = findClosestCommune(lat, lon);
+    if (!nearestCommune) {
+        nearestDisplay.style.display = 'none';
+        nearestDisplay.innerHTML = '';
+        return;
+    }
+
+    nearestDisplay.style.display = 'block';
+    nearestDisplay.innerHTML = `📍 Plus proche: <b>${nearestCommune.nom_standard} (${nearestCommune.dep_code})</b>`;
+}
+
+function findClosestCommune(lat, lon, maxDistanceNm = null) {
+    if (!allCommunes || allCommunes.length === 0) return null;
+    let closestCommune = null;
+    let minDistance = Infinity;
+
+    for (const commune of allCommunes) {
+        const distance = calculateDistanceInNm(lat, lon, commune.latitude_mairie, commune.longitude_mairie);
+        if (distance < minDistance) {
+            minDistance = distance;
+            closestCommune = commune;
+        }
+    }
+
+    if (maxDistanceNm !== null && minDistance >= maxDistanceNm) {
+        return null;
+    }
+
+    return closestCommune;
+}
+
 function updateUserPosition(pos) {
     const { latitude, longitude } = pos.coords;
 
@@ -600,19 +656,20 @@ function updateUserPosition(pos) {
         userMarker.setLatLng([latitude, longitude]);
     }
 
+    updateNearestCommuneDisplay(latitude, longitude);
+
+    // Synchronise les calculs (dont GPS->Feu) dès qu'une position GPS est reçue.
+    if (currentCommune) {
+        updateCalculatorData();
+    }
+
     // On appelle toujours la fonction qui redessine la route
     drawUserToTargetRoute();
 }
 
 function findClosestCommuneName(lat, lon) {
-    if (!allCommunes || allCommunes.length === 0) return null;
-    let closestCommune = null; let minDistance = Infinity;
-    for (const commune of allCommunes) {
-        const distance = calculateDistanceInNm(lat, lon, commune.latitude_mairie, commune.longitude_mairie);
-        if (distance < minDistance) { minDistance = distance; closestCommune = commune; }
-    }
-    if (closestCommune && minDistance < 27) { return closestCommune.nom_standard; }
-    return null;
+    const closestCommune = findClosestCommune(lat, lon, 27);
+    return closestCommune ? closestCommune.nom_standard : null;
 }
 
 function toggleLftwRoute() {
@@ -970,8 +1027,14 @@ function updateAndSortRotations(container, current, params) {
             if (canCalculateFuel) value = ((current.fuel - params.bingoPelic) / params.consoRotation) + plusOne;
         }
         if (type === 'cs') {
-            formulaString = `Heure sur Feu = ${formatTime(current.time) || 'N/A'}\n\nFormule : (Heure CS - Heure sur Feu) / Durée Rotation\n\nCalcul : (${formatTime(params.csFeuTime) || 'N/A'} - ${formatTime(current.time) || 'N/A'}) / ${params.rotationTime || 'N/A'} min`;
-            if (canCalculateTime && params.csFeuTime !== null) value = (params.csFeuTime - current.time) / params.rotationTime;
+            const canDropOnArrivalBeforeCs = canCalculateTime && params.csFeuTime !== null && current.time < params.csFeuTime;
+            const plusOne = canDropOnArrivalBeforeCs ? 1 : 0;
+            formulaString = `Heure sur Feu = ${formatTime(current.time) || 'N/A'}
+
+Formule : ((Heure CS - Heure sur Feu) / Durée Rotation) [+1 si arrivée sur feu avant CS]
+
+Calcul : ((${formatTime(params.csFeuTime) || 'N/A'} - ${formatTime(current.time) || 'N/A'}) / ${params.rotationTime || 'N/A'} min) + ${plusOne}`;
+            if (canCalculateTime && params.csFeuTime !== null) value = ((params.csFeuTime - current.time) / params.rotationTime) + plusOne;
         }
         if (type === 'tmd') {
             formulaString = `Heure sur Feu = ${formatTime(current.time) || 'N/A'}\n\nFormule : (Heure TMD - Heure sur Feu) / Durée Rotation\n\nCalcul : (${formatTime(params.tmdTime) || 'N/A'} - ${formatTime(current.time) || 'N/A'}) / ${params.rotationTime || 'N/A'} min`;
@@ -1223,7 +1286,9 @@ function updateDeroutementTab() {
         resultsContainer.querySelectorAll('.value').forEach(el => { el.textContent = '--'; el.className = 'value rotation-value-default'; });
         document.getElementById('derout-fuel-mini-base').textContent = '-- kg';
         document.getElementById('derout-fuel-mini-pelic').textContent = '-- kg';
-        setHelp('derout-fuel-mini-base-help'); setHelp('derout-fuel-mini-pelic-help');
+        document.getElementById('derout-heure-sur-feu').textContent = '--:--';
+        document.getElementById('derout-cs-sur-feu').textContent = '--:--';
+        setHelp('derout-fuel-mini-base-help'); setHelp('derout-fuel-mini-pelic-help'); setHelp('derout-heure-sur-feu-help');
         return;
     }
 
@@ -1237,28 +1302,40 @@ function updateDeroutementTab() {
     const csFeuTime = parseTime(CALCULATOR_DATA.csFeu);
     const tmdTime = parseTime(document.getElementById('tmd').querySelector('.display-input').value);
     const limiteHDV = parseTime(document.getElementById('limite-hdv').querySelector('.display-input').value);
-    const transitTimeFromGps = Math.round(calculateTransitTime(CALCULATOR_DATA.distGpsFeu));
-    const consoTransitFromGps = calculateFuelToGo(CALCULATOR_DATA.distGpsFeu);
+    const hasGpsPosition = !!(userMarker && userMarker.getLatLng());
+    const distGpsFeu = hasGpsPosition ? CALCULATOR_DATA.distGpsFeu : null;
+    const transitTimeFromGps = distGpsFeu !== null ? Math.round(calculateTransitTime(distGpsFeu)) : null;
+    const consoTransitFromGps = distGpsFeu !== null ? calculateFuelToGo(distGpsFeu) : null;
 
     const bingoBaseDisplay = document.getElementById('derout-bingo-base');
     if (bingoBase === 700) { bingoBaseDisplay.innerHTML = '-- kg'; } else { bingoBaseDisplay.innerHTML = `${CALCULATOR_DATA.distBaseFeu} Nm /&nbsp;<b>${bingoBase} kg</b>`; }
     const bingoPelicDisplay = document.getElementById('derout-bingo-pelic');
     if (bingoPelic === 700 || !selectedPelicanOACI) { bingoPelicDisplay.innerHTML = '-- kg'; } else { bingoPelicDisplay.innerHTML = `${selectedPelicanOACI} / ${CALCULATOR_DATA.distPelicFeu} Nm /&nbsp;<b>${bingoPelic} kg</b>`; }
 
-    const fuelMiniBase = consoTransitFromGps + 250 + bingoBase;
-    const fuelMiniPelic = consoTransitFromGps + 250 + bingoPelic;
-    document.getElementById('derout-fuel-mini-base').textContent = (fuelMiniBase === (950 + consoTransitFromGps)) ? '-- kg' : `${fuelMiniBase} kg`;
-    document.getElementById('derout-fuel-mini-pelic').textContent = (fuelMiniPelic === (950 + consoTransitFromGps)) ? '-- kg' : `${fuelMiniPelic} kg`;
-    setHelp('derout-fuel-mini-base-help', `Formule: Conso(GPS->Feu) + Forfait Largage + BINGO Base\n\nCalcul: ${consoTransitFromGps} + 250 + ${bingoBase}`);
-    setHelp('derout-fuel-mini-pelic-help', `Formule: Conso(GPS->Feu) + Forfait Largage + BINGO Pélic.\n\nCalcul: ${consoTransitFromGps} + 250 + ${bingoPelic}`);
+    const fuelMiniBase = consoTransitFromGps !== null ? consoTransitFromGps + 250 + bingoBase : null;
+    const fuelMiniPelic = consoTransitFromGps !== null ? consoTransitFromGps + 250 + bingoPelic : null;
+    document.getElementById('derout-fuel-mini-base').textContent = fuelMiniBase !== null ? `${fuelMiniBase} kg` : '-- kg';
+    document.getElementById('derout-fuel-mini-pelic').textContent = fuelMiniPelic !== null ? `${fuelMiniPelic} kg` : '-- kg';
+    setHelp('derout-fuel-mini-base-help', consoTransitFromGps !== null
+        ? `Formule: Conso(GPS->Feu) + Forfait Largage + BINGO Base\n\nCalcul: ${consoTransitFromGps} + 250 + ${bingoBase}`
+        : 'Distance GPS->Feu indisponible. Utilisez “🛰️ Rafraîchir GPS”.');
+    setHelp('derout-fuel-mini-pelic-help', consoTransitFromGps !== null
+        ? `Formule: Conso(GPS->Feu) + Forfait Largage + BINGO Pélic.\n\nCalcul: ${consoTransitFromGps} + 250 + ${bingoPelic}`
+        : 'Distance GPS->Feu indisponible. Utilisez “🛰️ Rafraîchir GPS”.');
 
-    if (fuelActuel === null || heureActuelle === null) {
+    const heureSurFeu = (heureActuelle !== null && transitTimeFromGps !== null) ? heureActuelle + transitTimeFromGps : null;
+    document.getElementById('derout-heure-sur-feu').textContent = formatTime(heureSurFeu) || '--:--';
+    document.getElementById('derout-cs-sur-feu').textContent = CALCULATOR_DATA.csFeu;
+    setHelp('derout-heure-sur-feu-help', transitTimeFromGps !== null
+        ? `Formule : Heure actuelle + Durée transit GPS->Feu\n\nCalcul : ${formatTime(heureActuelle) || 'N/A'} + ${formatTime(transitTimeFromGps) || 'N/A'}`
+        : 'Distance GPS->Feu indisponible. Utilisez “🛰️ Rafraîchir GPS”.');
+
+    if (fuelActuel === null || heureActuelle === null || consoTransitFromGps === null || transitTimeFromGps === null) {
         resultsContainer.querySelectorAll('.value').forEach(el => { el.textContent = '--'; el.className = 'value rotation-value-default'; });
         resultsContainer.querySelectorAll('.formula-help-icon').forEach(icon => icon.onclick = () => alert("Données insuffisantes pour le calcul."));
         return;
     }
 
-    const heureSurFeu = heureActuelle + transitTimeFromGps;
     const fuelSurFeu = fuelActuel - consoTransitFromGps;
 
     updateAndSortRotations(
@@ -1274,15 +1351,20 @@ function initializeCalculator() {
     const csLftwDisplay = document.getElementById('cs-lftw-display');
     const refreshGpsBtn = document.getElementById('refresh-gps-btn');
     refreshGpsBtn.addEventListener('click', () => {
-        // On vérifie simplement si une position GPS est déjà connue via le marqueur sur la carte
-        if (userMarker && userMarker.getLatLng()) {
-            // Si oui, on lance directement le recalcul des données
-            updateCalculatorData();
-            masterRecalculate();
-        } else {
-            // Si aucune position n'a jamais été reçue, on prévient l'utilisateur
-            alert("Aucune position GPS n'est disponible pour le rafraîchissement.");
+        if (!navigator.geolocation) {
+            alert("La géolocalisation n'est pas supportée par votre navigateur.");
+            return;
         }
+
+        navigator.geolocation.getCurrentPosition(
+            (pos) => {
+                updateUserPosition(pos);
+            },
+            () => {
+                alert("Impossible d'obtenir la position GPS. Vérifiez les autorisations.");
+            },
+            { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+        );
     });
 
     function updateLftwSunset() {
