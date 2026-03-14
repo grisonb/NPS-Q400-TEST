@@ -710,11 +710,32 @@ async function handleZipImport(file) {
 
     try {
         const zip = await JSZip.loadAsync(file);
-        const tileFiles = Object.values(zip.files).filter(f => !f.dir && f.name.match(/\d+\/\d+\/\d+\.(png|jpg|jpeg)$/i));
-        const totalFiles = tileFiles.length;
+        const allFiles = Object.values(zip.files).filter(f => !f.dir);
+        const tileCandidates = allFiles.map(fileEntry => {
+            const normalizedName = fileEntry.name.replace(/\\/g, '/');
+            const xyzMatch = normalizedName.match(/(?:^|\/)(\d+)\/(\d+)\/(\d+)\.(png|jpg|jpeg)$/i);
+            if (xyzMatch) {
+                return {
+                    fileEntry,
+                    tilePath: `${xyzMatch[1]}/${xyzMatch[2]}/${xyzMatch[3]}.${xyzMatch[4].toLowerCase()}`
+                };
+            }
+
+            const flatMatch = normalizedName.match(/(?:^|\/)(\d+)[-_](\d+)[-_](\d+)\.(png|jpg|jpeg)$/i);
+            if (flatMatch) {
+                return {
+                    fileEntry,
+                    tilePath: `${flatMatch[1]}/${flatMatch[2]}/${flatMatch[3]}.${flatMatch[4].toLowerCase()}`
+                };
+            }
+
+            return null;
+        }).filter(Boolean);
+
+        const totalFiles = tileCandidates.length;
 
         if (totalFiles === 0) {
-            throw new Error("Aucune tuile valide trouvée dans le ZIP. La structure doit être /zoom/colonne/ligne.png");
+            throw new Error("Aucune tuile valide trouvée dans le ZIP. Formats acceptés: /z/x/y.png ou z_x_y.png");
         }
 
         statusMessage.textContent = `Préparation de ${totalFiles} tuiles pour l'importation...`;
@@ -722,12 +743,12 @@ async function handleZipImport(file) {
         const batchSize = 100;
         let processedFiles = 0;
 
-        for (let i = 0; i < tileFiles.length; i += batchSize) {
-            const batchEntries = tileFiles.slice(i, i + batchSize);
-            const batch = await Promise.all(batchEntries.map(async tileFile => {
-                const blob = await tileFile.async('blob');
+        for (let i = 0; i < tileCandidates.length; i += batchSize) {
+            const batchEntries = tileCandidates.slice(i, i + batchSize);
+            const batch = await Promise.all(batchEntries.map(async ({ fileEntry, tilePath }) => {
+                const blob = await fileEntry.async('blob');
                 return {
-                    url: `https://a.tile.openstreetmap.org/${tileFile.name}`,
+                    url: `https://a.tile.openstreetmap.org/${tilePath}`,
                     tile: blob,
                     packName: packName
                 };
