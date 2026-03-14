@@ -56,16 +56,48 @@ function getDb() {
     });
 }
 
+function normalizeTileUrl(url) {
+    try {
+        const parsed = new URL(url);
+        if (parsed.hostname.match(/^[abc]\.tile\.openstreetmap\.org$/i)) {
+            parsed.hostname = 'a.tile.openstreetmap.org';
+            return parsed.toString();
+        }
+    } catch (e) {
+        // URL invalide, on ignore la normalisation
+    }
+    return url;
+}
+
 function getTileFromDb(url) {
     return getDb().then(db => {
         return new Promise(resolve => {
             const transaction = db.transaction('tiles', 'readonly');
             const store = transaction.objectStore('tiles');
-            const request = store.get(url);
-            request.onsuccess = () => {
-                resolve(request.result ? new Response(request.result.tile) : null);
+
+            const candidates = [url];
+            const normalizedUrl = normalizeTileUrl(url);
+            if (normalizedUrl !== url) candidates.push(normalizedUrl);
+
+            const tryNext = () => {
+                if (!candidates.length) {
+                    resolve(null);
+                    return;
+                }
+
+                const candidateUrl = candidates.shift();
+                const request = store.get(candidateUrl);
+                request.onsuccess = () => {
+                    if (request.result) {
+                        resolve(new Response(request.result.tile));
+                    } else {
+                        tryNext();
+                    }
+                };
+                request.onerror = () => tryNext();
             };
-            request.onerror = () => resolve(null); // Si erreur, on considère que la tuile n'existe pas
+
+            tryNext();
         });
     });
 }
