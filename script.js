@@ -177,7 +177,7 @@ function setupEventListeners() {
     if (mainActionButtons) {
         const versionDisplay = document.createElement('div');
         versionDisplay.className = 'version-display';
-        versionDisplay.innerText = 'v8.6';
+        versionDisplay.innerText = 'v8.7';
         mainActionButtons.appendChild(versionDisplay);
     }
 
@@ -1297,27 +1297,35 @@ function updateDeroutementTab() {
     const csFeuTime = parseTime(CALCULATOR_DATA.csFeu);
     const tmdTime = parseTime(document.getElementById('tmd').querySelector('.display-input').value);
     const limiteHDV = parseTime(document.getElementById('limite-hdv').querySelector('.display-input').value);
-    const transitTimeFromGps = Math.round(calculateTransitTime(CALCULATOR_DATA.distGpsFeu));
-    const consoTransitFromGps = calculateFuelToGo(CALCULATOR_DATA.distGpsFeu);
+    const hasGpsPosition = !!(userMarker && userMarker.getLatLng());
+    const distGpsFeu = hasGpsPosition ? CALCULATOR_DATA.distGpsFeu : null;
+    const transitTimeFromGps = distGpsFeu !== null ? Math.round(calculateTransitTime(distGpsFeu)) : null;
+    const consoTransitFromGps = distGpsFeu !== null ? calculateFuelToGo(distGpsFeu) : null;
 
     const bingoBaseDisplay = document.getElementById('derout-bingo-base');
     if (bingoBase === 700) { bingoBaseDisplay.innerHTML = '-- kg'; } else { bingoBaseDisplay.innerHTML = `${CALCULATOR_DATA.distBaseFeu} Nm /&nbsp;<b>${bingoBase} kg</b>`; }
     const bingoPelicDisplay = document.getElementById('derout-bingo-pelic');
     if (bingoPelic === 700 || !selectedPelicanOACI) { bingoPelicDisplay.innerHTML = '-- kg'; } else { bingoPelicDisplay.innerHTML = `${selectedPelicanOACI} / ${CALCULATOR_DATA.distPelicFeu} Nm /&nbsp;<b>${bingoPelic} kg</b>`; }
 
-    const fuelMiniBase = consoTransitFromGps + 250 + bingoBase;
-    const fuelMiniPelic = consoTransitFromGps + 250 + bingoPelic;
-    document.getElementById('derout-fuel-mini-base').textContent = (fuelMiniBase === (950 + consoTransitFromGps)) ? '-- kg' : `${fuelMiniBase} kg`;
-    document.getElementById('derout-fuel-mini-pelic').textContent = (fuelMiniPelic === (950 + consoTransitFromGps)) ? '-- kg' : `${fuelMiniPelic} kg`;
-    setHelp('derout-fuel-mini-base-help', `Formule: Conso(GPS->Feu) + Forfait Largage + BINGO Base\n\nCalcul: ${consoTransitFromGps} + 250 + ${bingoBase}`);
-    setHelp('derout-fuel-mini-pelic-help', `Formule: Conso(GPS->Feu) + Forfait Largage + BINGO Pélic.\n\nCalcul: ${consoTransitFromGps} + 250 + ${bingoPelic}`);
+    const fuelMiniBase = consoTransitFromGps !== null ? consoTransitFromGps + 250 + bingoBase : null;
+    const fuelMiniPelic = consoTransitFromGps !== null ? consoTransitFromGps + 250 + bingoPelic : null;
+    document.getElementById('derout-fuel-mini-base').textContent = fuelMiniBase !== null ? `${fuelMiniBase} kg` : '-- kg';
+    document.getElementById('derout-fuel-mini-pelic').textContent = fuelMiniPelic !== null ? `${fuelMiniPelic} kg` : '-- kg';
+    setHelp('derout-fuel-mini-base-help', consoTransitFromGps !== null
+        ? `Formule: Conso(GPS->Feu) + Forfait Largage + BINGO Base\n\nCalcul: ${consoTransitFromGps} + 250 + ${bingoBase}`
+        : 'Distance GPS->Feu indisponible. Utilisez “🛰️ Rafraîchir GPS”.');
+    setHelp('derout-fuel-mini-pelic-help', consoTransitFromGps !== null
+        ? `Formule: Conso(GPS->Feu) + Forfait Largage + BINGO Pélic.\n\nCalcul: ${consoTransitFromGps} + 250 + ${bingoPelic}`
+        : 'Distance GPS->Feu indisponible. Utilisez “🛰️ Rafraîchir GPS”.');
 
-    const heureSurFeu = heureActuelle !== null ? heureActuelle + transitTimeFromGps : null;
+    const heureSurFeu = (heureActuelle !== null && transitTimeFromGps !== null) ? heureActuelle + transitTimeFromGps : null;
     document.getElementById('derout-heure-sur-feu').textContent = formatTime(heureSurFeu) || '--:--';
     document.getElementById('derout-cs-sur-feu').textContent = CALCULATOR_DATA.csFeu;
-    setHelp('derout-heure-sur-feu-help', `Formule : Heure actuelle + Durée transit GPS->Feu\n\nCalcul : ${formatTime(heureActuelle) || 'N/A'} + ${formatTime(transitTimeFromGps) || 'N/A'}`);
+    setHelp('derout-heure-sur-feu-help', transitTimeFromGps !== null
+        ? `Formule : Heure actuelle + Durée transit GPS->Feu\n\nCalcul : ${formatTime(heureActuelle) || 'N/A'} + ${formatTime(transitTimeFromGps) || 'N/A'}`
+        : 'Distance GPS->Feu indisponible. Utilisez “🛰️ Rafraîchir GPS”.');
 
-    if (fuelActuel === null || heureActuelle === null) {
+    if (fuelActuel === null || heureActuelle === null || consoTransitFromGps === null || transitTimeFromGps === null) {
         resultsContainer.querySelectorAll('.value').forEach(el => { el.textContent = '--'; el.className = 'value rotation-value-default'; });
         resultsContainer.querySelectorAll('.formula-help-icon').forEach(icon => icon.onclick = () => alert("Données insuffisantes pour le calcul."));
         return;
@@ -1338,15 +1346,22 @@ function initializeCalculator() {
     const csLftwDisplay = document.getElementById('cs-lftw-display');
     const refreshGpsBtn = document.getElementById('refresh-gps-btn');
     refreshGpsBtn.addEventListener('click', () => {
-        // On vérifie simplement si une position GPS est déjà connue via le marqueur sur la carte
-        if (userMarker && userMarker.getLatLng()) {
-            // Si oui, on lance directement le recalcul des données
-            updateCalculatorData();
-            masterRecalculate();
-        } else {
-            // Si aucune position n'a jamais été reçue, on prévient l'utilisateur
-            alert("Aucune position GPS n'est disponible pour le rafraîchissement.");
+        if (!navigator.geolocation) {
+            alert("La géolocalisation n'est pas supportée par votre navigateur.");
+            return;
         }
+
+        navigator.geolocation.getCurrentPosition(
+            (pos) => {
+                updateUserPosition(pos);
+                updateCalculatorData();
+                masterRecalculate();
+            },
+            () => {
+                alert("Impossible d'obtenir la position GPS. Vérifiez les autorisations.");
+            },
+            { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+        );
     });
 
     function updateLftwSunset() {
