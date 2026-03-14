@@ -1268,8 +1268,9 @@ function updateSuiviTab() {
 
         const csFeuTime = parseTime(CALCULATOR_DATA.csFeu);
         const tmdTime = parseTime(document.getElementById('tmd').querySelector('.display-input').value);
-        const transitTimeRetourBase = Math.round(calculateTransitTime(CALCULATOR_DATA.distBaseFeu));
-        updateAndSortRotations(document.getElementById('suivi-rotation-results-container'), { fuel: currentFuel, time: currentTime }, { bingoBase, bingoPelic, consoRotation, rotationTime, csFeuTime, tmdTime, limiteHDV: currentHdv, transitTime: transitTimeRetourBase });
+        const transitTimeVersFeu = Math.round(calculateTransitTime(CALCULATOR_DATA.distBaseFeu));
+        const heureSurFeu = currentTime !== null ? currentTime + transitTimeVersFeu : null;
+        updateAndSortRotations(document.getElementById('suivi-rotation-results-container'), { fuel: currentFuel, time: heureSurFeu }, { bingoBase, bingoPelic, consoRotation, rotationTime, csFeuTime, tmdTime, limiteHDV: currentHdv, transitTime: transitTimeVersFeu });
     }
 }
 
