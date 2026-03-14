@@ -327,7 +327,8 @@ function updateCommuneDisplay(commune) {
         communeDisplay.style.display = 'none';
         return;
     }
-    const communeNameHTML = `<span class="commune-name">${commune.nom_standard}</span>`;
+    const depCode = commune.dep_code ? ` (${commune.dep_code})` : '';
+    const communeNameHTML = `<span class="commune-name">${commune.nom_standard}${depCode}</span>`;
     let sunsetHTML = '';
     if (typeof SunCalc !== 'undefined') {
         try {
@@ -588,6 +589,41 @@ function drawUserToTargetRoute() {
     }
 }
 
+function updateNearestCommuneDisplay(lat, lon) {
+    const nearestDisplay = document.getElementById('nearest-commune-display');
+    if (!nearestDisplay) return;
+
+    const nearestCommune = findClosestCommune(lat, lon);
+    if (!nearestCommune) {
+        nearestDisplay.style.display = 'none';
+        nearestDisplay.innerHTML = '';
+        return;
+    }
+
+    nearestDisplay.style.display = 'block';
+    nearestDisplay.innerHTML = `📍 Plus proche: <b>${nearestCommune.nom_standard} (${nearestCommune.dep_code})</b>`;
+}
+
+function findClosestCommune(lat, lon, maxDistanceNm = null) {
+    if (!allCommunes || allCommunes.length === 0) return null;
+    let closestCommune = null;
+    let minDistance = Infinity;
+
+    for (const commune of allCommunes) {
+        const distance = calculateDistanceInNm(lat, lon, commune.latitude_mairie, commune.longitude_mairie);
+        if (distance < minDistance) {
+            minDistance = distance;
+            closestCommune = commune;
+        }
+    }
+
+    if (maxDistanceNm !== null && minDistance >= maxDistanceNm) {
+        return null;
+    }
+
+    return closestCommune;
+}
+
 function updateUserPosition(pos) {
     const { latitude, longitude } = pos.coords;
 
@@ -600,19 +636,15 @@ function updateUserPosition(pos) {
         userMarker.setLatLng([latitude, longitude]);
     }
 
+    updateNearestCommuneDisplay(latitude, longitude);
+
     // On appelle toujours la fonction qui redessine la route
     drawUserToTargetRoute();
 }
 
 function findClosestCommuneName(lat, lon) {
-    if (!allCommunes || allCommunes.length === 0) return null;
-    let closestCommune = null; let minDistance = Infinity;
-    for (const commune of allCommunes) {
-        const distance = calculateDistanceInNm(lat, lon, commune.latitude_mairie, commune.longitude_mairie);
-        if (distance < minDistance) { minDistance = distance; closestCommune = commune; }
-    }
-    if (closestCommune && minDistance < 27) { return closestCommune.nom_standard; }
-    return null;
+    const closestCommune = findClosestCommune(lat, lon, 27);
+    return closestCommune ? closestCommune.nom_standard : null;
 }
 
 function toggleLftwRoute() {
