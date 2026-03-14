@@ -23,6 +23,8 @@ let isDrawingMode = false;
 const manualCircuitColors = ['#ff00ff', '#00ffff', '#ff8c00', '#00ff00', '#ff1493'];
 let gaarLayer = null;
 let db; // Variable pour la connexion à la base de données IndexedDB
+const OFFLINE_TILES_ENABLED_KEY = 'offlineTilesEnabled';
+const DEFAULT_OFFLINE_TILES_ENABLED = true;
 
 const pelicanAirports = [
     { oaci: "LFLU", name: "Valence-Chabeuil", lat: 44.920, lon: 4.968 }, { oaci: "LFMU", name: "Béziers-Vias", lat: 43.323, lon: 3.354 }, { oaci: "LFJR", name: "Angers-Marcé", lat: 47.560, lon: -0.312 }, { oaci: "LFHO", name: "Aubenas-Ardèche Méridionale", lat: 44.545, lon: 4.385 }, { oaci: "LFLX", name: "Châteauroux-Déols", lat: 46.861, lon: 1.720 }, { oaci: "LFBM", name: "Mont-de-Marsan", lat: 43.894, lon: -0.509 }, { oaci: "LFBL", name: "Limoges-Bellegarde", lat: 45.862, lon: 1.180 }, { oaci: "LFAQ", name: "Albert-Bray", lat: 49.972, lon: 2.698 }, { oaci: "LFBP", name: "Pau-Pyrénées", lat: 43.380, lon: -0.418 }, { oaci: "LFTH", name: "Toulon-Hyères", lat: 43.097, lon: 6.146 }, { oaci: "LFSG", name: "Épinal-Mirecourt", lat: 48.325, lon: 6.068 }, { oaci: "LFKC", name: "Calvi-Sainte-Catherine", lat: 42.530, lon: 8.793 }, { oaci: "LFMD", name: "Cannes-Mandelieu", lat: 43.542, lon: 6.956 }, { oaci: "LFKB", name: "Bastia-Poretta", lat: 42.552, lon: 9.483 }, { oaci: "LFMH", name: "Saint-Étienne-Bouthéon", lat: 45.541, lon: 4.296 }, { oaci: "LFKF", name: "Figari-Sud-Corse", lat: 41.500, lon: 9.097 }, { oaci: "LFCC", name: "Cahors-Lalbenque", lat: 44.351, lon: 1.475 }, { oaci: "LFML", name: "Marseille-Provence", lat: 43.436, lon: 5.215 }, { oaci: "LFKJ", name: "Ajaccio-Napoléon-Bonaparte", lat: 41.923, lon: 8.802 }, { oaci: "LFMK", name: "Carcassonne-Salvaza", lat: 43.215, lon: 2.306 }, { oaci: "LFRV", name: "Vannes-Meucon", lat: 47.720, lon: -2.721 }, { oaci: "LFTW", name: "Nîmes-Garons", lat: 43.757, lon: 4.416 }, { oaci: "LFMP", name: "Perpignan-Rivesaltes", lat: 42.740, lon: 2.870 }, { oaci: "LFBD", name: "Bordeaux-Mérignac", lat: 44.828, lon: -0.691 }
@@ -68,6 +70,7 @@ async function initializeApp() {
         gaarCircuits = JSON.parse(savedGaarJSON);
     }
     await initDB();
+    await initializeOfflineTilePreference();
     displayInstalledMaps();
     try {
         const response = await fetch('./communes.json');
@@ -161,6 +164,7 @@ function setupEventListeners() {
     const offlineMapModal = document.getElementById('offline-map-modal');
     const closeOfflineMapButton = document.getElementById('close-offline-map-btn');
     const zipImporterInput = document.getElementById('zip-importer-input');
+    const offlineTilesEnabledToggle = document.getElementById('offline-tiles-enabled-toggle');
     
     if (mainActionButtons) {
         const versionDisplay = document.createElement('div');
@@ -282,6 +286,14 @@ function setupEventListeners() {
         handleZipImport(file);
         event.target.value = '';
     });
+
+    if (offlineTilesEnabledToggle) {
+        offlineTilesEnabledToggle.addEventListener('change', async (event) => {
+            const enabled = event.target.checked;
+            await setOfflineTilesEnabled(enabled);
+            updateOfflineStatus();
+        });
+    }
 
     updateBaseLabels();
     updateLftwButtonState();
@@ -663,12 +675,22 @@ function soundex(s) { if (!s) return ""; const a = s.toLowerCase().split(""), f 
 // =========================================================================
 function initDB() {
     return new Promise((resolve, reject) => {
-        const request = indexedDB.open('OfflineTilesDB', 1);
+        const request = indexedDB.open('OfflineTilesDB', 2);
         request.onupgradeneeded = event => {
             const dbInstance = event.target.result;
+            const transaction = event.target.transaction;
+
             if (!dbInstance.objectStoreNames.contains('tiles')) {
                 const store = dbInstance.createObjectStore('tiles', { keyPath: 'url' });
                 store.createIndex('packName', 'packName', { unique: false });
+            }
+
+            if (!dbInstance.objectStoreNames.contains('settings')) {
+                dbInstance.createObjectStore('settings', { keyPath: 'key' });
+            }
+
+            if (transaction && dbInstance.objectStoreNames.contains('settings')) {
+                transaction.objectStore('settings').put({ key: OFFLINE_TILES_ENABLED_KEY, value: DEFAULT_OFFLINE_TILES_ENABLED });
             }
         };
         request.onsuccess = event => {
@@ -681,6 +703,57 @@ function initDB() {
             reject(event.target.error);
         };
     });
+}
+
+function getOfflineTilesEnabled() {
+    return new Promise((resolve) => {
+        if (!db) {
+            resolve(DEFAULT_OFFLINE_TILES_ENABLED);
+            return;
+        }
+
+        const transaction = db.transaction('settings', 'readonly');
+        const store = transaction.objectStore('settings');
+        const request = store.get(OFFLINE_TILES_ENABLED_KEY);
+
+        request.onsuccess = () => {
+            if (!request.result || typeof request.result.value !== 'boolean') {
+                resolve(DEFAULT_OFFLINE_TILES_ENABLED);
+                return;
+            }
+            resolve(request.result.value);
+        };
+        request.onerror = () => resolve(DEFAULT_OFFLINE_TILES_ENABLED);
+    });
+}
+
+function setOfflineTilesEnabled(enabled) {
+    return new Promise((resolve, reject) => {
+        const transaction = db.transaction('settings', 'readwrite');
+        const store = transaction.objectStore('settings');
+        store.put({ key: OFFLINE_TILES_ENABLED_KEY, value: enabled });
+        transaction.oncomplete = resolve;
+        transaction.onerror = () => reject(transaction.error);
+    });
+}
+
+function updateOfflineStatus() {
+    const status = document.getElementById('offline-status');
+    const toggle = document.getElementById('offline-tiles-enabled-toggle');
+    if (!status || !toggle) return;
+
+    status.textContent = toggle.checked
+        ? 'Cartes téléchargées activées (prioritaires sur la carte en ligne).'
+        : 'Cartes téléchargées désactivées (utilisation de la carte en ligne).';
+}
+
+async function initializeOfflineTilePreference() {
+    const toggle = document.getElementById('offline-tiles-enabled-toggle');
+    if (!toggle) return;
+
+    const enabled = await getOfflineTilesEnabled();
+    toggle.checked = enabled;
+    updateOfflineStatus();
 }
 
 async function handleZipImport(file) {

@@ -41,11 +41,30 @@ self.addEventListener('activate', event => {
 });
 
 let db;
+const OFFLINE_TILES_ENABLED_KEY = 'offlineTilesEnabled';
+const DEFAULT_OFFLINE_TILES_ENABLED = true;
 
 function getDb() {
     return new Promise((resolve, reject) => {
         if (db) return resolve(db);
-        const request = indexedDB.open('OfflineTilesDB', 1);
+        const request = indexedDB.open('OfflineTilesDB', 2);
+        request.onupgradeneeded = event => {
+            const dbInstance = event.target.result;
+            const transaction = event.target.transaction;
+
+            if (!dbInstance.objectStoreNames.contains('tiles')) {
+                const store = dbInstance.createObjectStore('tiles', { keyPath: 'url' });
+                store.createIndex('packName', 'packName', { unique: false });
+            }
+
+            if (!dbInstance.objectStoreNames.contains('settings')) {
+                dbInstance.createObjectStore('settings', { keyPath: 'key' });
+            }
+
+            if (transaction && dbInstance.objectStoreNames.contains('settings')) {
+                transaction.objectStore('settings').put({ key: OFFLINE_TILES_ENABLED_KEY, value: DEFAULT_OFFLINE_TILES_ENABLED });
+            }
+        };
         request.onsuccess = event => {
             db = event.target.result;
             resolve(db);
@@ -54,6 +73,24 @@ function getDb() {
             reject('Erreur ouverture DB dans SW:', event.target.error);
         };
     });
+}
+
+function isOfflineTilesEnabled() {
+    return getDb().then(db => {
+        return new Promise(resolve => {
+            const transaction = db.transaction('settings', 'readonly');
+            const store = transaction.objectStore('settings');
+            const request = store.get(OFFLINE_TILES_ENABLED_KEY);
+            request.onsuccess = () => {
+                if (!request.result || typeof request.result.value !== 'boolean') {
+                    resolve(DEFAULT_OFFLINE_TILES_ENABLED);
+                    return;
+                }
+                resolve(request.result.value);
+            };
+            request.onerror = () => resolve(DEFAULT_OFFLINE_TILES_ENABLED);
+        });
+    }).catch(() => DEFAULT_OFFLINE_TILES_ENABLED);
 }
 
 function normalizeTileUrl(url) {
@@ -108,12 +145,17 @@ self.addEventListener('fetch', event => {
     // Stratégie pour les tuiles de carte : DB d'abord, puis réseau, avec mise en cache réseau
     if (requestUrl.hostname.includes('tile.openstreetmap.org')) {
         event.respondWith(
-            getTileFromDb(event.request.url).then(responseFromDb => {
+            isOfflineTilesEnabled().then(enabled => {
+                if (!enabled) {
+                    return null;
+                }
+                return getTileFromDb(event.request.url);
+            }).then(responseFromDb => {
                 if (responseFromDb) {
                     // console.log(`[SW] Tuile servie depuis IndexedDB: ${event.request.url}`);
                     return responseFromDb;
                 }
-                
+
                 // console.log(`[SW] Tuile non trouvée en local, requête réseau: ${event.request.url}`);
                 // Si non trouvée en DB, on va sur le réseau et on met en cache (stratégie Stale-While-Revalidate)
                 return caches.open(TILE_CACHE_NAME).then(cache => {
