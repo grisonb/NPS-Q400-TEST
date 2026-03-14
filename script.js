@@ -177,7 +177,7 @@ function setupEventListeners() {
     if (mainActionButtons) {
         const versionDisplay = document.createElement('div');
         versionDisplay.className = 'version-display';
-        versionDisplay.innerText = 'v8.7';
+        versionDisplay.innerText = 'v8.8';
         mainActionButtons.appendChild(versionDisplay);
     }
 
@@ -657,6 +657,11 @@ function updateUserPosition(pos) {
     }
 
     updateNearestCommuneDisplay(latitude, longitude);
+
+    // Synchronise les calculs (dont GPS->Feu) dès qu'une position GPS est reçue.
+    if (currentCommune) {
+        updateCalculatorData();
+    }
 
     // On appelle toujours la fonction qui redessine la route
     drawUserToTargetRoute();
@@ -1354,8 +1359,6 @@ function initializeCalculator() {
         navigator.geolocation.getCurrentPosition(
             (pos) => {
                 updateUserPosition(pos);
-                updateCalculatorData();
-                masterRecalculate();
             },
             () => {
                 alert("Impossible d'obtenir la position GPS. Vérifiez les autorisations.");
