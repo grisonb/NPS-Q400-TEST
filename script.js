@@ -1022,8 +1022,14 @@ function updateAndSortRotations(container, current, params) {
             if (canCalculateFuel) value = ((current.fuel - params.bingoPelic) / params.consoRotation) + plusOne;
         }
         if (type === 'cs') {
-            formulaString = `Heure sur Feu = ${formatTime(current.time) || 'N/A'}\n\nFormule : (Heure CS - Heure sur Feu) / Durée Rotation\n\nCalcul : (${formatTime(params.csFeuTime) || 'N/A'} - ${formatTime(current.time) || 'N/A'}) / ${params.rotationTime || 'N/A'} min`;
-            if (canCalculateTime && params.csFeuTime !== null) value = (params.csFeuTime - current.time) / params.rotationTime;
+            const canDropOnArrivalBeforeCs = canCalculateTime && params.csFeuTime !== null && current.time < params.csFeuTime;
+            const plusOne = canDropOnArrivalBeforeCs ? 1 : 0;
+            formulaString = `Heure sur Feu = ${formatTime(current.time) || 'N/A'}
+
+Formule : ((Heure CS - Heure sur Feu) / Durée Rotation) [+1 si arrivée sur feu avant CS]
+
+Calcul : ((${formatTime(params.csFeuTime) || 'N/A'} - ${formatTime(current.time) || 'N/A'}) / ${params.rotationTime || 'N/A'} min) + ${plusOne}`;
+            if (canCalculateTime && params.csFeuTime !== null) value = ((params.csFeuTime - current.time) / params.rotationTime) + plusOne;
         }
         if (type === 'tmd') {
             formulaString = `Heure sur Feu = ${formatTime(current.time) || 'N/A'}\n\nFormule : (Heure TMD - Heure sur Feu) / Durée Rotation\n\nCalcul : (${formatTime(params.tmdTime) || 'N/A'} - ${formatTime(current.time) || 'N/A'}) / ${params.rotationTime || 'N/A'} min`;
