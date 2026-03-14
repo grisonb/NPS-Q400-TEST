@@ -116,8 +116,16 @@ function initMap() {
         if (isDrawingMode) return;
         selectedPelicanOACI = null;
         L.DomEvent.preventDefault(e.originalEvent);
-        const pointName = findClosestCommuneName(e.latlng.lat, e.latlng.lng) || 'Feu manuel';
-        const manualCommune = { nom_standard: pointName, latitude_mairie: e.latlng.lat, longitude_mairie: e.latlng.lng, isManual: true };
+        const closestCommune = findClosestCommune(e.latlng.lat, e.latlng.lng, 27);
+        const pointName = closestCommune?.nom_standard || 'Feu manuel';
+        const manualCommune = {
+            nom_standard: pointName,
+            dep_code: closestCommune?.dep_code || null,
+            dep_nom: closestCommune?.dep_nom || null,
+            latitude_mairie: e.latlng.lat,
+            longitude_mairie: e.latlng.lng,
+            isManual: true
+        };
         currentCommune = manualCommune;
         localStorage.setItem('currentCommune', JSON.stringify(manualCommune));
         displayCommuneDetails(manualCommune, false);
@@ -232,8 +240,16 @@ function setupEventListeners() {
         navigator.geolocation.getCurrentPosition(
             (pos) => {
                 const { latitude, longitude } = pos.coords;
-                const pointName = findClosestCommuneName(latitude, longitude) || 'Feu GPS';
-                const gpsCommune = { nom_standard: pointName, latitude_mairie: latitude, longitude_mairie: longitude, isManual: true };
+                const closestCommune = findClosestCommune(latitude, longitude, 27);
+                const pointName = closestCommune?.nom_standard || 'Feu GPS';
+                const gpsCommune = {
+                    nom_standard: pointName,
+                    dep_code: closestCommune?.dep_code || null,
+                    dep_nom: closestCommune?.dep_nom || null,
+                    latitude_mairie: latitude,
+                    longitude_mairie: longitude,
+                    isManual: true
+                };
                 currentCommune = gpsCommune;
                 localStorage.setItem('currentCommune', JSON.stringify(gpsCommune));
                 displayCommuneDetails(gpsCommune, false);
@@ -327,7 +343,11 @@ function updateCommuneDisplay(commune) {
         communeDisplay.style.display = 'none';
         return;
     }
-    const depCode = commune.dep_code ? ` (${commune.dep_code})` : '';
+    const fallbackClosest = (!commune.dep_code && commune.latitude_mairie != null && commune.longitude_mairie != null)
+        ? findClosestCommune(commune.latitude_mairie, commune.longitude_mairie, 27)
+        : null;
+    const depCodeValue = commune.dep_code || fallbackClosest?.dep_code || '';
+    const depCode = depCodeValue ? ` (${depCodeValue})` : '';
     const communeNameHTML = `<span class="commune-name">${commune.nom_standard}${depCode}</span>`;
     let sunsetHTML = '';
     if (typeof SunCalc !== 'undefined') {
