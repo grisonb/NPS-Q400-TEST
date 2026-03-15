@@ -177,7 +177,7 @@ function setupEventListeners() {
     if (mainActionButtons) {
         const versionDisplay = document.createElement('div');
         versionDisplay.className = 'version-display';
-        versionDisplay.innerText = 'v8.14';
+        versionDisplay.innerText = 'v8.15';
         mainActionButtons.appendChild(versionDisplay);
     }
 
@@ -1007,9 +1007,12 @@ window.deleteMapPack = async function(packName) {
             if (!cursor) {
                 return;
             }
-            cursor.delete();
-            deletedCount += 1;
-            cursor.continue();
+            const deleteRequest = cursor.delete();
+            deleteRequest.onsuccess = () => {
+                deletedCount += 1;
+                cursor.continue();
+            };
+            deleteRequest.onerror = () => reject(deleteRequest.error || new Error('Erreur suppression tuile en mode curseur indexedDB'));
         };
 
         request.onerror = () => reject(request.error || new Error('Erreur curseur suppression indexedDB'));
@@ -1044,11 +1047,8 @@ window.deleteMapPack = async function(packName) {
         if (keys.length > 0) {
             deletedCount = await deleteWithAdaptiveBatch(keys);
         } else {
-            deletedCount = await withTimeout(
-                deleteWithCursorFallback(),
-                120000,
-                'Suppression du pack trop longue en mode curseur indexedDB'
-            );
+            // Pas de timeout dur ici: certaines suppressions iOS/Safari peuvent durer plusieurs minutes.
+            deletedCount = await deleteWithCursorFallback();
         }
 
         alert(`${deletedCount} tuiles du pack "${packName}" ont été supprimées.`);
