@@ -177,7 +177,7 @@ function setupEventListeners() {
     if (mainActionButtons) {
         const versionDisplay = document.createElement('div');
         versionDisplay.className = 'version-display';
-        versionDisplay.innerText = 'v8.14';
+        versionDisplay.innerText = 'v8.17';
         mainActionButtons.appendChild(versionDisplay);
     }
 
@@ -999,6 +999,16 @@ window.deleteMapPack = async function(packName) {
             } else {
                 cursor.continue();
             }
+
+            const deleteRequest = cursor.delete();
+            deleteRequest.onsuccess = () => {
+                deletedCount += 1;
+                if (deletedCount >= batchSize) {
+                    return;
+                }
+                cursor.continue();
+            };
+            deleteRequest.onerror = () => reject(deleteRequest.error || new Error('Erreur suppression tuile indexedDB'));
         };
 
         request.onerror = () => reject(request.error || new Error('Erreur curseur suppression indexedDB (scan store)'));
