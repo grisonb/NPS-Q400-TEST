@@ -116,8 +116,16 @@ function initMap() {
         if (isDrawingMode) return;
         selectedPelicanOACI = null;
         L.DomEvent.preventDefault(e.originalEvent);
-        const pointName = findClosestCommuneName(e.latlng.lat, e.latlng.lng) || 'Feu manuel';
-        const manualCommune = { nom_standard: pointName, latitude_mairie: e.latlng.lat, longitude_mairie: e.latlng.lng, isManual: true };
+        const closestCommune = findClosestCommune(e.latlng.lat, e.latlng.lng, 27);
+        const pointName = closestCommune?.nom_standard || 'Feu manuel';
+        const manualCommune = {
+            nom_standard: pointName,
+            dep_code: closestCommune?.dep_code || null,
+            dep_nom: closestCommune?.dep_nom || null,
+            latitude_mairie: e.latlng.lat,
+            longitude_mairie: e.latlng.lng,
+            isManual: true
+        };
         currentCommune = manualCommune;
         localStorage.setItem('currentCommune', JSON.stringify(manualCommune));
         displayCommuneDetails(manualCommune, false);
@@ -169,7 +177,7 @@ function setupEventListeners() {
     if (mainActionButtons) {
         const versionDisplay = document.createElement('div');
         versionDisplay.className = 'version-display';
-        versionDisplay.innerText = 'v8.2';
+        versionDisplay.innerText = 'v8.14';
         mainActionButtons.appendChild(versionDisplay);
     }
 
@@ -232,8 +240,16 @@ function setupEventListeners() {
         navigator.geolocation.getCurrentPosition(
             (pos) => {
                 const { latitude, longitude } = pos.coords;
-                const pointName = findClosestCommuneName(latitude, longitude) || 'Feu GPS';
-                const gpsCommune = { nom_standard: pointName, latitude_mairie: latitude, longitude_mairie: longitude, isManual: true };
+                const closestCommune = findClosestCommune(latitude, longitude, 27);
+                const pointName = closestCommune?.nom_standard || 'Feu GPS';
+                const gpsCommune = {
+                    nom_standard: pointName,
+                    dep_code: closestCommune?.dep_code || null,
+                    dep_nom: closestCommune?.dep_nom || null,
+                    latitude_mairie: latitude,
+                    longitude_mairie: longitude,
+                    isManual: true
+                };
                 currentCommune = gpsCommune;
                 localStorage.setItem('currentCommune', JSON.stringify(gpsCommune));
                 displayCommuneDetails(gpsCommune, false);
@@ -327,7 +343,12 @@ function updateCommuneDisplay(commune) {
         communeDisplay.style.display = 'none';
         return;
     }
-    const communeNameHTML = `<span class="commune-name">${commune.nom_standard}</span>`;
+    const fallbackClosest = (!commune.dep_code && commune.latitude_mairie != null && commune.longitude_mairie != null)
+        ? findClosestCommune(commune.latitude_mairie, commune.longitude_mairie, 27)
+        : null;
+    const depCodeValue = commune.dep_code || fallbackClosest?.dep_code || '';
+    const depCode = depCodeValue ? ` (${depCodeValue})` : '';
+    const communeNameHTML = `<span class="commune-name">${commune.nom_standard}${depCode}</span>`;
     let sunsetHTML = '';
     if (typeof SunCalc !== 'undefined') {
         try {
@@ -588,6 +609,41 @@ function drawUserToTargetRoute() {
     }
 }
 
+function updateNearestCommuneDisplay(lat, lon) {
+    const nearestDisplay = document.getElementById('nearest-commune-display');
+    if (!nearestDisplay) return;
+
+    const nearestCommune = findClosestCommune(lat, lon);
+    if (!nearestCommune) {
+        nearestDisplay.style.display = 'none';
+        nearestDisplay.innerHTML = '';
+        return;
+    }
+
+    nearestDisplay.style.display = 'block';
+    nearestDisplay.innerHTML = `📍 Plus proche: <b>${nearestCommune.nom_standard} (${nearestCommune.dep_code})</b>`;
+}
+
+function findClosestCommune(lat, lon, maxDistanceNm = null) {
+    if (!allCommunes || allCommunes.length === 0) return null;
+    let closestCommune = null;
+    let minDistance = Infinity;
+
+    for (const commune of allCommunes) {
+        const distance = calculateDistanceInNm(lat, lon, commune.latitude_mairie, commune.longitude_mairie);
+        if (distance < minDistance) {
+            minDistance = distance;
+            closestCommune = commune;
+        }
+    }
+
+    if (maxDistanceNm !== null && minDistance >= maxDistanceNm) {
+        return null;
+    }
+
+    return closestCommune;
+}
+
 function updateUserPosition(pos) {
     const { latitude, longitude } = pos.coords;
 
@@ -600,19 +656,20 @@ function updateUserPosition(pos) {
         userMarker.setLatLng([latitude, longitude]);
     }
 
+    updateNearestCommuneDisplay(latitude, longitude);
+
+    // Synchronise les calculs (dont GPS->Feu) dès qu'une position GPS est reçue.
+    if (currentCommune) {
+        updateCalculatorData();
+    }
+
     // On appelle toujours la fonction qui redessine la route
     drawUserToTargetRoute();
 }
 
 function findClosestCommuneName(lat, lon) {
-    if (!allCommunes || allCommunes.length === 0) return null;
-    let closestCommune = null; let minDistance = Infinity;
-    for (const commune of allCommunes) {
-        const distance = calculateDistanceInNm(lat, lon, commune.latitude_mairie, commune.longitude_mairie);
-        if (distance < minDistance) { minDistance = distance; closestCommune = commune; }
-    }
-    if (closestCommune && minDistance < 27) { return closestCommune.nom_standard; }
-    return null;
+    const closestCommune = findClosestCommune(lat, lon, 27);
+    return closestCommune ? closestCommune.nom_standard : null;
 }
 
 function toggleLftwRoute() {
@@ -886,23 +943,128 @@ window.deleteMapPack = async function(packName) {
         return;
     }
 
-    try {
-        const transaction = db.transaction('tiles', 'readwrite');
-        const store = transaction.objectStore('tiles');
+    const withTimeout = (promise, timeoutMs, timeoutMessage) => new Promise((resolve, reject) => {
+        const timerId = setTimeout(() => reject(new Error(timeoutMessage)), timeoutMs);
+        promise.then(
+            (value) => { clearTimeout(timerId); resolve(value); },
+            (error) => { clearTimeout(timerId); reject(error); }
+        );
+    });
+
+    const collectPackKeysByIndex = (limit = 200) => new Promise((resolve, reject) => {
+        const keys = [];
+        const tx = db.transaction('tiles', 'readonly');
+        const store = tx.objectStore('tiles');
         const index = store.index('packName');
         const request = index.openKeyCursor(IDBKeyRange.only(packName));
 
-        let deletedCount = 0;
-        request.onsuccess = event => {
-            const cursor = event.target.result;
-            if (cursor) {
-                store.delete(cursor.primaryKey);
-                deletedCount++;
-                cursor.continue();
+        request.onsuccess = () => {
+            const cursor = request.result;
+            if (!cursor || keys.length >= limit) {
+                return;
             }
+            keys.push(cursor.primaryKey);
+            cursor.continue();
         };
 
-        await new Promise(resolve => transaction.oncomplete = resolve);
+        request.onerror = () => reject(request.error || new Error('Erreur lecture des clés pack (index)'));
+        tx.oncomplete = () => resolve(keys);
+        tx.onerror = () => reject(tx.error || new Error('Erreur transaction lecture indexedDB (index)'));
+        tx.onabort = () => reject(tx.error || new Error('Transaction lecture indexedDB annulée (index)'));
+    });
+
+    const collectPackKeysByScan = (limit = 100) => new Promise((resolve, reject) => {
+        const keys = [];
+        const tx = db.transaction('tiles', 'readonly');
+        const store = tx.objectStore('tiles');
+        const request = store.openCursor();
+
+        request.onsuccess = () => {
+            const cursor = request.result;
+            if (!cursor || keys.length >= limit) {
+                return;
+            }
+
+            const value = cursor.value || {};
+            if (value.packName === packName) {
+                keys.push(cursor.primaryKey);
+            }
+            cursor.continue();
+        };
+
+        request.onerror = () => reject(request.error || new Error('Erreur lecture des clés pack (scan)'));
+        tx.oncomplete = () => resolve(keys);
+        tx.onerror = () => reject(tx.error || new Error('Erreur transaction lecture indexedDB (scan)'));
+        tx.onabort = () => reject(tx.error || new Error('Transaction lecture indexedDB annulée (scan)'));
+    });
+
+    const deleteKeysBatch = (keys) => new Promise((resolve, reject) => {
+        if (!keys.length) {
+            resolve(0);
+            return;
+        }
+
+        let deletedCount = 0;
+        const tx = db.transaction('tiles', 'readwrite');
+        const store = tx.objectStore('tiles');
+
+        keys.forEach((key) => {
+            const delReq = store.delete(key);
+            delReq.onsuccess = () => { deletedCount += 1; };
+            delReq.onerror = () => reject(delReq.error || new Error('Erreur suppression clé indexedDB'));
+        });
+
+        tx.oncomplete = () => resolve(deletedCount);
+        tx.onerror = () => reject(tx.error || new Error('Erreur transaction suppression indexedDB'));
+        tx.onabort = () => reject(tx.error || new Error('Transaction suppression indexedDB annulée'));
+    });
+
+    const purgeByCollector = async (collector, initialBatchSize) => {
+        let totalDeleted = 0;
+        let batchSize = initialBatchSize;
+
+        while (true) {
+            const keys = await withTimeout(
+                collector(batchSize),
+                30000,
+                'Lecture des clés du pack trop longue'
+            );
+
+            if (keys.length === 0) {
+                break;
+            }
+
+            try {
+                totalDeleted += await withTimeout(
+                    deleteKeysBatch(keys),
+                    45000,
+                    'Suppression du lot indexedDB trop longue'
+                );
+
+                if (batchSize < initialBatchSize) {
+                    batchSize = Math.min(initialBatchSize, batchSize * 2);
+                }
+            } catch (deleteError) {
+                if (batchSize === 1) {
+                    throw deleteError;
+                }
+                batchSize = Math.max(1, Math.floor(batchSize / 2));
+                console.warn(`Suppression pack: réduction batch à ${batchSize} suite à une erreur indexedDB.`);
+            }
+        }
+
+        return totalDeleted;
+    };
+
+    try {
+        if (!db) {
+            await withTimeout(initDB(), 15000, 'Initialisation indexedDB trop longue');
+        }
+
+        let deletedCount = await purgeByCollector(collectPackKeysByIndex, 200);
+        if (deletedCount === 0) {
+            deletedCount = await purgeByCollector(collectPackKeysByScan, 100);
+        }
 
         alert(`${deletedCount} tuiles du pack "${packName}" ont été supprimées.`);
 
@@ -910,13 +1072,22 @@ window.deleteMapPack = async function(packName) {
         installedPacks = installedPacks.filter(p => p.name !== packName);
         localStorage.setItem('installedMapPacks', JSON.stringify(installedPacks));
 
+        if ('caches' in window) {
+            const cacheNames = await caches.keys();
+            await Promise.all(cacheNames
+                .filter(name => name.startsWith('test-communes-tile-cache-'))
+                .map(name => caches.delete(name))
+            );
+        }
+
         displayInstalledMaps();
 
     } catch (error) {
-        alert(`Erreur lors de la suppression du pack : ${error.message}`);
-        console.error("Erreur de suppression:", error);
+        alert(`Erreur lors de la suppression du pack : ${error.message || error}`);
+        console.error('Erreur de suppression:', error);
     }
 }
+
 
 // =========================================================================
 // LOGIQUE DU CALCULATEUR DE MISSION
@@ -970,8 +1141,14 @@ function updateAndSortRotations(container, current, params) {
             if (canCalculateFuel) value = ((current.fuel - params.bingoPelic) / params.consoRotation) + plusOne;
         }
         if (type === 'cs') {
-            formulaString = `Heure sur Feu = ${formatTime(current.time) || 'N/A'}\n\nFormule : (Heure CS - Heure sur Feu) / Durée Rotation\n\nCalcul : (${formatTime(params.csFeuTime) || 'N/A'} - ${formatTime(current.time) || 'N/A'}) / ${params.rotationTime || 'N/A'} min`;
-            if (canCalculateTime && params.csFeuTime !== null) value = (params.csFeuTime - current.time) / params.rotationTime;
+            const canDropOnArrivalBeforeCs = canCalculateTime && params.csFeuTime !== null && current.time < params.csFeuTime;
+            const plusOne = canDropOnArrivalBeforeCs ? 1 : 0;
+            formulaString = `Heure sur Feu = ${formatTime(current.time) || 'N/A'}
+
+Formule : ((Heure CS - Heure sur Feu) / Durée Rotation) [+1 si arrivée sur feu avant CS]
+
+Calcul : ((${formatTime(params.csFeuTime) || 'N/A'} - ${formatTime(current.time) || 'N/A'}) / ${params.rotationTime || 'N/A'} min) + ${plusOne}`;
+            if (canCalculateTime && params.csFeuTime !== null) value = ((params.csFeuTime - current.time) / params.rotationTime) + plusOne;
         }
         if (type === 'tmd') {
             formulaString = `Heure sur Feu = ${formatTime(current.time) || 'N/A'}\n\nFormule : (Heure TMD - Heure sur Feu) / Durée Rotation\n\nCalcul : (${formatTime(params.tmdTime) || 'N/A'} - ${formatTime(current.time) || 'N/A'}) / ${params.rotationTime || 'N/A'} min`;
@@ -1167,6 +1344,10 @@ function updateSuiviTab() {
         document.getElementById('suivi-bingo-base').innerHTML = '-- kg';
         document.getElementById('suivi-bingo-pelic').innerHTML = '-- kg';
         document.querySelectorAll('#suivi-rotation-results-container .value').forEach(el => { el.textContent = '--'; el.className = 'value rotation-value-default'; });
+        document.getElementById('suivi-heure-sur-feu').textContent = '--:--';
+        document.getElementById('suivi-cs-sur-feu').textContent = '--:--';
+        const suiviHeureHelpIcon = document.getElementById('suivi-heure-sur-feu-help');
+        if (suiviHeureHelpIcon) { suiviHeureHelpIcon.onclick = () => alert('Données insuffisantes pour le calcul.'); }
         suiviConsoInput.value = '';
         suiviDureeInput.value = '';
         return;
@@ -1193,6 +1374,10 @@ function updateSuiviTab() {
 
     if (!lastFilledRow) {
         document.getElementById('suivi-fuel-actuel').textContent = '-- kg';
+        document.getElementById('suivi-heure-sur-feu').textContent = '--:--';
+        document.getElementById('suivi-cs-sur-feu').textContent = '--:--';
+        const suiviHeureHelpIcon = document.getElementById('suivi-heure-sur-feu-help');
+        if (suiviHeureHelpIcon) { suiviHeureHelpIcon.onclick = () => alert('Données insuffisantes pour le calcul.'); }
         document.querySelectorAll('#suivi-rotation-results-container .value').forEach(el => { el.textContent = '--'; el.className = 'value rotation-value-default'; });
     } else {
         const currentFuel = parseNumeric(lastFilledRow.querySelector('.numeric-input-wrapper .display-input').value);
@@ -1205,8 +1390,15 @@ function updateSuiviTab() {
 
         const csFeuTime = parseTime(CALCULATOR_DATA.csFeu);
         const tmdTime = parseTime(document.getElementById('tmd').querySelector('.display-input').value);
-        const transitTimeRetourBase = Math.round(calculateTransitTime(CALCULATOR_DATA.distBaseFeu));
-        updateAndSortRotations(document.getElementById('suivi-rotation-results-container'), { fuel: currentFuel, time: currentTime }, { bingoBase, bingoPelic, consoRotation, rotationTime, csFeuTime, tmdTime, limiteHDV: currentHdv, transitTime: transitTimeRetourBase });
+        const transitTimeVersFeu = Math.round(calculateTransitTime(CALCULATOR_DATA.distBaseFeu));
+        const heureSurFeu = currentTime !== null ? currentTime + transitTimeVersFeu : null;
+        document.getElementById('suivi-heure-sur-feu').textContent = formatTime(heureSurFeu) || '--:--';
+        document.getElementById('suivi-cs-sur-feu').textContent = CALCULATOR_DATA.csFeu;
+        const suiviHeureHelpIcon = document.getElementById('suivi-heure-sur-feu-help');
+        if (suiviHeureHelpIcon) {
+            suiviHeureHelpIcon.onclick = () => alert(`Formule : Heure bloc arrivée + Durée transit base->Feu\n\nCalcul : ${formatTime(currentTime) || 'N/A'} + ${formatTime(transitTimeVersFeu) || 'N/A'}`);
+        }
+        updateAndSortRotations(document.getElementById('suivi-rotation-results-container'), { fuel: currentFuel, time: heureSurFeu }, { bingoBase, bingoPelic, consoRotation, rotationTime, csFeuTime, tmdTime, limiteHDV: currentHdv, transitTime: transitTimeVersFeu });
     }
 }
 
@@ -1223,7 +1415,9 @@ function updateDeroutementTab() {
         resultsContainer.querySelectorAll('.value').forEach(el => { el.textContent = '--'; el.className = 'value rotation-value-default'; });
         document.getElementById('derout-fuel-mini-base').textContent = '-- kg';
         document.getElementById('derout-fuel-mini-pelic').textContent = '-- kg';
-        setHelp('derout-fuel-mini-base-help'); setHelp('derout-fuel-mini-pelic-help');
+        document.getElementById('derout-heure-sur-feu').textContent = '--:--';
+        document.getElementById('derout-cs-sur-feu').textContent = '--:--';
+        setHelp('derout-fuel-mini-base-help'); setHelp('derout-fuel-mini-pelic-help'); setHelp('derout-heure-sur-feu-help');
         return;
     }
 
@@ -1237,28 +1431,40 @@ function updateDeroutementTab() {
     const csFeuTime = parseTime(CALCULATOR_DATA.csFeu);
     const tmdTime = parseTime(document.getElementById('tmd').querySelector('.display-input').value);
     const limiteHDV = parseTime(document.getElementById('limite-hdv').querySelector('.display-input').value);
-    const transitTimeFromGps = Math.round(calculateTransitTime(CALCULATOR_DATA.distGpsFeu));
-    const consoTransitFromGps = calculateFuelToGo(CALCULATOR_DATA.distGpsFeu);
+    const hasGpsPosition = !!(userMarker && userMarker.getLatLng());
+    const distGpsFeu = hasGpsPosition ? CALCULATOR_DATA.distGpsFeu : null;
+    const transitTimeFromGps = distGpsFeu !== null ? Math.round(calculateTransitTime(distGpsFeu)) : null;
+    const consoTransitFromGps = distGpsFeu !== null ? calculateFuelToGo(distGpsFeu) : null;
 
     const bingoBaseDisplay = document.getElementById('derout-bingo-base');
     if (bingoBase === 700) { bingoBaseDisplay.innerHTML = '-- kg'; } else { bingoBaseDisplay.innerHTML = `${CALCULATOR_DATA.distBaseFeu} Nm /&nbsp;<b>${bingoBase} kg</b>`; }
     const bingoPelicDisplay = document.getElementById('derout-bingo-pelic');
     if (bingoPelic === 700 || !selectedPelicanOACI) { bingoPelicDisplay.innerHTML = '-- kg'; } else { bingoPelicDisplay.innerHTML = `${selectedPelicanOACI} / ${CALCULATOR_DATA.distPelicFeu} Nm /&nbsp;<b>${bingoPelic} kg</b>`; }
 
-    const fuelMiniBase = consoTransitFromGps + 250 + bingoBase;
-    const fuelMiniPelic = consoTransitFromGps + 250 + bingoPelic;
-    document.getElementById('derout-fuel-mini-base').textContent = (fuelMiniBase === (950 + consoTransitFromGps)) ? '-- kg' : `${fuelMiniBase} kg`;
-    document.getElementById('derout-fuel-mini-pelic').textContent = (fuelMiniPelic === (950 + consoTransitFromGps)) ? '-- kg' : `${fuelMiniPelic} kg`;
-    setHelp('derout-fuel-mini-base-help', `Formule: Conso(GPS->Feu) + Forfait Largage + BINGO Base\n\nCalcul: ${consoTransitFromGps} + 250 + ${bingoBase}`);
-    setHelp('derout-fuel-mini-pelic-help', `Formule: Conso(GPS->Feu) + Forfait Largage + BINGO Pélic.\n\nCalcul: ${consoTransitFromGps} + 250 + ${bingoPelic}`);
+    const fuelMiniBase = consoTransitFromGps !== null ? consoTransitFromGps + 250 + bingoBase : null;
+    const fuelMiniPelic = consoTransitFromGps !== null ? consoTransitFromGps + 250 + bingoPelic : null;
+    document.getElementById('derout-fuel-mini-base').textContent = fuelMiniBase !== null ? `${fuelMiniBase} kg` : '-- kg';
+    document.getElementById('derout-fuel-mini-pelic').textContent = fuelMiniPelic !== null ? `${fuelMiniPelic} kg` : '-- kg';
+    setHelp('derout-fuel-mini-base-help', consoTransitFromGps !== null
+        ? `Formule: Conso(GPS->Feu) + Forfait Largage + BINGO Base\n\nCalcul: ${consoTransitFromGps} + 250 + ${bingoBase}`
+        : 'Distance GPS->Feu indisponible. Utilisez “🛰️ Rafraîchir GPS”.');
+    setHelp('derout-fuel-mini-pelic-help', consoTransitFromGps !== null
+        ? `Formule: Conso(GPS->Feu) + Forfait Largage + BINGO Pélic.\n\nCalcul: ${consoTransitFromGps} + 250 + ${bingoPelic}`
+        : 'Distance GPS->Feu indisponible. Utilisez “🛰️ Rafraîchir GPS”.');
 
-    if (fuelActuel === null || heureActuelle === null) {
+    const heureSurFeu = (heureActuelle !== null && transitTimeFromGps !== null) ? heureActuelle + transitTimeFromGps : null;
+    document.getElementById('derout-heure-sur-feu').textContent = formatTime(heureSurFeu) || '--:--';
+    document.getElementById('derout-cs-sur-feu').textContent = CALCULATOR_DATA.csFeu;
+    setHelp('derout-heure-sur-feu-help', transitTimeFromGps !== null
+        ? `Formule : Heure actuelle + Durée transit GPS->Feu\n\nCalcul : ${formatTime(heureActuelle) || 'N/A'} + ${formatTime(transitTimeFromGps) || 'N/A'}`
+        : 'Distance GPS->Feu indisponible. Utilisez “🛰️ Rafraîchir GPS”.');
+
+    if (fuelActuel === null || heureActuelle === null || consoTransitFromGps === null || transitTimeFromGps === null) {
         resultsContainer.querySelectorAll('.value').forEach(el => { el.textContent = '--'; el.className = 'value rotation-value-default'; });
         resultsContainer.querySelectorAll('.formula-help-icon').forEach(icon => icon.onclick = () => alert("Données insuffisantes pour le calcul."));
         return;
     }
 
-    const heureSurFeu = heureActuelle + transitTimeFromGps;
     const fuelSurFeu = fuelActuel - consoTransitFromGps;
 
     updateAndSortRotations(
@@ -1274,15 +1480,20 @@ function initializeCalculator() {
     const csLftwDisplay = document.getElementById('cs-lftw-display');
     const refreshGpsBtn = document.getElementById('refresh-gps-btn');
     refreshGpsBtn.addEventListener('click', () => {
-        // On vérifie simplement si une position GPS est déjà connue via le marqueur sur la carte
-        if (userMarker && userMarker.getLatLng()) {
-            // Si oui, on lance directement le recalcul des données
-            updateCalculatorData();
-            masterRecalculate();
-        } else {
-            // Si aucune position n'a jamais été reçue, on prévient l'utilisateur
-            alert("Aucune position GPS n'est disponible pour le rafraîchissement.");
+        if (!navigator.geolocation) {
+            alert("La géolocalisation n'est pas supportée par votre navigateur.");
+            return;
         }
+
+        navigator.geolocation.getCurrentPosition(
+            (pos) => {
+                updateUserPosition(pos);
+            },
+            () => {
+                alert("Impossible d'obtenir la position GPS. Vérifiez les autorisations.");
+            },
+            { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+        );
     });
 
     function updateLftwSunset() {
