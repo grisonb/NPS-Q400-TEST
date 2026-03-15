@@ -177,7 +177,7 @@ function setupEventListeners() {
     if (mainActionButtons) {
         const versionDisplay = document.createElement('div');
         versionDisplay.className = 'version-display';
-        versionDisplay.innerText = 'v8.16';
+        versionDisplay.innerText = 'v8.17';
         mainActionButtons.appendChild(versionDisplay);
     }
 
@@ -951,7 +951,7 @@ window.deleteMapPack = async function(packName) {
         );
     });
 
-    const deleteCursorBatch = (batchSize = 200) => new Promise((resolve, reject) => {
+    const deleteCursorBatchByIndex = (batchSize = 200) => new Promise((resolve, reject) => {
         let deletedCount = 0;
         const tx = db.transaction('tiles', 'readwrite');
         const store = tx.objectStore('tiles');
@@ -960,8 +960,44 @@ window.deleteMapPack = async function(packName) {
 
         request.onsuccess = () => {
             const cursor = request.result;
-            if (!cursor) {
-                return;
+            if (!cursor) return;
+
+            const deleteRequest = cursor.delete();
+            deleteRequest.onsuccess = () => {
+                deletedCount += 1;
+                if (deletedCount >= batchSize) return;
+                cursor.continue();
+            };
+            deleteRequest.onerror = () => reject(deleteRequest.error || new Error('Erreur suppression tuile indexedDB'));
+        };
+
+        request.onerror = () => reject(request.error || new Error('Erreur curseur suppression indexedDB (index packName)'));
+        tx.oncomplete = () => resolve(deletedCount);
+        tx.onerror = () => reject(tx.error || new Error('Erreur transaction suppression indexedDB'));
+        tx.onabort = () => reject(tx.error || new Error('Transaction suppression indexedDB annulée'));
+    });
+
+    const deleteCursorBatchByScan = (batchSize = 100) => new Promise((resolve, reject) => {
+        let deletedCount = 0;
+        const tx = db.transaction('tiles', 'readwrite');
+        const store = tx.objectStore('tiles');
+        const request = store.openCursor();
+
+        request.onsuccess = () => {
+            const cursor = request.result;
+            if (!cursor) return;
+
+            const value = cursor.value || {};
+            if (value.packName === packName) {
+                const deleteRequest = cursor.delete();
+                deleteRequest.onsuccess = () => {
+                    deletedCount += 1;
+                    if (deletedCount >= batchSize) return;
+                    cursor.continue();
+                };
+                deleteRequest.onerror = () => reject(deleteRequest.error || new Error('Erreur suppression tuile indexedDB (scan)'));
+            } else {
+                cursor.continue();
             }
 
             const deleteRequest = cursor.delete();
@@ -975,41 +1011,34 @@ window.deleteMapPack = async function(packName) {
             deleteRequest.onerror = () => reject(deleteRequest.error || new Error('Erreur suppression tuile indexedDB'));
         };
 
-        request.onerror = () => reject(request.error || new Error('Erreur curseur suppression indexedDB'));
+        request.onerror = () => reject(request.error || new Error('Erreur curseur suppression indexedDB (scan store)'));
         tx.oncomplete = () => resolve(deletedCount);
-        tx.onerror = () => reject(tx.error || new Error('Erreur transaction suppression indexedDB'));
-        tx.onabort = () => reject(tx.error || new Error('Transaction suppression indexedDB annulée'));
+        tx.onerror = () => reject(tx.error || new Error('Erreur transaction suppression indexedDB (scan)'));
+        tx.onabort = () => reject(tx.error || new Error('Transaction suppression indexedDB annulée (scan)'));
     });
 
-    const deletePackInBatches = async (initialBatchSize = 200) => {
+    const deletePackInBatches = async (deleteBatchFn, initialBatchSize = 200) => {
         let totalDeleted = 0;
         let batchSize = initialBatchSize;
 
         while (true) {
             try {
                 const deletedThisRound = await withTimeout(
-                    deleteCursorBatch(batchSize),
+                    deleteBatchFn(batchSize),
                     60000,
                     'Transaction suppression indexedDB trop longue'
                 );
 
-                if (deletedThisRound === 0) {
-                    break;
-                }
+                if (deletedThisRound === 0) break;
 
                 totalDeleted += deletedThisRound;
-
-                if (deletedThisRound < batchSize) {
-                    break;
-                }
+                if (deletedThisRound < batchSize) break;
 
                 if (batchSize < initialBatchSize) {
                     batchSize = Math.min(initialBatchSize, batchSize * 2);
                 }
             } catch (batchError) {
-                if (batchSize === 1) {
-                    throw batchError;
-                }
+                if (batchSize === 1) throw batchError;
                 batchSize = Math.max(1, Math.floor(batchSize / 2));
                 console.warn(`Suppression pack: réduction batch à ${batchSize} suite à une erreur indexedDB.`);
             }
@@ -1023,13 +1052,25 @@ window.deleteMapPack = async function(packName) {
             await withTimeout(initDB(), 15000, 'Initialisation indexedDB trop longue');
         }
 
-        const deletedCount = await deletePackInBatches(200);
+        let deletedCount = await deletePackInBatches(deleteCursorBatchByIndex, 200);
+        if (deletedCount === 0) {
+            // Fallback si l'index packName est incomplet/corrompu sur certains navigateurs.
+            deletedCount = await deletePackInBatches(deleteCursorBatchByScan, 100);
+        }
 
         alert(`${deletedCount} tuiles du pack "${packName}" ont été supprimées.`);
 
         let installedPacks = JSON.parse(localStorage.getItem('installedMapPacks') || '[]');
         installedPacks = installedPacks.filter(p => p.name !== packName);
         localStorage.setItem('installedMapPacks', JSON.stringify(installedPacks));
+
+        if ('caches' in window) {
+            const cacheNames = await caches.keys();
+            await Promise.all(cacheNames
+                .filter(name => name.startsWith('test-communes-tile-cache-'))
+                .map(name => caches.delete(name))
+            );
+        }
 
         displayInstalledMaps();
 
