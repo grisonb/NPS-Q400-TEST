@@ -177,7 +177,7 @@ function setupEventListeners() {
     if (mainActionButtons) {
         const versionDisplay = document.createElement('div');
         versionDisplay.className = 'version-display';
-        versionDisplay.innerText = 'v8.11';
+        versionDisplay.innerText = 'v8.12';
         mainActionButtons.appendChild(versionDisplay);
     }
 
@@ -948,29 +948,39 @@ window.deleteMapPack = async function(packName) {
             await initDB();
         }
 
-        const transaction = db.transaction('tiles', 'readwrite');
-        const store = transaction.objectStore('tiles');
-        const index = store.index('packName');
-        const request = index.openKeyCursor(IDBKeyRange.only(packName));
+        // 1) Lire toutes les clés du pack en transaction readonly (plus fiable sur Safari/iOS)
+        const keys = await new Promise((resolve, reject) => {
+            const readTx = db.transaction('tiles', 'readonly');
+            const store = readTx.objectStore('tiles');
+            const index = store.index('packName');
+            const request = index.getAllKeys(IDBKeyRange.only(packName));
 
-        let deletedCount = 0;
-        request.onsuccess = event => {
-            const cursor = event.target.result;
-            if (cursor) {
-                store.delete(cursor.primaryKey);
-                deletedCount++;
-                cursor.continue();
-            }
-        };
-        request.onerror = () => {
-            console.error('Erreur de lecture des tuiles à supprimer :', request.error);
-        };
-
-        await new Promise((resolve, reject) => {
-            transaction.oncomplete = resolve;
-            transaction.onerror = () => reject(transaction.error || new Error('Transaction IndexedDB en erreur.'));
-            transaction.onabort = () => reject(transaction.error || new Error('Transaction IndexedDB annulée.'));
+            request.onsuccess = () => resolve(request.result || []);
+            request.onerror = () => reject(request.error || new Error('Impossible de lister les tuiles du pack.'));
+            readTx.onerror = () => reject(readTx.error || new Error('Erreur transaction lecture IndexedDB.'));
+            readTx.onabort = () => reject(readTx.error || new Error('Transaction lecture IndexedDB annulée.'));
         });
+
+        // 2) Supprimer par lots pour éviter les transactions trop longues
+        const batchSize = 500;
+        let deletedCount = 0;
+
+        for (let i = 0; i < keys.length; i += batchSize) {
+            const batchKeys = keys.slice(i, i + batchSize);
+
+            await new Promise((resolve, reject) => {
+                const deleteTx = db.transaction('tiles', 'readwrite');
+                const deleteStore = deleteTx.objectStore('tiles');
+
+                batchKeys.forEach(key => deleteStore.delete(key));
+
+                deleteTx.oncomplete = resolve;
+                deleteTx.onerror = () => reject(deleteTx.error || new Error('Erreur transaction suppression IndexedDB.'));
+                deleteTx.onabort = () => reject(deleteTx.error || new Error('Transaction suppression IndexedDB annulée.'));
+            });
+
+            deletedCount += batchKeys.length;
+        }
 
         alert(`${deletedCount} tuiles du pack "${packName}" ont été supprimées.`);
 
@@ -985,6 +995,7 @@ window.deleteMapPack = async function(packName) {
         console.error('Erreur de suppression:', error);
     }
 }
+
 
 // =========================================================================
 // LOGIQUE DU CALCULATEUR DE MISSION
