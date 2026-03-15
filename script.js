@@ -944,6 +944,10 @@ window.deleteMapPack = async function(packName) {
     }
 
     try {
+        if (!db) {
+            await initDB();
+        }
+
         const transaction = db.transaction('tiles', 'readwrite');
         const store = transaction.objectStore('tiles');
         const index = store.index('packName');
@@ -958,8 +962,15 @@ window.deleteMapPack = async function(packName) {
                 cursor.continue();
             }
         };
+        request.onerror = () => {
+            console.error('Erreur de lecture des tuiles à supprimer :', request.error);
+        };
 
-        await new Promise(resolve => transaction.oncomplete = resolve);
+        await new Promise((resolve, reject) => {
+            transaction.oncomplete = resolve;
+            transaction.onerror = () => reject(transaction.error || new Error('Transaction IndexedDB en erreur.'));
+            transaction.onabort = () => reject(transaction.error || new Error('Transaction IndexedDB annulée.'));
+        });
 
         alert(`${deletedCount} tuiles du pack "${packName}" ont été supprimées.`);
 
@@ -970,8 +981,8 @@ window.deleteMapPack = async function(packName) {
         displayInstalledMaps();
 
     } catch (error) {
-        alert(`Erreur lors de la suppression du pack : ${error.message}`);
-        console.error("Erreur de suppression:", error);
+        alert(`Erreur lors de la suppression du pack : ${error.message || error}`);
+        console.error('Erreur de suppression:', error);
     }
 }
 
