@@ -177,7 +177,7 @@ function setupEventListeners() {
     if (mainActionButtons) {
         const versionDisplay = document.createElement('div');
         versionDisplay.className = 'version-display';
-        versionDisplay.innerText = 'v8.15';
+        versionDisplay.innerText = 'v8.14';
         mainActionButtons.appendChild(versionDisplay);
     }
 
@@ -951,51 +951,7 @@ window.deleteMapPack = async function(packName) {
         );
     });
 
-    const deleteKeysBatch = (keysToDelete) => new Promise((resolve, reject) => {
-        const deleteTx = db.transaction('tiles', 'readwrite');
-        const deleteStore = deleteTx.objectStore('tiles');
-
-        keysToDelete.forEach(key => deleteStore.delete(key));
-
-        deleteTx.oncomplete = () => resolve(keysToDelete.length);
-        deleteTx.onerror = () => reject(deleteTx.error || new Error('Erreur transaction suppression indexedDB'));
-        deleteTx.onabort = () => reject(deleteTx.error || new Error('Transaction suppression indexedDB annulée'));
-    });
-
-    const deleteWithAdaptiveBatch = async (keys, initialBatchSize = 200) => {
-        let deletedCount = 0;
-        let batchSize = initialBatchSize;
-
-        for (let i = 0; i < keys.length;) {
-            const endIndex = Math.min(i + batchSize, keys.length);
-            const batchKeys = keys.slice(i, endIndex);
-
-            try {
-                const deletedInBatch = await withTimeout(
-                    deleteKeysBatch(batchKeys),
-                    45000,
-                    'Délai dépassé sur une transaction de suppression indexedDB'
-                );
-
-                deletedCount += deletedInBatch;
-                i = endIndex;
-
-                if (batchSize < initialBatchSize) {
-                    batchSize = Math.min(initialBatchSize, batchSize * 2);
-                }
-            } catch (batchError) {
-                if (batchSize === 1) {
-                    throw batchError;
-                }
-                batchSize = Math.max(1, Math.floor(batchSize / 2));
-                console.warn(`Suppression pack: réduction batch à ${batchSize} suite à une erreur transaction indexedDB.`);
-            }
-        }
-
-        return deletedCount;
-    };
-
-    const deleteWithCursorFallback = () => new Promise((resolve, reject) => {
+    const deleteCursorBatch = (batchSize = 200) => new Promise((resolve, reject) => {
         let deletedCount = 0;
         const tx = db.transaction('tiles', 'readwrite');
         const store = tx.objectStore('tiles');
@@ -1007,49 +963,67 @@ window.deleteMapPack = async function(packName) {
             if (!cursor) {
                 return;
             }
+
             const deleteRequest = cursor.delete();
             deleteRequest.onsuccess = () => {
                 deletedCount += 1;
+                if (deletedCount >= batchSize) {
+                    return;
+                }
                 cursor.continue();
             };
-            deleteRequest.onerror = () => reject(deleteRequest.error || new Error('Erreur suppression tuile en mode curseur indexedDB'));
+            deleteRequest.onerror = () => reject(deleteRequest.error || new Error('Erreur suppression tuile indexedDB'));
         };
 
         request.onerror = () => reject(request.error || new Error('Erreur curseur suppression indexedDB'));
         tx.oncomplete = () => resolve(deletedCount);
-        tx.onerror = () => reject(tx.error || new Error('Erreur transaction suppression indexedDB (mode curseur)'));
-        tx.onabort = () => reject(tx.error || new Error('Transaction suppression indexedDB annulée (mode curseur)'));
+        tx.onerror = () => reject(tx.error || new Error('Erreur transaction suppression indexedDB'));
+        tx.onabort = () => reject(tx.error || new Error('Transaction suppression indexedDB annulée'));
     });
+
+    const deletePackInBatches = async (initialBatchSize = 200) => {
+        let totalDeleted = 0;
+        let batchSize = initialBatchSize;
+
+        while (true) {
+            try {
+                const deletedThisRound = await withTimeout(
+                    deleteCursorBatch(batchSize),
+                    60000,
+                    'Transaction suppression indexedDB trop longue'
+                );
+
+                if (deletedThisRound === 0) {
+                    break;
+                }
+
+                totalDeleted += deletedThisRound;
+
+                if (deletedThisRound < batchSize) {
+                    break;
+                }
+
+                if (batchSize < initialBatchSize) {
+                    batchSize = Math.min(initialBatchSize, batchSize * 2);
+                }
+            } catch (batchError) {
+                if (batchSize === 1) {
+                    throw batchError;
+                }
+                batchSize = Math.max(1, Math.floor(batchSize / 2));
+                console.warn(`Suppression pack: réduction batch à ${batchSize} suite à une erreur indexedDB.`);
+            }
+        }
+
+        return totalDeleted;
+    };
 
     try {
         if (!db) {
             await withTimeout(initDB(), 15000, 'Initialisation indexedDB trop longue');
         }
 
-        let keys = [];
-        try {
-            keys = await withTimeout(new Promise((resolve, reject) => {
-                const readTx = db.transaction('tiles', 'readonly');
-                const store = readTx.objectStore('tiles');
-                const index = store.index('packName');
-                const request = index.getAllKeys(IDBKeyRange.only(packName));
-
-                request.onsuccess = () => resolve(request.result || []);
-                request.onerror = () => reject(request.error || new Error('Impossible de lister les tuiles du pack'));
-                readTx.onerror = () => reject(readTx.error || new Error('Erreur transaction lecture indexedDB'));
-                readTx.onabort = () => reject(readTx.error || new Error('Transaction lecture indexedDB annulée'));
-            }), 45000, 'Lecture des clés du pack trop longue (indexedDB)');
-        } catch (keysError) {
-            console.warn('Suppression pack: fallback curseur suite à un échec de getAllKeys.', keysError);
-        }
-
-        let deletedCount = 0;
-        if (keys.length > 0) {
-            deletedCount = await deleteWithAdaptiveBatch(keys);
-        } else {
-            // Pas de timeout dur ici: certaines suppressions iOS/Safari peuvent durer plusieurs minutes.
-            deletedCount = await deleteWithCursorFallback();
-        }
+        const deletedCount = await deletePackInBatches(200);
 
         alert(`${deletedCount} tuiles du pack "${packName}" ont été supprimées.`);
 
