@@ -177,7 +177,7 @@ function setupEventListeners() {
     if (mainActionButtons) {
         const versionDisplay = document.createElement('div');
         versionDisplay.className = 'version-display';
-        versionDisplay.innerText = 'v8.12';
+        versionDisplay.innerText = 'v8.13';
         mainActionButtons.appendChild(versionDisplay);
     }
 
@@ -943,12 +943,49 @@ window.deleteMapPack = async function(packName) {
         return;
     }
 
+    const deleteKeysBatch = (keysToDelete) => new Promise((resolve, reject) => {
+        const deleteTx = db.transaction('tiles', 'readwrite');
+        const deleteStore = deleteTx.objectStore('tiles');
+
+        keysToDelete.forEach(key => deleteStore.delete(key));
+
+        deleteTx.oncomplete = () => resolve(keysToDelete.length);
+        deleteTx.onerror = () => reject(deleteTx.error || new Error('Erreur transaction suppression indexedDB'));
+        deleteTx.onabort = () => reject(deleteTx.error || new Error('Transaction suppression indexedDB annulée'));
+    });
+
+    const deleteWithAdaptiveBatch = async (keys, initialBatchSize = 200) => {
+        let deletedCount = 0;
+        let batchSize = initialBatchSize;
+
+        for (let i = 0; i < keys.length;) {
+            const endIndex = Math.min(i + batchSize, keys.length);
+            const batchKeys = keys.slice(i, endIndex);
+
+            try {
+                deletedCount += await deleteKeysBatch(batchKeys);
+                i = endIndex;
+
+                if (batchSize < initialBatchSize) {
+                    batchSize = Math.min(initialBatchSize, batchSize * 2);
+                }
+            } catch (batchError) {
+                if (batchSize === 1) {
+                    throw batchError;
+                }
+                batchSize = Math.max(1, Math.floor(batchSize / 2));
+                console.warn(`Suppression pack: réduction batch à ${batchSize} suite à une erreur transaction indexedDB.`);
+            }
+        }
+
+        return deletedCount;
+    };
+
     try {
         if (!db) {
             await initDB();
         }
 
-        // 1) Lire toutes les clés du pack en transaction readonly (plus fiable sur Safari/iOS)
         const keys = await new Promise((resolve, reject) => {
             const readTx = db.transaction('tiles', 'readonly');
             const store = readTx.objectStore('tiles');
@@ -956,31 +993,12 @@ window.deleteMapPack = async function(packName) {
             const request = index.getAllKeys(IDBKeyRange.only(packName));
 
             request.onsuccess = () => resolve(request.result || []);
-            request.onerror = () => reject(request.error || new Error('Impossible de lister les tuiles du pack.'));
-            readTx.onerror = () => reject(readTx.error || new Error('Erreur transaction lecture IndexedDB.'));
-            readTx.onabort = () => reject(readTx.error || new Error('Transaction lecture IndexedDB annulée.'));
+            request.onerror = () => reject(request.error || new Error('Impossible de lister les tuiles du pack'));
+            readTx.onerror = () => reject(readTx.error || new Error('Erreur transaction lecture indexedDB'));
+            readTx.onabort = () => reject(readTx.error || new Error('Transaction lecture indexedDB annulée'));
         });
 
-        // 2) Supprimer par lots pour éviter les transactions trop longues
-        const batchSize = 500;
-        let deletedCount = 0;
-
-        for (let i = 0; i < keys.length; i += batchSize) {
-            const batchKeys = keys.slice(i, i + batchSize);
-
-            await new Promise((resolve, reject) => {
-                const deleteTx = db.transaction('tiles', 'readwrite');
-                const deleteStore = deleteTx.objectStore('tiles');
-
-                batchKeys.forEach(key => deleteStore.delete(key));
-
-                deleteTx.oncomplete = resolve;
-                deleteTx.onerror = () => reject(deleteTx.error || new Error('Erreur transaction suppression IndexedDB.'));
-                deleteTx.onabort = () => reject(deleteTx.error || new Error('Transaction suppression IndexedDB annulée.'));
-            });
-
-            deletedCount += batchKeys.length;
-        }
+        const deletedCount = keys.length ? await deleteWithAdaptiveBatch(keys) : 0;
 
         alert(`${deletedCount} tuiles du pack "${packName}" ont été supprimées.`);
 
