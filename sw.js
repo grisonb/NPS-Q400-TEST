@@ -1,6 +1,6 @@
-const APP_CACHE_NAME = 'test-communes-app-cache-v802'; 
-const DATA_CACHE_NAME = 'test-communes-data-cache-v802';
-const TILE_CACHE_NAME = 'test-communes-tile-cache-v802';
+const APP_CACHE_NAME = 'test-communes-app-cache-v814'; 
+const DATA_CACHE_NAME = 'test-communes-data-cache-v814';
+const TILE_CACHE_NAME = 'test-communes-tile-cache-v814';
 
 const APP_SHELL_URLS = [
     './',
@@ -38,6 +38,12 @@ self.addEventListener('activate', event => {
             })
         )).then(() => self.clients.claim())
     );
+});
+
+self.addEventListener('message', event => {
+    if (event.data && event.data.type === 'SKIP_WAITING') {
+        self.skipWaiting();
+    }
 });
 
 let db;
@@ -174,11 +180,30 @@ self.addEventListener('fetch', event => {
         return;
     }
     
-    // Stratégie pour le reste (App Shell, données): Cache d'abord, puis réseau
+    // Stratégie pour le reste (App Shell, données): réseau d'abord, puis fallback cache
     event.respondWith(
-        caches.match(event.request)
-            .then(cachedResponse => {
-                return cachedResponse || fetch(event.request).catch(() => {
+        fetch(event.request)
+            .then(networkResponse => {
+                if (event.request.method === 'GET' && networkResponse && networkResponse.ok) {
+                    const requestUrlString = event.request.url;
+                    const appShellUrls = new Set(APP_SHELL_URLS.map(url => new URL(url, self.location.origin).toString()));
+                    const dataUrls = new Set(DATA_URLS.map(url => new URL(url, self.location.origin).toString()));
+                    let cacheName = null;
+
+                    if (appShellUrls.has(requestUrlString)) cacheName = APP_CACHE_NAME;
+                    else if (dataUrls.has(requestUrlString)) cacheName = DATA_CACHE_NAME;
+
+                    if (cacheName) {
+                        caches.open(cacheName).then(cache => cache.put(event.request, networkResponse.clone()));
+                    }
+                }
+                return networkResponse;
+            })
+            .catch(() => {
+                return caches.match(event.request).then(cachedResponse => {
+                    if (cachedResponse) {
+                        return cachedResponse;
+                    }
                     if (event.request.mode === 'navigate') {
                         return caches.match('./index.html');
                     }
