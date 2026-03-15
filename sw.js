@@ -40,6 +40,12 @@ self.addEventListener('activate', event => {
     );
 });
 
+self.addEventListener('message', event => {
+    if (event.data && event.data.type === 'SKIP_WAITING') {
+        self.skipWaiting();
+    }
+});
+
 let db;
 const OFFLINE_TILES_ENABLED_KEY = 'offlineTilesEnabled';
 const DEFAULT_OFFLINE_TILES_ENABLED = true;
@@ -174,11 +180,30 @@ self.addEventListener('fetch', event => {
         return;
     }
     
-    // Stratégie pour le reste (App Shell, données): Cache d'abord, puis réseau
+    // Stratégie pour le reste (App Shell, données): réseau d'abord, puis fallback cache
     event.respondWith(
-        caches.match(event.request)
-            .then(cachedResponse => {
-                return cachedResponse || fetch(event.request).catch(() => {
+        fetch(event.request)
+            .then(networkResponse => {
+                if (event.request.method === 'GET' && networkResponse && networkResponse.ok) {
+                    const requestUrlString = event.request.url;
+                    const appShellUrls = new Set(APP_SHELL_URLS.map(url => new URL(url, self.location.origin).toString()));
+                    const dataUrls = new Set(DATA_URLS.map(url => new URL(url, self.location.origin).toString()));
+                    let cacheName = null;
+
+                    if (appShellUrls.has(requestUrlString)) cacheName = APP_CACHE_NAME;
+                    else if (dataUrls.has(requestUrlString)) cacheName = DATA_CACHE_NAME;
+
+                    if (cacheName) {
+                        caches.open(cacheName).then(cache => cache.put(event.request, networkResponse.clone()));
+                    }
+                }
+                return networkResponse;
+            })
+            .catch(() => {
+                return caches.match(event.request).then(cachedResponse => {
+                    if (cachedResponse) {
+                        return cachedResponse;
+                    }
                     if (event.request.mode === 'navigate') {
                         return caches.match('./index.html');
                     }

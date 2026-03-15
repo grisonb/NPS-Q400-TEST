@@ -15,8 +15,35 @@
 
         if ('serviceWorker' in navigator) {
             window.addEventListener('load', () => {
+                let isRefreshing = false;
+
+                navigator.serviceWorker.addEventListener('controllerchange', () => {
+                    if (isRefreshing) return;
+                    isRefreshing = true;
+                    window.location.reload();
+                });
+
                 navigator.serviceWorker.register(`./sw.js?version=${APP_VERSION}`, { updateViaCache: 'none' }).then(reg => {
                     console.log('Service Worker enregistré:', reg);
+
+                    const requestSkipWaiting = (registration) => {
+                        if (registration && registration.waiting) {
+                            registration.waiting.postMessage({ type: 'SKIP_WAITING' });
+                        }
+                    };
+
+                    requestSkipWaiting(reg);
+
+                    reg.addEventListener('updatefound', () => {
+                        const newWorker = reg.installing;
+                        if (!newWorker) return;
+                        newWorker.addEventListener('statechange', () => {
+                            if (newWorker.state === 'installed') {
+                                requestSkipWaiting(reg);
+                            }
+                        });
+                    });
+
                     reg.update();
                 }).catch(err => {
                     console.log('Erreur enregistrement Service Worker:', err);
