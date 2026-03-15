@@ -956,7 +956,7 @@ window.deleteMapPack = async function(packName) {
         const tx = db.transaction('tiles', 'readonly');
         const store = tx.objectStore('tiles');
         const index = store.index('packName');
-        const request = index.openKeyCursor(IDBKeyRange.only(packName));
+        const request = index.openCursor(IDBKeyRange.only(packName));
 
         request.onsuccess = () => {
             const cursor = request.result;
