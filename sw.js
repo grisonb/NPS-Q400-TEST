@@ -1,6 +1,6 @@
-const APP_CACHE_NAME = 'test-communes-app-cache-v831'; 
-const DATA_CACHE_NAME = 'test-communes-data-cache-v831';
-const TILE_CACHE_NAME = 'test-communes-tile-cache-v831';
+const APP_CACHE_NAME = 'test-communes-app-cache-v832'; 
+const DATA_CACHE_NAME = 'test-communes-data-cache-v832';
+const TILE_CACHE_NAME = 'test-communes-tile-cache-v832';
 
 const APP_SHELL_URLS = [
     './',
@@ -174,16 +174,44 @@ function getTileFromNetworkOrCache(request) {
 
     return tileCachePromise.then(cache => {
         return cache.match(request).then(cachedResponse => {
-            if (cachedResponse) {
-                return cachedResponse;
+            if (cachedResponse) return cachedResponse;
+
+            const normalizedUrl = normalizeTileUrl(request.url);
+            if (normalizedUrl !== request.url) {
+                return cache.match(normalizedUrl).then(normalizedCachedResponse => {
+                    if (normalizedCachedResponse) return normalizedCachedResponse;
+                    return fetchAndCacheTile(cache, request, normalizedUrl);
+                });
             }
 
-            return fetch(request).then(networkResponse => {
-                if (networkResponse && networkResponse.ok) {
-                    cache.put(request, networkResponse.clone());
-                }
-                return networkResponse;
-            });
+            return fetchAndCacheTile(cache, request, normalizedUrl);
+        });
+    });
+}
+
+function fetchAndCacheTile(cache, request, normalizedUrl = request.url) {
+    const networkRequest = normalizedUrl === request.url ? request : normalizedUrl;
+    return fetch(networkRequest).then(networkResponse => {
+        if (networkResponse && networkResponse.ok) {
+            cache.put(networkRequest, networkResponse.clone());
+        }
+        return networkResponse;
+    });
+}
+
+function getTileFromCacheOnly(request) {
+    if (!tileCachePromise) {
+        tileCachePromise = caches.open(TILE_CACHE_NAME);
+    }
+
+    return tileCachePromise.then(cache => {
+        return cache.match(request).then(cachedResponse => {
+            if (cachedResponse) return cachedResponse;
+            const normalizedUrl = normalizeTileUrl(request.url);
+            if (normalizedUrl !== request.url) {
+                return cache.match(normalizedUrl);
+            }
+            return null;
         });
     });
 }
@@ -202,7 +230,10 @@ self.addEventListener('fetch', event => {
                 const offlineLikely = typeof navigator !== 'undefined' && navigator.onLine === false;
 
                 if (offlineLikely) {
-                    return getTileFromDb(event.request.url).then(dbTile => dbTile || getTileFromNetworkOrCache(event.request));
+                    return getTileFromDb(event.request.url).then(dbTile => {
+                        if (dbTile) return dbTile;
+                        return getTileFromCacheOnly(event.request);
+                    });
                 }
 
                 return getTileFromNetworkOrCache(event.request).catch(() => getTileFromDb(event.request.url));
