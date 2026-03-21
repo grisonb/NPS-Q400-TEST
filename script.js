@@ -99,9 +99,21 @@ async function initializeApp() {
 
 function initMap() {
     if (map) return;
-    map = L.map('map', { attributionControl: false, zoomControl: false }).setView([46.6, 2.2], 5.5);
+    map = L.map('map', {
+        attributionControl: false,
+        zoomControl: false,
+        zoomAnimation: false,
+        fadeAnimation: false,
+        markerZoomAnimation: false
+    }).setView([46.6, 2.2], 5.5);
     L.control.zoom({ position: 'bottomright' }).addTo(map);
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 18, attribution: '© OpenStreetMap' }).addTo(map);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        maxZoom: 18,
+        attribution: '© OpenStreetMap',
+        updateWhenZooming: false,
+        updateWhenIdle: true,
+        keepBuffer: 4
+    }).addTo(map);
     permanentAirportLayer = L.layerGroup().addTo(map);
     routesLayer = L.layerGroup().addTo(map);
     userToTargetLayer = L.layerGroup().addTo(map);
@@ -177,7 +189,7 @@ function setupEventListeners() {
     if (mainActionButtons) {
         const versionDisplay = document.createElement('div');
         versionDisplay.className = 'version-display';
-        versionDisplay.innerText = 'v8.18';
+        versionDisplay.innerText = 'v8.30';
         mainActionButtons.appendChild(versionDisplay);
     }
 
