@@ -1,6 +1,6 @@
-const APP_CACHE_NAME = 'test-communes-app-cache-v830'; 
-const DATA_CACHE_NAME = 'test-communes-data-cache-v830';
-const TILE_CACHE_NAME = 'test-communes-tile-cache-v830';
+const APP_CACHE_NAME = 'test-communes-app-cache-v831'; 
+const DATA_CACHE_NAME = 'test-communes-data-cache-v831';
+const TILE_CACHE_NAME = 'test-communes-tile-cache-v831';
 
 const APP_SHELL_URLS = [
     './',
@@ -57,6 +57,7 @@ const OFFLINE_TILES_ENABLED_KEY = 'offlineTilesEnabled';
 const DEFAULT_OFFLINE_TILES_ENABLED = true;
 let offlineTilesEnabledCache = DEFAULT_OFFLINE_TILES_ENABLED;
 let offlineTilesEnabledLoaded = false;
+let tileCachePromise = null;
 
 function getDb() {
     return new Promise((resolve, reject) => {
@@ -167,15 +168,22 @@ function getTileFromDb(url) {
 }
 
 function getTileFromNetworkOrCache(request) {
-    return caches.open(TILE_CACHE_NAME).then(cache => {
+    if (!tileCachePromise) {
+        tileCachePromise = caches.open(TILE_CACHE_NAME);
+    }
+
+    return tileCachePromise.then(cache => {
         return cache.match(request).then(cachedResponse => {
-            const fetchPromise = fetch(request).then(networkResponse => {
+            if (cachedResponse) {
+                return cachedResponse;
+            }
+
+            return fetch(request).then(networkResponse => {
                 if (networkResponse && networkResponse.ok) {
                     cache.put(request, networkResponse.clone());
                 }
                 return networkResponse;
             });
-            return cachedResponse || fetchPromise;
         });
     });
 }
