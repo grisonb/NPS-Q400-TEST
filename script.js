@@ -32,9 +32,10 @@ const DEFAULT_OFFLINE_TILES_ENABLED = true;
 const OFFLINE_TILES_MAX_ZOOM_KEY = 'offlineTilesMaxZoom';
 const SHOW_DEPARTMENTS_LAYER_KEY = 'showDepartmentsLayer';
 const ONLINE_MAX_NATIVE_ZOOM = 18;
-const GLOBAL_MAX_ZOOM = 20;
-const MAX_OVERZOOM_DELTA = 3;
+const OFFLINE_FALLBACK_NATIVE_ZOOM = 14;
+const GLOBAL_MAX_ZOOM = 18;
 let baseTileMaxNativeZoom = ONLINE_MAX_NATIVE_ZOOM;
+let offlineTilesMode = DEFAULT_OFFLINE_TILES_ENABLED;
 
 const pelicanAirports = [
     { oaci: "LFLU", name: "Valence-Chabeuil", lat: 44.920, lon: 4.968 }, { oaci: "LFMU", name: "Béziers-Vias", lat: 43.323, lon: 3.354 }, { oaci: "LFJR", name: "Angers-Marcé", lat: 47.560, lon: -0.312 }, { oaci: "LFHO", name: "Aubenas-Ardèche Méridionale", lat: 44.545, lon: 4.385 }, { oaci: "LFLX", name: "Châteauroux-Déols", lat: 46.861, lon: 1.720 }, { oaci: "LFBM", name: "Mont-de-Marsan", lat: 43.894, lon: -0.509 }, { oaci: "LFBL", name: "Limoges-Bellegarde", lat: 45.862, lon: 1.180 }, { oaci: "LFAQ", name: "Albert-Bray", lat: 49.972, lon: 2.698 }, { oaci: "LFBP", name: "Pau-Pyrénées", lat: 43.380, lon: -0.418 }, { oaci: "LFTH", name: "Toulon-Hyères", lat: 43.097, lon: 6.146 }, { oaci: "LFSG", name: "Épinal-Mirecourt", lat: 48.325, lon: 6.068 }, { oaci: "LFKC", name: "Calvi-Sainte-Catherine", lat: 42.530, lon: 8.793 }, { oaci: "LFMD", name: "Cannes-Mandelieu", lat: 43.542, lon: 6.956 }, { oaci: "LFKB", name: "Bastia-Poretta", lat: 42.552, lon: 9.483 }, { oaci: "LFMH", name: "Saint-Étienne-Bouthéon", lat: 45.541, lon: 4.296 }, { oaci: "LFKF", name: "Figari-Sud-Corse", lat: 41.500, lon: 9.097 }, { oaci: "LFCC", name: "Cahors-Lalbenque", lat: 44.351, lon: 1.475 }, { oaci: "LFML", name: "Marseille-Provence", lat: 43.436, lon: 5.215 }, { oaci: "LFKJ", name: "Ajaccio-Napoléon-Bonaparte", lat: 41.923, lon: 8.802 }, { oaci: "LFMK", name: "Carcassonne-Salvaza", lat: 43.215, lon: 2.306 }, { oaci: "LFRV", name: "Vannes-Meucon", lat: 47.720, lon: -2.721 }, { oaci: "LFTW", name: "Nîmes-Garons", lat: 43.757, lon: 4.416 }, { oaci: "LFMP", name: "Perpignan-Rivesaltes", lat: 42.740, lon: 2.870 }, { oaci: "LFBD", name: "Bordeaux-Mérignac", lat: 44.828, lon: -0.691 }
@@ -111,7 +112,7 @@ async function initializeApp() {
     loadState();
     const savedLftwState = localStorage.getItem('showLftwRoute');
     showLftwRoute = savedLftwState === null ? true : (savedLftwState === 'true');
-    areDepartmentsVisible = localStorage.getItem(SHOW_DEPARTMENTS_LAYER_KEY) === 'true';
+    localStorage.setItem(SHOW_DEPARTMENTS_LAYER_KEY, 'false');
     const savedGaarJSON = localStorage.getItem('gaarCircuits');
     if (savedGaarJSON) {
         gaarCircuits = JSON.parse(savedGaarJSON);
@@ -153,7 +154,10 @@ function initMap() {
     map = L.map('map', {
         attributionControl: false,
         zoomControl: false,
-        maxZoom: GLOBAL_MAX_ZOOM
+        maxZoom: GLOBAL_MAX_ZOOM,
+        zoomAnimation: false,
+        fadeAnimation: false,
+        markerZoomAnimation: false
     }).setView([46.6, 2.2], 5.5);
     L.control.zoom({ position: 'bottomright' }).addTo(map);
     setupBaseTileLayer();
@@ -198,7 +202,8 @@ function setupBaseTileLayer() {
     if (baseTileLayer) {
         map.removeLayer(baseTileLayer);
     }
-    const effectiveMaxZoom = Math.min(GLOBAL_MAX_ZOOM, baseTileMaxNativeZoom + MAX_OVERZOOM_DELTA);
+    const overzoomDelta = offlineTilesMode ? 0 : 2;
+    const effectiveMaxZoom = Math.min(GLOBAL_MAX_ZOOM, baseTileMaxNativeZoom + overzoomDelta);
     map.setMaxZoom(effectiveMaxZoom);
     baseTileLayer = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
         maxNativeZoom: baseTileMaxNativeZoom,
