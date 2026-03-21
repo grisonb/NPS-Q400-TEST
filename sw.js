@@ -1,6 +1,6 @@
-const APP_CACHE_NAME = 'test-communes-app-cache-v831'; 
-const DATA_CACHE_NAME = 'test-communes-data-cache-v831';
-const TILE_CACHE_NAME = 'test-communes-tile-cache-v831';
+const APP_CACHE_NAME = 'test-communes-app-cache-v828'; 
+const DATA_CACHE_NAME = 'test-communes-data-cache-v828';
+const TILE_CACHE_NAME = 'test-communes-tile-cache-v828';
 
 const APP_SHELL_URLS = [
     './',

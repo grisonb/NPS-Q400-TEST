@@ -154,10 +154,7 @@ function initMap() {
     map = L.map('map', {
         attributionControl: false,
         zoomControl: false,
-        maxZoom: GLOBAL_MAX_ZOOM,
-        zoomAnimation: false,
-        fadeAnimation: false,
-        markerZoomAnimation: false
+        maxZoom: GLOBAL_MAX_ZOOM
     }).setView([46.6, 2.2], 5.5);
     L.control.zoom({ position: 'bottomright' }).addTo(map);
     setupBaseTileLayer();

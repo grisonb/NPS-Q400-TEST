@@ -11,82 +11,13 @@
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <script>
-        const APP_VERSION = 'v8.30';
-        const APP_VERSION_KEY = 'appVersion';
-
-        async function hardRefreshToVersion() {
-            const storedVersion = localStorage.getItem(APP_VERSION_KEY);
-            if (storedVersion === APP_VERSION) return false;
-
-            localStorage.setItem(APP_VERSION_KEY, APP_VERSION);
-
-            if ('caches' in window) {
-                const cacheNames = await caches.keys();
-                await Promise.all(cacheNames
-                    .filter(name => name.startsWith('test-communes-'))
-                    .map(name => caches.delete(name))
-                );
-            }
-
-            if ('serviceWorker' in navigator) {
-                const registrations = await navigator.serviceWorker.getRegistrations();
-                await Promise.all(registrations.map(registration => registration.unregister()));
-            }
-
-            const currentUrl = new URL(window.location.href);
-            currentUrl.searchParams.set('v', APP_VERSION);
-            window.location.replace(currentUrl.toString());
-            return true;
-        }
-
-        async function registerServiceWorker() {
-            let isRefreshing = false;
-
-            navigator.serviceWorker.addEventListener('controllerchange', () => {
-                if (isRefreshing) return;
-                isRefreshing = true;
-                window.location.reload();
-            });
-
-            const reg = await navigator.serviceWorker.register(`./sw.js?version=${APP_VERSION}`, { updateViaCache: 'none' });
-            console.log('Service Worker enregistré:', reg);
-
-            const requestSkipWaiting = (registration) => {
-                if (registration && registration.waiting) {
-                    registration.waiting.postMessage({ type: 'SKIP_WAITING' });
-                }
-            };
-
-            requestSkipWaiting(reg);
-
-            reg.addEventListener('updatefound', () => {
-                const newWorker = reg.installing;
-                if (!newWorker) return;
-                newWorker.addEventListener('statechange', () => {
-                    if (newWorker.state === 'installed') {
-                        requestSkipWaiting(reg);
-                    }
-                });
-            });
-
-            reg.update();
-        }
-
         if ('serviceWorker' in navigator) {
-            window.addEventListener('load', async () => {
-                try {
-                    const didForceRefresh = await hardRefreshToVersion();
-                    if (!didForceRefresh) {
-                        await registerServiceWorker();
-                    }
-                } catch (err) {
-                    console.log('Erreur initialisation SW/version:', err);
-                    try {
-                        await registerServiceWorker();
-                    } catch (swErr) {
-                        console.log('Erreur enregistrement SW:', swErr);
-                    }
-                }
+            window.addEventListener('load', () => {
+                navigator.serviceWorker.register('./sw.js').then(reg => {
+                    console.log('Service Worker enregistré:', reg);
+                }).catch(err => {
+                    console.log('Erreur enregistrement Service Worker:', err);
+                });
             });
         }
     </script>
