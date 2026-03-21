@@ -1,6 +1,6 @@
-const APP_CACHE_NAME = 'test-communes-app-cache-v834'; 
-const DATA_CACHE_NAME = 'test-communes-data-cache-v834';
-const TILE_CACHE_NAME = 'test-communes-tile-cache-v834';
+const APP_CACHE_NAME = 'test-communes-app-cache-v835'; 
+const DATA_CACHE_NAME = 'test-communes-data-cache-v835';
+const TILE_CACHE_NAME = 'test-communes-tile-cache-v835';
 
 const APP_SHELL_URLS = [
     './',
@@ -58,6 +58,8 @@ const DEFAULT_OFFLINE_TILES_ENABLED = true;
 let offlineTilesEnabledCache = DEFAULT_OFFLINE_TILES_ENABLED;
 let offlineTilesEnabledLoaded = false;
 let tileCachePromise = null;
+const MEMORY_TILE_CACHE_LIMIT = 300;
+const memoryTileCache = new Map();
 
 function getDb() {
     return new Promise((resolve, reject) => {
@@ -135,6 +137,14 @@ function normalizeTileUrl(url) {
 }
 
 function getTileFromDb(url) {
+    const normalizedUrl = normalizeTileUrl(url);
+    const inMemoryTile = memoryTileCache.get(normalizedUrl);
+    if (inMemoryTile) {
+        memoryTileCache.delete(normalizedUrl);
+        memoryTileCache.set(normalizedUrl, inMemoryTile);
+        return Promise.resolve(new Response(inMemoryTile));
+    }
+
     return getDb().then(db => {
         return new Promise(resolve => {
             const transaction = db.transaction('tiles', 'readonly');
@@ -154,7 +164,13 @@ function getTileFromDb(url) {
                 const request = store.get(candidateUrl);
                 request.onsuccess = () => {
                     if (request.result) {
-                        resolve(new Response(request.result.tile));
+                        const tileBlob = request.result.tile;
+                        memoryTileCache.set(normalizedUrl, tileBlob);
+                        if (memoryTileCache.size > MEMORY_TILE_CACHE_LIMIT) {
+                            const oldestKey = memoryTileCache.keys().next().value;
+                            memoryTileCache.delete(oldestKey);
+                        }
+                        resolve(new Response(tileBlob));
                     } else {
                         tryNext();
                     }
