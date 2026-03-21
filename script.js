@@ -29,8 +29,11 @@ let gaarLayer = null;
 let db; // Variable pour la connexion à la base de données IndexedDB
 const OFFLINE_TILES_ENABLED_KEY = 'offlineTilesEnabled';
 const DEFAULT_OFFLINE_TILES_ENABLED = true;
+const OFFLINE_TILES_MAX_ZOOM_KEY = 'offlineTilesMaxZoom';
 const SHOW_DEPARTMENTS_LAYER_KEY = 'showDepartmentsLayer';
 const ONLINE_MAX_NATIVE_ZOOM = 18;
+const GLOBAL_MAX_ZOOM = 20;
+const MAX_OVERZOOM_DELTA = 3;
 let baseTileMaxNativeZoom = ONLINE_MAX_NATIVE_ZOOM;
 
 const pelicanAirports = [
@@ -127,6 +130,9 @@ async function initializeApp() {
         searchSection.style.display = 'block';
         initMap();
         setupEventListeners();
+        setTimeout(() => {
+            updateBaseTileNativeZoomFromAvailability({ forceScan: true }).catch(() => {});
+        }, 0);
         if (localStorage.getItem('liveGpsActive') === 'true') {
             toggleLiveGps();
         } else {
@@ -147,7 +153,7 @@ function initMap() {
     map = L.map('map', {
         attributionControl: false,
         zoomControl: false,
-        maxZoom: 22
+        maxZoom: GLOBAL_MAX_ZOOM
     }).setView([46.6, 2.2], 5.5);
     L.control.zoom({ position: 'bottomright' }).addTo(map);
     setupBaseTileLayer();
@@ -162,7 +168,7 @@ function initMap() {
     redrawGaarCircuits();
 
     if (areDepartmentsVisible) {
-        toggleDepartmentsLayer(true);
+        setTimeout(() => { toggleDepartmentsLayer(true); }, 150);
     }
 
     map.on('click', handleGaarMapClick);
@@ -192,9 +198,11 @@ function setupBaseTileLayer() {
     if (baseTileLayer) {
         map.removeLayer(baseTileLayer);
     }
+    const effectiveMaxZoom = Math.min(GLOBAL_MAX_ZOOM, baseTileMaxNativeZoom + MAX_OVERZOOM_DELTA);
+    map.setMaxZoom(effectiveMaxZoom);
     baseTileLayer = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
         maxNativeZoom: baseTileMaxNativeZoom,
-        maxZoom: 22,
+        maxZoom: effectiveMaxZoom,
         attribution: '© OpenStreetMap'
     }).addTo(map);
 }
@@ -245,7 +253,7 @@ function setupEventListeners() {
     if (mainActionButtons) {
         const versionDisplay = document.createElement('div');
         versionDisplay.className = 'version-display';
-        versionDisplay.innerText = 'v8.23';
+        versionDisplay.innerText = 'v8.24';
         mainActionButtons.appendChild(versionDisplay);
     }
 
@@ -443,12 +451,23 @@ async function findMaxOfflineTileZoom() {
     });
 }
 
-async function updateBaseTileNativeZoomFromAvailability() {
+async function updateBaseTileNativeZoomFromAvailability({ forceScan = false } = {}) {
     const offlineEnabled = await getOfflineTilesEnabled();
     if (!offlineEnabled) {
         baseTileMaxNativeZoom = ONLINE_MAX_NATIVE_ZOOM;
     } else {
-        const offlineMaxZoom = await findMaxOfflineTileZoom();
+        const storedOfflineMaxZoom = Number.parseInt(localStorage.getItem(OFFLINE_TILES_MAX_ZOOM_KEY) || '', 10);
+        let offlineMaxZoom = Number.isFinite(storedOfflineMaxZoom) ? storedOfflineMaxZoom : null;
+
+        if (forceScan) {
+            offlineMaxZoom = await findMaxOfflineTileZoom();
+            if (offlineMaxZoom === null) {
+                localStorage.removeItem(OFFLINE_TILES_MAX_ZOOM_KEY);
+            } else {
+                localStorage.setItem(OFFLINE_TILES_MAX_ZOOM_KEY, String(offlineMaxZoom));
+            }
+        }
+
         if (offlineMaxZoom === null) {
             baseTileMaxNativeZoom = ONLINE_MAX_NATIVE_ZOOM;
         } else {
@@ -691,13 +710,7 @@ async function loadDepartmentsLayerData() {
 
         const depData = byDepartment.get(depCode);
 
-        if (Array.isArray(commune.polygone) && commune.polygone.length > 2) {
-            commune.polygone.forEach((point) => {
-                if (Array.isArray(point) && point.length >= 2) {
-                    depData.points.push([point[0], point[1]]);
-                }
-            });
-        } else if (Number.isFinite(commune.latitude_centre) && Number.isFinite(commune.longitude_centre)) {
+        if (Number.isFinite(commune.latitude_centre) && Number.isFinite(commune.longitude_centre)) {
             depData.points.push([commune.latitude_centre, commune.longitude_centre]);
         }
 
@@ -711,7 +724,7 @@ async function loadDepartmentsLayerData() {
     byDepartment.forEach((depData, depCode) => {
         if (!depData.points.length) return;
 
-        const sampleStep = Math.max(1, Math.floor(depData.points.length / 1500));
+        const sampleStep = Math.max(1, Math.floor(depData.points.length / 400));
         const sampledPoints = depData.points.filter((_, idx) => idx % sampleStep === 0);
         const hull = computeConvexHull(sampledPoints);
         if (hull.length < 3) return;
@@ -1088,6 +1101,10 @@ async function handleZipImport(file) {
         }).filter(Boolean);
 
         const totalFiles = tileCandidates.length;
+        const importedMaxZoom = tileCandidates.reduce((max, entry) => {
+            const z = Number.parseInt(entry.tilePath.split('/')[0], 10);
+            return Number.isFinite(z) ? Math.max(max, z) : max;
+        }, 0);
 
         if (totalFiles === 0) {
             throw new Error("Aucune tuile valide trouvée dans le ZIP. Formats acceptés : z/x/y.png (avec sous-dossiers possibles) ou z_x_y.png (z-y-x aussi accepté).");
@@ -1133,7 +1150,10 @@ async function handleZipImport(file) {
             installedPacks.push({ name: packName, date: new Date().toLocaleDateString() });
             localStorage.setItem('installedMapPacks', JSON.stringify(installedPacks));
         }
-        await updateBaseTileNativeZoomFromAvailability();
+        const currentOfflineMax = Number.parseInt(localStorage.getItem(OFFLINE_TILES_MAX_ZOOM_KEY) || '', 10);
+        const nextOfflineMax = Number.isFinite(currentOfflineMax) ? Math.max(currentOfflineMax, importedMaxZoom) : importedMaxZoom;
+        localStorage.setItem(OFFLINE_TILES_MAX_ZOOM_KEY, String(nextOfflineMax));
+        await updateBaseTileNativeZoomFromAvailability({ forceScan: true });
         displayInstalledMaps();
 
     } catch (error) {
@@ -1306,7 +1326,7 @@ window.deleteMapPack = async function(packName) {
             );
         }
 
-        await updateBaseTileNativeZoomFromAvailability();
+        await updateBaseTileNativeZoomFromAvailability({ forceScan: true });
         displayInstalledMaps();
 
     } catch (error) {
