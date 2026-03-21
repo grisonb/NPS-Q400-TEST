@@ -1,6 +1,6 @@
-const APP_CACHE_NAME = 'test-communes-app-cache-v826'; 
-const DATA_CACHE_NAME = 'test-communes-data-cache-v826';
-const TILE_CACHE_NAME = 'test-communes-tile-cache-v826';
+const APP_CACHE_NAME = 'test-communes-app-cache-v827'; 
+const DATA_CACHE_NAME = 'test-communes-data-cache-v827';
+const TILE_CACHE_NAME = 'test-communes-tile-cache-v827';
 
 const APP_SHELL_URLS = [
     './',
@@ -43,12 +43,20 @@ self.addEventListener('activate', event => {
 self.addEventListener('message', event => {
     if (event.data && event.data.type === 'SKIP_WAITING') {
         self.skipWaiting();
+        return;
+    }
+
+    if (event.data && event.data.type === 'OFFLINE_TILES_ENABLED_CHANGED') {
+        offlineTilesEnabledCache = !!event.data.value;
+        offlineTilesEnabledLoaded = true;
     }
 });
 
 let db;
 const OFFLINE_TILES_ENABLED_KEY = 'offlineTilesEnabled';
 const DEFAULT_OFFLINE_TILES_ENABLED = true;
+let offlineTilesEnabledCache = DEFAULT_OFFLINE_TILES_ENABLED;
+let offlineTilesEnabledLoaded = false;
 
 function getDb() {
     return new Promise((resolve, reject) => {
@@ -82,21 +90,34 @@ function getDb() {
 }
 
 function isOfflineTilesEnabled() {
+    if (offlineTilesEnabledLoaded) {
+        return Promise.resolve(offlineTilesEnabledCache);
+    }
+
     return getDb().then(db => {
         return new Promise(resolve => {
             const transaction = db.transaction('settings', 'readonly');
             const store = transaction.objectStore('settings');
             const request = store.get(OFFLINE_TILES_ENABLED_KEY);
             request.onsuccess = () => {
-                if (!request.result || typeof request.result.value !== 'boolean') {
-                    resolve(DEFAULT_OFFLINE_TILES_ENABLED);
-                    return;
-                }
-                resolve(request.result.value);
+                const value = (!request.result || typeof request.result.value !== 'boolean')
+                    ? DEFAULT_OFFLINE_TILES_ENABLED
+                    : request.result.value;
+                offlineTilesEnabledCache = value;
+                offlineTilesEnabledLoaded = true;
+                resolve(value);
             };
-            request.onerror = () => resolve(DEFAULT_OFFLINE_TILES_ENABLED);
+            request.onerror = () => {
+                offlineTilesEnabledCache = DEFAULT_OFFLINE_TILES_ENABLED;
+                offlineTilesEnabledLoaded = true;
+                resolve(DEFAULT_OFFLINE_TILES_ENABLED);
+            };
         });
-    }).catch(() => DEFAULT_OFFLINE_TILES_ENABLED);
+    }).catch(() => {
+        offlineTilesEnabledCache = DEFAULT_OFFLINE_TILES_ENABLED;
+        offlineTilesEnabledLoaded = true;
+        return DEFAULT_OFFLINE_TILES_ENABLED;
+    });
 }
 
 function normalizeTileUrl(url) {
