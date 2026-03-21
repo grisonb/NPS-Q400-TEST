@@ -255,7 +255,7 @@ function setupEventListeners() {
     if (mainActionButtons) {
         const versionDisplay = document.createElement('div');
         versionDisplay.className = 'version-display';
-        versionDisplay.innerText = 'v8.31';
+        versionDisplay.innerText = 'v8.32';
         mainActionButtons.appendChild(versionDisplay);
     }
 
