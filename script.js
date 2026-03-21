@@ -205,7 +205,10 @@ function setupBaseTileLayer() {
     baseTileLayer = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
         maxNativeZoom: baseTileMaxNativeZoom,
         maxZoom: effectiveMaxZoom,
-        attribution: '© OpenStreetMap'
+        attribution: '© OpenStreetMap',
+        keepBuffer: 8,
+        updateWhenZooming: false,
+        updateWhenIdle: true
     }).addTo(map);
 }
 
@@ -255,7 +258,7 @@ function setupEventListeners() {
     if (mainActionButtons) {
         const versionDisplay = document.createElement('div');
         versionDisplay.className = 'version-display';
-        versionDisplay.innerText = 'v8.32';
+        versionDisplay.innerText = 'v8.33';
         mainActionButtons.appendChild(versionDisplay);
     }
 
