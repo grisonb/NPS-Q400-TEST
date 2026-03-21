@@ -154,10 +154,7 @@ function initMap() {
     map = L.map('map', {
         attributionControl: false,
         zoomControl: false,
-        maxZoom: GLOBAL_MAX_ZOOM,
-        zoomAnimation: false,
-        fadeAnimation: false,
-        markerZoomAnimation: false
+        maxZoom: GLOBAL_MAX_ZOOM
     }).setView([46.6, 2.2], 5.5);
     L.control.zoom({ position: 'bottomright' }).addTo(map);
     setupBaseTileLayer();
@@ -1032,8 +1029,20 @@ function setOfflineTilesEnabled(enabled) {
         const transaction = db.transaction('settings', 'readwrite');
         const store = transaction.objectStore('settings');
         store.put({ key: OFFLINE_TILES_ENABLED_KEY, value: enabled });
-        transaction.oncomplete = resolve;
+        transaction.oncomplete = () => {
+            notifyServiceWorkerOfflineTilesPreference(enabled);
+            resolve();
+        };
         transaction.onerror = () => reject(transaction.error);
+    });
+}
+
+function notifyServiceWorkerOfflineTilesPreference(enabled) {
+    if (!('serviceWorker' in navigator)) return;
+    if (!navigator.serviceWorker.controller) return;
+    navigator.serviceWorker.controller.postMessage({
+        type: 'OFFLINE_TILES_ENABLED_CHANGED',
+        value: !!enabled
     });
 }
 
@@ -1053,6 +1062,7 @@ async function initializeOfflineTilePreference() {
 
     const enabled = await getOfflineTilesEnabled();
     toggle.checked = enabled;
+    notifyServiceWorkerOfflineTilesPreference(enabled);
     updateOfflineStatus();
 }
 
