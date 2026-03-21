@@ -202,7 +202,7 @@ function setupBaseTileLayer() {
     const overzoomDelta = offlineTilesMode ? 0 : 2;
     const effectiveMaxZoom = Math.min(GLOBAL_MAX_ZOOM, baseTileMaxNativeZoom + overzoomDelta);
     map.setMaxZoom(effectiveMaxZoom);
-    baseTileLayer = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    baseTileLayer = L.tileLayer('https://a.tile.openstreetmap.org/{z}/{x}/{y}.png', {
         maxNativeZoom: baseTileMaxNativeZoom,
         maxZoom: effectiveMaxZoom,
         attribution: '© OpenStreetMap',
