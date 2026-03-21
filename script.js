@@ -154,10 +154,7 @@ function initMap() {
     map = L.map('map', {
         attributionControl: false,
         zoomControl: false,
-        maxZoom: GLOBAL_MAX_ZOOM,
-        zoomAnimation: false,
-        fadeAnimation: false,
-        markerZoomAnimation: false
+        maxZoom: GLOBAL_MAX_ZOOM
     }).setView([46.6, 2.2], 5.5);
     L.control.zoom({ position: 'bottomright' }).addTo(map);
     setupBaseTileLayer();
@@ -205,10 +202,13 @@ function setupBaseTileLayer() {
     const overzoomDelta = offlineTilesMode ? 0 : 2;
     const effectiveMaxZoom = Math.min(GLOBAL_MAX_ZOOM, baseTileMaxNativeZoom + overzoomDelta);
     map.setMaxZoom(effectiveMaxZoom);
-    baseTileLayer = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    baseTileLayer = L.tileLayer('https://a.tile.openstreetmap.org/{z}/{x}/{y}.png', {
         maxNativeZoom: baseTileMaxNativeZoom,
         maxZoom: effectiveMaxZoom,
-        attribution: '© OpenStreetMap'
+        attribution: '© OpenStreetMap',
+        keepBuffer: 8,
+        updateWhenZooming: false,
+        updateWhenIdle: true
     }).addTo(map);
 }
 
@@ -258,7 +258,7 @@ function setupEventListeners() {
     if (mainActionButtons) {
         const versionDisplay = document.createElement('div');
         versionDisplay.className = 'version-display';
-        versionDisplay.innerText = 'v8.26';
+        versionDisplay.innerText = 'v8.35';
         mainActionButtons.appendChild(versionDisplay);
     }
 
@@ -1032,8 +1032,20 @@ function setOfflineTilesEnabled(enabled) {
         const transaction = db.transaction('settings', 'readwrite');
         const store = transaction.objectStore('settings');
         store.put({ key: OFFLINE_TILES_ENABLED_KEY, value: enabled });
-        transaction.oncomplete = resolve;
+        transaction.oncomplete = () => {
+            notifyServiceWorkerOfflineTilesPreference(enabled);
+            resolve();
+        };
         transaction.onerror = () => reject(transaction.error);
+    });
+}
+
+function notifyServiceWorkerOfflineTilesPreference(enabled) {
+    if (!('serviceWorker' in navigator)) return;
+    if (!navigator.serviceWorker.controller) return;
+    navigator.serviceWorker.controller.postMessage({
+        type: 'OFFLINE_TILES_ENABLED_CHANGED',
+        value: !!enabled
     });
 }
 
@@ -1053,6 +1065,7 @@ async function initializeOfflineTilePreference() {
 
     const enabled = await getOfflineTilesEnabled();
     toggle.checked = enabled;
+    notifyServiceWorkerOfflineTilesPreference(enabled);
     updateOfflineStatus();
 }
 

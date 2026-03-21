@@ -1,6 +1,6 @@
-const APP_CACHE_NAME = 'test-communes-app-cache-v826'; 
-const DATA_CACHE_NAME = 'test-communes-data-cache-v826';
-const TILE_CACHE_NAME = 'test-communes-tile-cache-v826';
+const APP_CACHE_NAME = 'test-communes-app-cache-v835'; 
+const DATA_CACHE_NAME = 'test-communes-data-cache-v835';
+const TILE_CACHE_NAME = 'test-communes-tile-cache-v835';
 
 const APP_SHELL_URLS = [
     './',
@@ -43,12 +43,23 @@ self.addEventListener('activate', event => {
 self.addEventListener('message', event => {
     if (event.data && event.data.type === 'SKIP_WAITING') {
         self.skipWaiting();
+        return;
+    }
+
+    if (event.data && event.data.type === 'OFFLINE_TILES_ENABLED_CHANGED') {
+        offlineTilesEnabledCache = !!event.data.value;
+        offlineTilesEnabledLoaded = true;
     }
 });
 
 let db;
 const OFFLINE_TILES_ENABLED_KEY = 'offlineTilesEnabled';
 const DEFAULT_OFFLINE_TILES_ENABLED = true;
+let offlineTilesEnabledCache = DEFAULT_OFFLINE_TILES_ENABLED;
+let offlineTilesEnabledLoaded = false;
+let tileCachePromise = null;
+const MEMORY_TILE_CACHE_LIMIT = 300;
+const memoryTileCache = new Map();
 
 function getDb() {
     return new Promise((resolve, reject) => {
@@ -82,21 +93,34 @@ function getDb() {
 }
 
 function isOfflineTilesEnabled() {
+    if (offlineTilesEnabledLoaded) {
+        return Promise.resolve(offlineTilesEnabledCache);
+    }
+
     return getDb().then(db => {
         return new Promise(resolve => {
             const transaction = db.transaction('settings', 'readonly');
             const store = transaction.objectStore('settings');
             const request = store.get(OFFLINE_TILES_ENABLED_KEY);
             request.onsuccess = () => {
-                if (!request.result || typeof request.result.value !== 'boolean') {
-                    resolve(DEFAULT_OFFLINE_TILES_ENABLED);
-                    return;
-                }
-                resolve(request.result.value);
+                const value = (!request.result || typeof request.result.value !== 'boolean')
+                    ? DEFAULT_OFFLINE_TILES_ENABLED
+                    : request.result.value;
+                offlineTilesEnabledCache = value;
+                offlineTilesEnabledLoaded = true;
+                resolve(value);
             };
-            request.onerror = () => resolve(DEFAULT_OFFLINE_TILES_ENABLED);
+            request.onerror = () => {
+                offlineTilesEnabledCache = DEFAULT_OFFLINE_TILES_ENABLED;
+                offlineTilesEnabledLoaded = true;
+                resolve(DEFAULT_OFFLINE_TILES_ENABLED);
+            };
         });
-    }).catch(() => DEFAULT_OFFLINE_TILES_ENABLED);
+    }).catch(() => {
+        offlineTilesEnabledCache = DEFAULT_OFFLINE_TILES_ENABLED;
+        offlineTilesEnabledLoaded = true;
+        return DEFAULT_OFFLINE_TILES_ENABLED;
+    });
 }
 
 function normalizeTileUrl(url) {
@@ -113,6 +137,14 @@ function normalizeTileUrl(url) {
 }
 
 function getTileFromDb(url) {
+    const normalizedUrl = normalizeTileUrl(url);
+    const inMemoryTile = memoryTileCache.get(normalizedUrl);
+    if (inMemoryTile) {
+        memoryTileCache.delete(normalizedUrl);
+        memoryTileCache.set(normalizedUrl, inMemoryTile);
+        return Promise.resolve(new Response(inMemoryTile));
+    }
+
     return getDb().then(db => {
         return new Promise(resolve => {
             const transaction = db.transaction('tiles', 'readonly');
@@ -132,7 +164,13 @@ function getTileFromDb(url) {
                 const request = store.get(candidateUrl);
                 request.onsuccess = () => {
                     if (request.result) {
-                        resolve(new Response(request.result.tile));
+                        const tileBlob = request.result.tile;
+                        memoryTileCache.set(normalizedUrl, tileBlob);
+                        if (memoryTileCache.size > MEMORY_TILE_CACHE_LIMIT) {
+                            const oldestKey = memoryTileCache.keys().next().value;
+                            memoryTileCache.delete(oldestKey);
+                        }
+                        resolve(new Response(tileBlob));
                     } else {
                         tryNext();
                     }
@@ -146,15 +184,50 @@ function getTileFromDb(url) {
 }
 
 function getTileFromNetworkOrCache(request) {
-    return caches.open(TILE_CACHE_NAME).then(cache => {
+    if (!tileCachePromise) {
+        tileCachePromise = caches.open(TILE_CACHE_NAME);
+    }
+
+    return tileCachePromise.then(cache => {
         return cache.match(request).then(cachedResponse => {
-            const fetchPromise = fetch(request).then(networkResponse => {
-                if (networkResponse && networkResponse.ok) {
-                    cache.put(request, networkResponse.clone());
-                }
-                return networkResponse;
-            });
-            return cachedResponse || fetchPromise;
+            if (cachedResponse) return cachedResponse;
+
+            const normalizedUrl = normalizeTileUrl(request.url);
+            if (normalizedUrl !== request.url) {
+                return cache.match(normalizedUrl).then(normalizedCachedResponse => {
+                    if (normalizedCachedResponse) return normalizedCachedResponse;
+                    return fetchAndCacheTile(cache, request, normalizedUrl);
+                });
+            }
+
+            return fetchAndCacheTile(cache, request, normalizedUrl);
+        });
+    });
+}
+
+function fetchAndCacheTile(cache, request, normalizedUrl = request.url) {
+    const networkRequest = normalizedUrl === request.url ? request : normalizedUrl;
+    return fetch(networkRequest).then(networkResponse => {
+        if (networkResponse && networkResponse.ok) {
+            cache.put(networkRequest, networkResponse.clone());
+        }
+        return networkResponse;
+    });
+}
+
+function getTileFromCacheOnly(request) {
+    if (!tileCachePromise) {
+        tileCachePromise = caches.open(TILE_CACHE_NAME);
+    }
+
+    return tileCachePromise.then(cache => {
+        return cache.match(request).then(cachedResponse => {
+            if (cachedResponse) return cachedResponse;
+            const normalizedUrl = normalizeTileUrl(request.url);
+            if (normalizedUrl !== request.url) {
+                return cache.match(normalizedUrl);
+            }
+            return null;
         });
     });
 }
@@ -173,7 +246,10 @@ self.addEventListener('fetch', event => {
                 const offlineLikely = typeof navigator !== 'undefined' && navigator.onLine === false;
 
                 if (offlineLikely) {
-                    return getTileFromDb(event.request.url).then(dbTile => dbTile || getTileFromNetworkOrCache(event.request));
+                    return getTileFromDb(event.request.url).then(dbTile => {
+                        if (dbTile) return dbTile;
+                        return getTileFromCacheOnly(event.request);
+                    });
                 }
 
                 return getTileFromNetworkOrCache(event.request).catch(() => getTileFromDb(event.request.url));
