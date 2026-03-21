@@ -1,6 +1,6 @@
-const APP_CACHE_NAME = 'test-communes-app-cache-v818'; 
-const DATA_CACHE_NAME = 'test-communes-data-cache-v818';
-const TILE_CACHE_NAME = 'test-communes-tile-cache-v818';
+const APP_CACHE_NAME = 'test-communes-app-cache-v824'; 
+const DATA_CACHE_NAME = 'test-communes-data-cache-v824';
+const TILE_CACHE_NAME = 'test-communes-tile-cache-v824';
 
 const APP_SHELL_URLS = [
     './',
@@ -15,7 +15,8 @@ const APP_SHELL_URLS = [
 ];
 
 const DATA_URLS = [
-    './communes.json'
+    './communes.json',
+    './departements.geojson'
 ];
 
 self.addEventListener('install', event => {

@@ -9,12 +9,16 @@ document.addEventListener('DOMContentLoaded', () => {
 // =========================================================================
 // VARIABLES GLOBALES
 // =========================================================================
-let allCommunes = [], map, permanentAirportLayer, routesLayer, currentCommune = null, selectedPelicanOACI = null;
+let allCommunes = [], map, baseTileLayer, permanentAirportLayer, routesLayer, currentCommune = null, selectedPelicanOACI = null;
 let disabledAirports = new Set(), waterAirports = new Set();
 const MAGNETIC_DECLINATION = 1.0;
 let userMarker = null, watchId = null, accuracyCircle = null, headingLayer = null, lastPosition = null;
 let userToTargetLayer = null, lftwRouteLayer = null;
 let showLftwRoute = true;
+let departmentsLayerGroup = null;
+let departmentsLabelsLayer = null;
+let areDepartmentsVisible = false;
+let hasLoadedDepartments = false;
 const DEFAULT_BASE_OACI = 'LFTW';
 let selectedBaseOACI = DEFAULT_BASE_OACI;
 let gaarCircuits = [];
@@ -25,6 +29,14 @@ let gaarLayer = null;
 let db; // Variable pour la connexion à la base de données IndexedDB
 const OFFLINE_TILES_ENABLED_KEY = 'offlineTilesEnabled';
 const DEFAULT_OFFLINE_TILES_ENABLED = true;
+const OFFLINE_TILES_MAX_ZOOM_KEY = 'offlineTilesMaxZoom';
+const SHOW_DEPARTMENTS_LAYER_KEY = 'showDepartmentsLayer';
+const DEPARTMENTS_GEOJSON_URL = './departements.geojson';
+const ONLINE_MAX_NATIVE_ZOOM = 18;
+const OFFLINE_FALLBACK_NATIVE_ZOOM = 14;
+const GLOBAL_MAX_ZOOM = 17;
+const MAX_OVERZOOM_DELTA = 3;
+let baseTileMaxNativeZoom = ONLINE_MAX_NATIVE_ZOOM;
 
 const pelicanAirports = [
     { oaci: "LFLU", name: "Valence-Chabeuil", lat: 44.920, lon: 4.968 }, { oaci: "LFMU", name: "Béziers-Vias", lat: 43.323, lon: 3.354 }, { oaci: "LFJR", name: "Angers-Marcé", lat: 47.560, lon: -0.312 }, { oaci: "LFHO", name: "Aubenas-Ardèche Méridionale", lat: 44.545, lon: 4.385 }, { oaci: "LFLX", name: "Châteauroux-Déols", lat: 46.861, lon: 1.720 }, { oaci: "LFBM", name: "Mont-de-Marsan", lat: 43.894, lon: -0.509 }, { oaci: "LFBL", name: "Limoges-Bellegarde", lat: 45.862, lon: 1.180 }, { oaci: "LFAQ", name: "Albert-Bray", lat: 49.972, lon: 2.698 }, { oaci: "LFBP", name: "Pau-Pyrénées", lat: 43.380, lon: -0.418 }, { oaci: "LFTH", name: "Toulon-Hyères", lat: 43.097, lon: 6.146 }, { oaci: "LFSG", name: "Épinal-Mirecourt", lat: 48.325, lon: 6.068 }, { oaci: "LFKC", name: "Calvi-Sainte-Catherine", lat: 42.530, lon: 8.793 }, { oaci: "LFMD", name: "Cannes-Mandelieu", lat: 43.542, lon: 6.956 }, { oaci: "LFKB", name: "Bastia-Poretta", lat: 42.552, lon: 9.483 }, { oaci: "LFMH", name: "Saint-Étienne-Bouthéon", lat: 45.541, lon: 4.296 }, { oaci: "LFKF", name: "Figari-Sud-Corse", lat: 41.500, lon: 9.097 }, { oaci: "LFCC", name: "Cahors-Lalbenque", lat: 44.351, lon: 1.475 }, { oaci: "LFML", name: "Marseille-Provence", lat: 43.436, lon: 5.215 }, { oaci: "LFKJ", name: "Ajaccio-Napoléon-Bonaparte", lat: 41.923, lon: 8.802 }, { oaci: "LFMK", name: "Carcassonne-Salvaza", lat: 43.215, lon: 2.306 }, { oaci: "LFRV", name: "Vannes-Meucon", lat: 47.720, lon: -2.721 }, { oaci: "LFTW", name: "Nîmes-Garons", lat: 43.757, lon: 4.416 }, { oaci: "LFMP", name: "Perpignan-Rivesaltes", lat: 42.740, lon: 2.870 }, { oaci: "LFBD", name: "Bordeaux-Mérignac", lat: 44.828, lon: -0.691 }
@@ -65,12 +77,14 @@ async function initializeApp() {
     loadState();
     const savedLftwState = localStorage.getItem('showLftwRoute');
     showLftwRoute = savedLftwState === null ? true : (savedLftwState === 'true');
+    areDepartmentsVisible = localStorage.getItem(SHOW_DEPARTMENTS_LAYER_KEY) === 'true';
     const savedGaarJSON = localStorage.getItem('gaarCircuits');
     if (savedGaarJSON) {
         gaarCircuits = JSON.parse(savedGaarJSON);
     }
     await initDB();
     await initializeOfflineTilePreference();
+    await updateBaseTileNativeZoomFromAvailability();
     displayInstalledMaps();
     try {
         const response = await fetch('./communes.json');
@@ -82,6 +96,9 @@ async function initializeApp() {
         searchSection.style.display = 'block';
         initMap();
         setupEventListeners();
+        setTimeout(() => {
+            updateBaseTileNativeZoomFromAvailability({ forceScan: true }).catch(() => {});
+        }, 0);
         if (localStorage.getItem('liveGpsActive') === 'true') {
             toggleLiveGps();
         } else {
@@ -99,16 +116,26 @@ async function initializeApp() {
 
 function initMap() {
     if (map) return;
-    map = L.map('map', { attributionControl: false, zoomControl: false }).setView([46.6, 2.2], 5.5);
+    map = L.map('map', {
+        attributionControl: false,
+        zoomControl: false,
+        maxZoom: GLOBAL_MAX_ZOOM
+    }).setView([46.6, 2.2], 5.5);
     L.control.zoom({ position: 'bottomright' }).addTo(map);
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 18, attribution: '© OpenStreetMap' }).addTo(map);
+    setupBaseTileLayer();
     permanentAirportLayer = L.layerGroup().addTo(map);
     routesLayer = L.layerGroup().addTo(map);
     userToTargetLayer = L.layerGroup().addTo(map);
     lftwRouteLayer = L.layerGroup().addTo(map);
     gaarLayer = L.layerGroup().addTo(map);
+    departmentsLayerGroup = L.layerGroup();
+    departmentsLabelsLayer = L.layerGroup();
     drawPermanentAirportMarkers();
     redrawGaarCircuits();
+
+    if (areDepartmentsVisible) {
+        setTimeout(() => { toggleDepartmentsLayer(true); }, 150);
+    }
 
     map.on('click', handleGaarMapClick);
 
@@ -130,6 +157,20 @@ function initMap() {
         localStorage.setItem('currentCommune', JSON.stringify(manualCommune));
         displayCommuneDetails(manualCommune, false);
     });
+}
+
+function setupBaseTileLayer() {
+    if (!map) return;
+    if (baseTileLayer) {
+        map.removeLayer(baseTileLayer);
+    }
+    const effectiveMaxZoom = Math.min(GLOBAL_MAX_ZOOM, baseTileMaxNativeZoom + MAX_OVERZOOM_DELTA);
+    map.setMaxZoom(effectiveMaxZoom);
+    baseTileLayer = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        maxNativeZoom: baseTileMaxNativeZoom,
+        maxZoom: effectiveMaxZoom,
+        attribution: '© OpenStreetMap'
+    }).addTo(map);
 }
 
 function clearCurrentSelection() {
@@ -168,6 +209,7 @@ function setupEventListeners() {
     const calculatorButton = document.getElementById('calculator-button');
     const calculatorModal = document.getElementById('calculator-modal');
     const closeCalculatorButton = document.getElementById('close-calculator-btn');
+    const departmentsLayerButton = document.getElementById('departments-layer-button');
     const offlineMapsButton = document.getElementById('offline-maps-button');
     const offlineMapModal = document.getElementById('offline-map-modal');
     const closeOfflineMapButton = document.getElementById('close-offline-map-btn');
@@ -177,8 +219,15 @@ function setupEventListeners() {
     if (mainActionButtons) {
         const versionDisplay = document.createElement('div');
         versionDisplay.className = 'version-display';
-        versionDisplay.innerText = 'v8.18';
+        versionDisplay.innerText = 'v8.24';
         mainActionButtons.appendChild(versionDisplay);
+    }
+
+    if (departmentsLayerButton) {
+        departmentsLayerButton.classList.toggle('active', areDepartmentsVisible);
+        departmentsLayerButton.addEventListener('click', () => {
+            toggleDepartmentsLayer(!areDepartmentsVisible);
+        });
     }
 
     searchInput.addEventListener('input', () => {
@@ -307,6 +356,7 @@ function setupEventListeners() {
         offlineTilesEnabledToggle.addEventListener('change', async (event) => {
             const enabled = event.target.checked;
             await setOfflineTilesEnabled(enabled);
+            await updateBaseTileNativeZoomFromAvailability();
             updateOfflineStatus();
         });
     }
@@ -333,6 +383,66 @@ function displayResults(results) {
         });
     } else {
         resultsList.style.display = 'none';
+    }
+}
+
+async function findMaxOfflineTileZoom() {
+    if (!db) return null;
+    return new Promise((resolve) => {
+        const tx = db.transaction('tiles', 'readonly');
+        const store = tx.objectStore('tiles');
+        const request = store.openCursor();
+        let maxZoom = null;
+
+        request.onsuccess = (event) => {
+            const cursor = event.target.result;
+            if (!cursor) {
+                resolve(maxZoom);
+                return;
+            }
+            const url = cursor.value?.url;
+            if (typeof url === 'string') {
+                const match = url.match(/\/(\d+)\/\d+\/\d+\.(png|jpg|jpeg)$/i);
+                if (match) {
+                    const zoom = Number.parseInt(match[1], 10);
+                    if (Number.isFinite(zoom)) {
+                        maxZoom = maxZoom === null ? zoom : Math.max(maxZoom, zoom);
+                    }
+                }
+            }
+            cursor.continue();
+        };
+
+        request.onerror = () => resolve(null);
+    });
+}
+
+async function updateBaseTileNativeZoomFromAvailability({ forceScan = false } = {}) {
+    const offlineEnabled = await getOfflineTilesEnabled();
+    if (!offlineEnabled) {
+        baseTileMaxNativeZoom = ONLINE_MAX_NATIVE_ZOOM;
+    } else {
+        const storedOfflineMaxZoom = Number.parseInt(localStorage.getItem(OFFLINE_TILES_MAX_ZOOM_KEY) || '', 10);
+        let offlineMaxZoom = Number.isFinite(storedOfflineMaxZoom) ? storedOfflineMaxZoom : null;
+
+        if (forceScan) {
+            offlineMaxZoom = await findMaxOfflineTileZoom();
+            if (offlineMaxZoom === null) {
+                localStorage.removeItem(OFFLINE_TILES_MAX_ZOOM_KEY);
+            } else {
+                localStorage.setItem(OFFLINE_TILES_MAX_ZOOM_KEY, String(offlineMaxZoom));
+            }
+        }
+
+        if (offlineMaxZoom === null) {
+            baseTileMaxNativeZoom = OFFLINE_FALLBACK_NATIVE_ZOOM;
+        } else {
+            baseTileMaxNativeZoom = Math.max(0, Math.min(ONLINE_MAX_NATIVE_ZOOM, offlineMaxZoom));
+        }
+    }
+
+    if (map && baseTileLayer) {
+        setupBaseTileLayer();
     }
 }
 
@@ -547,6 +657,70 @@ function drawPermanentAirportMarkers() {
         marker.addTo(permanentAirportLayer);
     });
 }
+
+async function loadDepartmentsLayerData() {
+    const response = await fetch(DEPARTMENTS_GEOJSON_URL);
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    const geojson = await response.json();
+
+    const boundaries = L.geoJSON(geojson, {
+        style: {
+            color: '#111',
+            weight: 1,
+            opacity: 0.9,
+            fillColor: '#ffffff',
+            fillOpacity: 0.03
+        },
+        onEachFeature: (feature, layer) => {
+            const depCode = feature?.properties?.code;
+            if (!depCode) return;
+            const center = layer.getBounds().getCenter();
+            departmentsLabelsLayer.addLayer(L.marker(center, {
+                icon: L.divIcon({
+                    className: 'department-code-label',
+                    html: `<span>${depCode}</span>`
+                }),
+                interactive: false,
+                keyboard: false
+            }));
+        }
+    });
+
+    departmentsLayerGroup.addLayer(boundaries);
+
+    hasLoadedDepartments = true;
+}
+
+async function toggleDepartmentsLayer(shouldShow) {
+    const departmentsLayerButton = document.getElementById('departments-layer-button');
+
+    if (shouldShow && !hasLoadedDepartments) {
+        try {
+            await loadDepartmentsLayerData();
+        } catch (error) {
+            console.error('Erreur de chargement du calque départements:', error);
+            alert("Impossible de générer le calque des départements.");
+            areDepartmentsVisible = false;
+            localStorage.setItem(SHOW_DEPARTMENTS_LAYER_KEY, 'false');
+            if (departmentsLayerButton) departmentsLayerButton.classList.remove('active');
+            return;
+        }
+    }
+
+    areDepartmentsVisible = shouldShow;
+
+    if (areDepartmentsVisible) {
+        departmentsLayerGroup.addTo(map);
+        departmentsLabelsLayer.addTo(map);
+    } else {
+        map.removeLayer(departmentsLayerGroup);
+        map.removeLayer(departmentsLabelsLayer);
+    }
+
+    localStorage.setItem(SHOW_DEPARTMENTS_LAYER_KEY, String(areDepartmentsVisible));
+    if (departmentsLayerButton) departmentsLayerButton.classList.toggle('active', areDepartmentsVisible);
+}
+
 const loadState = () => {
     const savedDisabled = localStorage.getItem('disabled_airports');
     if (savedDisabled) disabledAirports = new Set(JSON.parse(savedDisabled));
@@ -863,6 +1037,10 @@ async function handleZipImport(file) {
         }).filter(Boolean);
 
         const totalFiles = tileCandidates.length;
+        const importedMaxZoom = tileCandidates.reduce((max, entry) => {
+            const z = Number.parseInt(entry.tilePath.split('/')[0], 10);
+            return Number.isFinite(z) ? Math.max(max, z) : max;
+        }, 0);
 
         if (totalFiles === 0) {
             throw new Error("Aucune tuile valide trouvée dans le ZIP. Formats acceptés : z/x/y.png (avec sous-dossiers possibles) ou z_x_y.png (z-y-x aussi accepté).");
@@ -908,6 +1086,10 @@ async function handleZipImport(file) {
             installedPacks.push({ name: packName, date: new Date().toLocaleDateString() });
             localStorage.setItem('installedMapPacks', JSON.stringify(installedPacks));
         }
+        const currentOfflineMax = Number.parseInt(localStorage.getItem(OFFLINE_TILES_MAX_ZOOM_KEY) || '', 10);
+        const nextOfflineMax = Number.isFinite(currentOfflineMax) ? Math.max(currentOfflineMax, importedMaxZoom) : importedMaxZoom;
+        localStorage.setItem(OFFLINE_TILES_MAX_ZOOM_KEY, String(nextOfflineMax));
+        await updateBaseTileNativeZoomFromAvailability({ forceScan: true });
         displayInstalledMaps();
 
     } catch (error) {
@@ -1080,6 +1262,7 @@ window.deleteMapPack = async function(packName) {
             );
         }
 
+        await updateBaseTileNativeZoomFromAvailability({ forceScan: true });
         displayInstalledMaps();
 
     } catch (error) {
