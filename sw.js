@@ -145,6 +145,20 @@ function getTileFromDb(url) {
     });
 }
 
+function getTileFromNetworkOrCache(request) {
+    return caches.open(TILE_CACHE_NAME).then(cache => {
+        return cache.match(request).then(cachedResponse => {
+            const fetchPromise = fetch(request).then(networkResponse => {
+                if (networkResponse && networkResponse.ok) {
+                    cache.put(request, networkResponse.clone());
+                }
+                return networkResponse;
+            });
+            return cachedResponse || fetchPromise;
+        });
+    });
+}
+
 self.addEventListener('fetch', event => {
     const requestUrl = new URL(event.request.url);
 
@@ -153,28 +167,16 @@ self.addEventListener('fetch', event => {
         event.respondWith(
             isOfflineTilesEnabled().then(enabled => {
                 if (!enabled) {
-                    return null;
-                }
-                return getTileFromDb(event.request.url);
-            }).then(responseFromDb => {
-                if (responseFromDb) {
-                    // console.log(`[SW] Tuile servie depuis IndexedDB: ${event.request.url}`);
-                    return responseFromDb;
+                    return getTileFromNetworkOrCache(event.request);
                 }
 
-                // console.log(`[SW] Tuile non trouvée en local, requête réseau: ${event.request.url}`);
-                // Si non trouvée en DB, on va sur le réseau et on met en cache (stratégie Stale-While-Revalidate)
-                return caches.open(TILE_CACHE_NAME).then(cache => {
-                    return cache.match(event.request).then(cachedResponse => {
-                        const fetchPromise = fetch(event.request).then(networkResponse => {
-                            if (networkResponse.ok) {
-                                cache.put(event.request, networkResponse.clone());
-                            }
-                            return networkResponse;
-                        });
-                        return cachedResponse || fetchPromise;
-                    });
-                });
+                const offlineLikely = typeof navigator !== 'undefined' && navigator.onLine === false;
+
+                if (offlineLikely) {
+                    return getTileFromDb(event.request.url).then(dbTile => dbTile || getTileFromNetworkOrCache(event.request));
+                }
+
+                return getTileFromNetworkOrCache(event.request).catch(() => getTileFromDb(event.request.url));
             })
         );
         return;
