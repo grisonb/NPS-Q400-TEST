@@ -68,6 +68,42 @@ const calculateDestinationPoint = (lat, lon, bearing, distanceNm) => {
     return [toDeg(destLatRad), toDeg(destLonRad)];
 };
 
+function computeConvexHull(latLngPoints) {
+    const uniquePoints = new Map();
+    latLngPoints.forEach(([lat, lon]) => {
+        if (!Number.isFinite(lat) || !Number.isFinite(lon)) return;
+        const key = `${lat.toFixed(5)},${lon.toFixed(5)}`;
+        if (!uniquePoints.has(key)) uniquePoints.set(key, [lat, lon]);
+    });
+
+    const points = Array.from(uniquePoints.values());
+    if (points.length < 3) return points;
+
+    points.sort((a, b) => (a[1] - b[1]) || (a[0] - b[0])); // tri par longitude puis latitude
+    const cross = (o, a, b) => ((a[1] - o[1]) * (b[0] - o[0])) - ((a[0] - o[0]) * (b[1] - o[1]));
+
+    const lower = [];
+    for (const p of points) {
+        while (lower.length >= 2 && cross(lower[lower.length - 2], lower[lower.length - 1], p) <= 0) {
+            lower.pop();
+        }
+        lower.push(p);
+    }
+
+    const upper = [];
+    for (let i = points.length - 1; i >= 0; i -= 1) {
+        const p = points[i];
+        while (upper.length >= 2 && cross(upper[upper.length - 2], upper[upper.length - 1], p) <= 0) {
+            upper.pop();
+        }
+        upper.push(p);
+    }
+
+    lower.pop();
+    upper.pop();
+    return lower.concat(upper);
+}
+
 // =========================================================================
 // LOGIQUE PRINCIPALE DE L'APPLICATION
 // =========================================================================
@@ -219,7 +255,7 @@ function setupEventListeners() {
     if (mainActionButtons) {
         const versionDisplay = document.createElement('div');
         versionDisplay.className = 'version-display';
-        versionDisplay.innerText = 'v8.24';
+        versionDisplay.innerText = 'v8.25';
         mainActionButtons.appendChild(versionDisplay);
     }
 
