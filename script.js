@@ -2030,6 +2030,11 @@ function initializeTeamChat() {
 
         chatClient.on('message', (receivedTopic, payload) => {
             try {
+                const isCurrentChatTopic = receivedTopic === chatTopic;
+                const isCurrentHistoryTopic = receivedTopic.startsWith(`${chatHistoryTopic}/`);
+                const isCurrentPresenceTopic = receivedTopic.startsWith(`${chatPresenceTopic}/`);
+                if (!isCurrentChatTopic && !isCurrentHistoryTopic && !isCurrentPresenceTopic) return;
+
                 const parsed = JSON.parse(payload.toString());
                 if (!parsed || !parsed.type) return;
 
