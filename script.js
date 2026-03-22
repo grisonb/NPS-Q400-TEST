@@ -1957,7 +1957,7 @@ function initializeTeamChat() {
         const previousUser = activeUsers.get(myClientId) || (userInput.value || '').trim();
         publishPresence('offline', previousUser);
         if (chatClient) {
-            try { chatClient.end(false); } catch (_) {}
+            try { chatClient.end(true); } catch (_) {}
             chatClient = null;
         }
         activeUsers.clear();
@@ -1971,7 +1971,7 @@ function initializeTeamChat() {
             keepalive: 30,
             reconnectPeriod: 5000,
             connectTimeout: 12000,
-            clean: false,
+            clean: true, // session non persistante: évite de conserver des abonnements d'anciens canaux
             protocolVersion: 4,
             clientId: myClientId,
             will: {
