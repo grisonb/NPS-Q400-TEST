@@ -1791,6 +1791,7 @@ function initializeTeamChat() {
     const minimizeButton = document.getElementById('chat-minimize-button');
     const clearButton = document.getElementById('chat-clear-button');
     const alertBadge = document.getElementById('chat-alert-badge');
+    const offlineBadge = document.getElementById('chat-offline-badge');
     const roomInput = document.getElementById('chat-room-input');
     const userInput = document.getElementById('chat-user-input');
     const connectButton = document.getElementById('chat-connect-button');
@@ -1799,7 +1800,7 @@ function initializeTeamChat() {
     const messagesBox = document.getElementById('chat-messages');
     const connectionState = document.getElementById('chat-connection-state');
     const onlineUsersLabel = document.getElementById('chat-online-users');
-    if (!panel || !toggleButton || !minimizeButton || !clearButton || !alertBadge || !roomInput || !userInput || !connectButton || !sendButton || !messageInput || !messagesBox || !connectionState || !onlineUsersLabel) return;
+    if (!panel || !toggleButton || !minimizeButton || !clearButton || !alertBadge || !offlineBadge || !roomInput || !userInput || !connectButton || !sendButton || !messageInput || !messagesBox || !connectionState || !onlineUsersLabel) return;
 
     const CHAT_CLIENT_ID_KEY = 'teamChatClientId';
     const CHAT_OUTBOX_KEY = 'teamChatOutbox';
@@ -1829,6 +1830,7 @@ function initializeTeamChat() {
         connectionState.textContent = label || (isOnline ? 'Connecté' : 'Hors ligne');
         connectionState.classList.toggle('online', isOnline);
         connectionState.classList.toggle('offline', !isOnline);
+        offlineBadge.style.display = isOnline ? 'none' : 'flex';
     };
     setConnectionState(false);
 
@@ -2121,16 +2123,48 @@ function initializeTeamChat() {
     });
 
     clearButton.addEventListener('click', () => {
-        if (!confirm('Supprimer tous les messages du chat sur cet iPad ?')) return;
-        messagesBox.innerHTML = '';
-        localStorage.removeItem(CHAT_HISTORY_KEY);
-        localStorage.removeItem(CHAT_SEEN_IDS_KEY);
-        renderedMessageIds.clear();
-        persistedSeenIds.clear();
-        sentMessageElements.clear();
-        unreadCount = 0;
-        updateUnreadBadge();
-        appendChatMessage('Système', 'Historique local supprimé.', new Date().toISOString(), true);
+        const choice = prompt(
+            'Que voulez-vous supprimer ?\n' +
+            '1 = Messages de cet iPad uniquement\n' +
+            '2 = Messages de cet iPad + messages enregistrés du canal\n' +
+            '3 = Annuler',
+            '1'
+        );
+        if (!choice || choice.trim() === '3') return;
+
+        const history = JSON.parse(localStorage.getItem(CHAT_HISTORY_KEY) || '[]');
+        const clearLocalHistory = () => {
+            messagesBox.innerHTML = '';
+            localStorage.removeItem(CHAT_HISTORY_KEY);
+            localStorage.removeItem(CHAT_SEEN_IDS_KEY);
+            renderedMessageIds.clear();
+            persistedSeenIds.clear();
+            sentMessageElements.clear();
+            unreadCount = 0;
+            updateUnreadBadge();
+        };
+
+        if (choice.trim() === '1') {
+            clearLocalHistory();
+            appendChatMessage('Système', 'Historique local supprimé.', new Date().toISOString(), true);
+            return;
+        }
+
+        if (choice.trim() === '2') {
+            if (!chatClient || !chatConnected || !chatHistoryTopic) {
+                alert('Connexion au canal requise pour supprimer les messages enregistrés du canal.');
+                return;
+            }
+            const historyIds = Array.from(new Set(history.map((item) => item?.id).filter(Boolean)));
+            historyIds.forEach((messageId) => {
+                chatClient.publish(`${chatHistoryTopic}/${messageId}`, '', { qos: 1, retain: true });
+            });
+            clearLocalHistory();
+            appendChatMessage('Système', `Historique local supprimé + ${historyIds.length} message(s) canal nettoyé(s).`, new Date().toISOString(), true);
+            return;
+        }
+
+        alert('Choix invalide. Utilisez 1, 2 ou 3.');
     });
 
     connectButton.addEventListener('click', connectToChat);
