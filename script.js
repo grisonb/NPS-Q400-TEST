@@ -1767,6 +1767,7 @@ function initializeTeamChat() {
     const CHAT_PANEL_STATE_KEY = 'teamChatPanelState';
     const CHAT_SEEN_IDS_KEY = 'teamChatSeenIds';
     let unreadCount = 0;
+    let reconnectAfterOnlineTimeout = null;
     const renderedMessageIds = new Set();
     const sentMessageElements = new Map();
     const myClientId = getOrCreateClientId();
@@ -2040,9 +2041,16 @@ function initializeTeamChat() {
 
     window.addEventListener('online', () => {
         appendChatMessage('Système', 'Réseau récupéré, tentative de reconnexion.', new Date().toISOString(), true);
-        if (!chatConnected) connectToChat();
+        if (reconnectAfterOnlineTimeout) clearTimeout(reconnectAfterOnlineTimeout);
+        reconnectAfterOnlineTimeout = setTimeout(() => {
+            connectToChat();
+        }, 400);
     });
     window.addEventListener('offline', () => {
+        if (reconnectAfterOnlineTimeout) {
+            clearTimeout(reconnectAfterOnlineTimeout);
+            reconnectAfterOnlineTimeout = null;
+        }
         setConnectionState(false, 'Hors ligne');
         appendChatMessage('Système', 'Réseau perdu, les messages sortants seront mis en file.', new Date().toISOString(), true);
     });
