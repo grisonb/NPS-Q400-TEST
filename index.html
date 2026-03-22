@@ -58,7 +58,7 @@
         <button id="toggle-search-button" title="Rechercher une commune">🏙️</button>
         <button id="calculator-button" title="Ouvrir le calculateur de mission">✈️</button>
         <button id="gps-feu-button" title="Créer un feu à ma position">🎯</button>
-        <button id="chat-toggle-button" title="Ouvrir/Fermer le chat équipe">💬</button>
+        <button id="chat-toggle-button" title="Ouvrir/Fermer le chat équipe">💬<span id="chat-alert-badge" style="display:none;">0</span></button>
     </div>
       <div id="bingo-map-display" style="display: none;">
         <span id="map-bingo-lftw"></span>
@@ -69,7 +69,10 @@
     <div id="team-chat-panel" style="display: none;">
         <div class="chat-header">
             <strong>Chat équipe</strong>
-            <span id="chat-connection-state">Hors ligne</span>
+            <div class="chat-header-actions">
+                <span id="chat-connection-state">Hors ligne</span>
+                <button id="chat-minimize-button" title="Réduire/Agrandir le chat">—</button>
+            </div>
         </div>
         <div class="chat-config-row">
             <input type="text" id="chat-room-input" maxlength="32" placeholder="Canal (ex: GAAR-ALPHA)">

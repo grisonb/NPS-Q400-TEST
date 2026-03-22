@@ -137,15 +137,33 @@ html, body {
 #live-gps-button:hover { background-color: #e9f5ff; }
 #main-action-buttons { position: absolute; top: var(--safe-area-top); right: 20px; z-index: 1001; display: flex; flex-direction: column; gap: 15px; align-items: center; }
 #toggle-search-button, #calculator-button, #gps-feu-button { width: 90px; height: 90px; font-size: 48px; border: 2px solid var(--border-color); border-radius: 20px; background-color: rgba(255, 255, 255, 0.8); backdrop-filter: blur(5px); -webkit-backdrop-filter: blur(5px); color: var(--primary-color); cursor: pointer; display: flex; align-items: center; justify-content: center; box-shadow: var(--shadow); padding: 0; line-height: 1; }
-#chat-toggle-button { width: 90px; height: 90px; font-size: 48px; border: 2px solid var(--border-color); border-radius: 20px; background-color: rgba(255, 255, 255, 0.8); backdrop-filter: blur(5px); -webkit-backdrop-filter: blur(5px); color: var(--primary-color); cursor: pointer; display: flex; align-items: center; justify-content: center; box-shadow: var(--shadow); padding: 0; line-height: 1; }
+#chat-toggle-button { width: 90px; height: 90px; font-size: 48px; border: 2px solid var(--border-color); border-radius: 20px; background-color: rgba(255, 255, 255, 0.8); backdrop-filter: blur(5px); -webkit-backdrop-filter: blur(5px); color: var(--primary-color); cursor: pointer; display: flex; align-items: center; justify-content: center; box-shadow: var(--shadow); padding: 0; line-height: 1; position: relative; }
+#chat-alert-badge {
+    position: absolute;
+    top: 6px;
+    right: 6px;
+    min-width: 22px;
+    height: 22px;
+    border-radius: 999px;
+    background: var(--secondary-color);
+    color: #fff;
+    font-size: 12px;
+    font-weight: 700;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    padding: 0 6px;
+    border: 2px solid #fff;
+}
 #toggle-search-button.active { border-color: var(--primary-color); background-color: rgba(233, 245, 255, 0.9); }
 .version-display { font-size: 14px; font-weight: bold; color: #333; text-shadow: 0 0 3px white, 0 0 3px white; background-color: rgba(255, 255, 255, 0.6); padding: 2px 8px; border-radius: 6px; margin-top: -5px; }
 #live-gps-button.active { background-color: var(--primary-color); color: white; border-color: var(--primary-color); animation: pulse 2s infinite; }
 /* --- Chat équipe --- */
 #team-chat-panel {
-    position: absolute;
-    right: 16px;
-    bottom: 16px;
+    position: fixed;
+    left: 50%;
+    top: 50%;
+    transform: translate(-50%, -50%);
     z-index: 1100;
     width: min(480px, calc(100vw - 32px));
     max-height: min(58vh, 560px);
@@ -157,6 +175,27 @@ html, body {
     display: none;
     flex-direction: column;
     gap: 10px;
+}
+.chat-header-actions { display: flex; align-items: center; gap: 8px; }
+#chat-minimize-button {
+    border: 1px solid var(--border-color);
+    background: #fff;
+    border-radius: 8px;
+    font-size: 16px;
+    width: 30px;
+    height: 30px;
+    line-height: 1;
+    cursor: pointer;
+}
+#team-chat-panel.minimized {
+    top: 50%;
+    max-height: none;
+    width: min(360px, calc(100vw - 32px));
+}
+#team-chat-panel.minimized .chat-config-row,
+#team-chat-panel.minimized #chat-messages,
+#team-chat-panel.minimized .chat-send-row {
+    display: none;
 }
 .chat-header { display: flex; align-items: center; justify-content: space-between; font-size: 14px; color: #555; }
 #chat-connection-state.online { color: var(--success-color); font-weight: 700; }

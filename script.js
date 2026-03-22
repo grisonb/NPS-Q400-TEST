@@ -1749,6 +1749,8 @@ function updateDeroutementTab() {
 function initializeTeamChat() {
     const panel = document.getElementById('team-chat-panel');
     const toggleButton = document.getElementById('chat-toggle-button');
+    const minimizeButton = document.getElementById('chat-minimize-button');
+    const alertBadge = document.getElementById('chat-alert-badge');
     const roomInput = document.getElementById('chat-room-input');
     const userInput = document.getElementById('chat-user-input');
     const connectButton = document.getElementById('chat-connect-button');
@@ -1756,7 +1758,16 @@ function initializeTeamChat() {
     const messageInput = document.getElementById('chat-message-input');
     const messagesBox = document.getElementById('chat-messages');
     const connectionState = document.getElementById('chat-connection-state');
-    if (!panel || !toggleButton || !roomInput || !userInput || !connectButton || !sendButton || !messageInput || !messagesBox || !connectionState) return;
+    if (!panel || !toggleButton || !minimizeButton || !alertBadge || !roomInput || !userInput || !connectButton || !sendButton || !messageInput || !messagesBox || !connectionState) return;
+
+    const CHAT_CLIENT_ID_KEY = 'teamChatClientId';
+    const CHAT_OUTBOX_KEY = 'teamChatOutbox';
+    const CHAT_PANEL_STATE_KEY = 'teamChatPanelState';
+    let unreadCount = 0;
+
+    const savedPanelState = JSON.parse(localStorage.getItem(CHAT_PANEL_STATE_KEY) || 'null') || { minimized: false };
+    if (savedPanelState.minimized) panel.classList.add('minimized');
+    minimizeButton.textContent = panel.classList.contains('minimized') ? '+' : '—';
 
     const defaultConfig = { room: 'pelic-team', user: `Pélic-${Math.floor(Math.random() * 900) + 100}` };
     const savedConfig = JSON.parse(localStorage.getItem(CHAT_STORAGE_KEY) || 'null') || defaultConfig;
@@ -1784,8 +1795,44 @@ function initializeTeamChat() {
     const saveMessageInHistory = (entry) => {
         const current = JSON.parse(localStorage.getItem(CHAT_HISTORY_KEY) || '[]');
         current.push(entry);
-        const recent = current.slice(-150);
+        const recent = current.slice(-200);
         localStorage.setItem(CHAT_HISTORY_KEY, JSON.stringify(recent));
+    };
+
+    const getOrCreateClientId = () => {
+        const stored = localStorage.getItem(CHAT_CLIENT_ID_KEY);
+        if (stored && stored.trim()) return stored;
+        const created = `pelic_device_${Math.random().toString(16).slice(2, 10)}_${Date.now()}`;
+        localStorage.setItem(CHAT_CLIENT_ID_KEY, created);
+        return created;
+    };
+
+    const updateUnreadBadge = () => {
+        if (!unreadCount) {
+            alertBadge.style.display = 'none';
+            return;
+        }
+        alertBadge.style.display = 'flex';
+        alertBadge.textContent = unreadCount > 99 ? '99+' : `${unreadCount}`;
+    };
+
+    const shouldWarnUnread = () => panel.style.display !== 'flex' || panel.classList.contains('minimized');
+
+    const addToOutbox = (payload) => {
+        const outbox = JSON.parse(localStorage.getItem(CHAT_OUTBOX_KEY) || '[]');
+        outbox.push(payload);
+        localStorage.setItem(CHAT_OUTBOX_KEY, JSON.stringify(outbox.slice(-100)));
+    };
+
+    const flushOutbox = () => {
+        if (!chatClient || !chatConnected || !chatTopic) return;
+        const outbox = JSON.parse(localStorage.getItem(CHAT_OUTBOX_KEY) || '[]');
+        if (!outbox.length) return;
+        outbox.forEach((payload) => {
+            chatClient.publish(chatTopic, JSON.stringify(payload), { qos: 1 });
+        });
+        localStorage.removeItem(CHAT_OUTBOX_KEY);
+        appendChatMessage('Système', `${outbox.length} message(s) hors-ligne envoyé(s).`, new Date().toISOString(), true);
     };
 
     function connectToChat() {
@@ -1801,20 +1848,24 @@ function initializeTeamChat() {
         }
         persistConfig();
         if (chatClient) {
-            try { chatClient.end(true); } catch (_) {}
+            try { chatClient.end(false); } catch (_) {}
             chatClient = null;
         }
+
         chatTopic = `pelic/chat/${roomName}`;
         setConnectionState(false, 'Connexion...');
+        const clientId = getOrCreateClientId();
         chatClient = mqtt.connect('wss://test.mosquitto.org:8081/mqtt', {
             keepalive: 30,
             reconnectPeriod: 5000,
             connectTimeout: 12000,
-            clientId: `pelic_${Date.now()}_${Math.random().toString(16).slice(2, 8)}`
+            clean: false,
+            protocolVersion: 4,
+            clientId
         });
 
         chatClient.on('connect', () => {
-            chatClient.subscribe(chatTopic, (err) => {
+            chatClient.subscribe(chatTopic, { qos: 1 }, (err) => {
                 if (err) {
                     setConnectionState(false, 'Erreur abonnement');
                     appendChatMessage('Système', `Abonnement impossible: ${err.message}`, new Date().toISOString(), true);
@@ -1822,6 +1873,7 @@ function initializeTeamChat() {
                 }
                 setConnectionState(true);
                 appendChatMessage('Système', `Connecté au canal "${roomName}".`, new Date().toISOString(), true);
+                flushOutbox();
             });
         });
 
@@ -1831,12 +1883,16 @@ function initializeTeamChat() {
                 if (!parsed || !parsed.user || !parsed.text || !parsed.time) return;
                 appendChatMessage(parsed.user, parsed.text, parsed.time, false);
                 saveMessageInHistory(parsed);
+                if (shouldWarnUnread()) {
+                    unreadCount += 1;
+                    updateUnreadBadge();
+                }
             } catch (_) {}
         });
 
         chatClient.on('reconnect', () => setConnectionState(false, 'Reconnexion...'));
         chatClient.on('close', () => setConnectionState(false));
-        chatClient.on('offline', () => setConnectionState(false));
+        chatClient.on('offline', () => setConnectionState(false, 'Hors ligne'));
         chatClient.on('error', (err) => {
             setConnectionState(false, 'Erreur réseau');
             appendChatMessage('Système', `Erreur réseau: ${err.message}`, new Date().toISOString(), true);
@@ -1847,19 +1903,34 @@ function initializeTeamChat() {
         const text = (messageInput.value || '').trim();
         const user = (userInput.value || '').trim();
         if (!text) return;
+        const payload = { user, text: text.slice(0, 280), time: new Date().toISOString() };
+
         if (!chatClient || !chatConnected || !chatTopic) {
-            appendChatMessage('Système', 'Vous devez vous connecter au canal avant envoi.', new Date().toISOString(), true);
+            addToOutbox(payload);
+            appendChatMessage('Système', 'Réseau indisponible: message mis en file hors-ligne.', new Date().toISOString(), true);
+            messageInput.value = '';
             return;
         }
-        const payload = { user, text: text.slice(0, 280), time: new Date().toISOString() };
-        chatClient.publish(chatTopic, JSON.stringify(payload));
+
+        chatClient.publish(chatTopic, JSON.stringify(payload), { qos: 1 });
         messageInput.value = '';
     }
 
     toggleButton.addEventListener('click', () => {
         const visible = panel.style.display === 'flex';
         panel.style.display = visible ? 'none' : 'flex';
+        if (!visible) {
+            unreadCount = 0;
+            updateUnreadBadge();
+        }
     });
+
+    minimizeButton.addEventListener('click', () => {
+        panel.classList.toggle('minimized');
+        minimizeButton.textContent = panel.classList.contains('minimized') ? '+' : '—';
+        localStorage.setItem(CHAT_PANEL_STATE_KEY, JSON.stringify({ minimized: panel.classList.contains('minimized') }));
+    });
+
     connectButton.addEventListener('click', connectToChat);
     sendButton.addEventListener('click', sendCurrentMessage);
     messageInput.addEventListener('keydown', (e) => {
@@ -1867,6 +1938,15 @@ function initializeTeamChat() {
             e.preventDefault();
             sendCurrentMessage();
         }
+    });
+
+    window.addEventListener('online', () => {
+        appendChatMessage('Système', 'Réseau récupéré, tentative de reconnexion.', new Date().toISOString(), true);
+        if (!chatConnected) connectToChat();
+    });
+    window.addEventListener('offline', () => {
+        setConnectionState(false, 'Hors ligne');
+        appendChatMessage('Système', 'Réseau perdu, les messages sortants seront mis en file.', new Date().toISOString(), true);
     });
 
     function appendChatMessage(user, text, isoTime, isSystemMessage = false) {
