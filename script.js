@@ -1950,6 +1950,15 @@ function initializeTeamChat() {
         appendChatMessage('Système', `${outbox.length} message(s) hors-ligne envoyé(s).`, new Date().toISOString(), true);
     };
 
+    const reconnectIfNeeded = (reasonLabel = 'Reconnexion...') => {
+        const roomName = (roomInput.value || '').trim().toLowerCase().replace(/[^a-z0-9-_]/g, '');
+        const userName = (userInput.value || '').trim();
+        if (!roomName || !userName) return;
+        if (chatConnected) return;
+        appendChatMessage('Système', reasonLabel, new Date().toISOString(), true);
+        connectToChat();
+    };
+
     function connectToChat() {
         if (typeof mqtt === 'undefined') {
             appendChatMessage('Système', 'Client MQTT introuvable (connexion impossible).', new Date().toISOString(), true);
@@ -2220,10 +2229,9 @@ function initializeTeamChat() {
     });
 
     window.addEventListener('online', () => {
-        appendChatMessage('Système', 'Réseau récupéré, tentative de reconnexion.', new Date().toISOString(), true);
         if (reconnectAfterOnlineTimeout) clearTimeout(reconnectAfterOnlineTimeout);
         reconnectAfterOnlineTimeout = setTimeout(() => {
-            connectToChat();
+            reconnectIfNeeded('Réseau récupéré, tentative de reconnexion.');
         }, 400);
     });
     window.addEventListener('offline', () => {
@@ -2233,6 +2241,15 @@ function initializeTeamChat() {
         }
         setConnectionState(false, 'Hors ligne');
         appendChatMessage('Système', 'Réseau perdu, les messages sortants seront mis en file.', new Date().toISOString(), true);
+    });
+
+    document.addEventListener('visibilitychange', () => {
+        if (!document.hidden) {
+            if (reconnectAfterOnlineTimeout) clearTimeout(reconnectAfterOnlineTimeout);
+            reconnectAfterOnlineTimeout = setTimeout(() => {
+                reconnectIfNeeded('Retour au premier plan, reconnexion du chat.');
+            }, 200);
+        }
     });
 
     window.addEventListener('beforeunload', () => {
