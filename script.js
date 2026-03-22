@@ -1989,12 +1989,25 @@ function initializeTeamChat() {
         });
 
         chatClient.on('connect', () => {
+            let hasAnnouncedConnection = false;
+            const announceConnection = () => {
+                if (hasAnnouncedConnection) return;
+                hasAnnouncedConnection = true;
+                setConnectionState(true);
+                appendChatMessage('Système', `Connecté au canal "${roomName}".`, new Date().toISOString(), true);
+            };
+
             chatClient.subscribe(chatTopic, { qos: 1 }, (err) => {
                 if (err) {
                     setConnectionState(false, 'Erreur abonnement');
                     appendChatMessage('Système', `Abonnement impossible: ${err.message}`, new Date().toISOString(), true);
                     return;
                 }
+
+                // On annonce la connexion dès que le canal de chat principal est prêt,
+                // pour conserver un ordre visuel cohérent avec les messages reçus juste après reconnexion.
+                announceConnection();
+
                 chatClient.subscribe(`${chatHistoryTopic}/#`, { qos: 1 }, (historyErr) => {
                     if (historyErr) {
                         setConnectionState(false, 'Erreur historique');
@@ -2007,8 +2020,7 @@ function initializeTeamChat() {
                             appendChatMessage('Système', `Abonnement présence impossible: ${presenceErr.message}`, new Date().toISOString(), true);
                             return;
                         }
-                        setConnectionState(true);
-                        appendChatMessage('Système', `Connecté au canal "${roomName}".`, new Date().toISOString(), true);
+                        announceConnection();
                         publishPresence('online', userName);
                         flushOutbox();
                     });
