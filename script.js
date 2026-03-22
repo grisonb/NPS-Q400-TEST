@@ -1776,7 +1776,7 @@ function initializeTeamChat() {
     if (savedPanelState.minimized) panel.classList.add('minimized');
     minimizeButton.textContent = panel.classList.contains('minimized') ? '+' : '—';
 
-    const defaultConfig = { room: 'pelic-team', user: `Pélic-${Math.floor(Math.random() * 900) + 100}` };
+    const defaultConfig = { room: 'Milan', user: '' };
     const savedConfig = JSON.parse(localStorage.getItem(CHAT_STORAGE_KEY) || 'null') || defaultConfig;
     roomInput.value = savedConfig.room || defaultConfig.room;
     userInput.value = savedConfig.user || defaultConfig.user;
@@ -2066,6 +2066,9 @@ function initializeTeamChat() {
         const statusSymbol = baseStatus === 'read' ? '✓✓' : (baseStatus === 'sent' ? '✓' : '⏳');
         const statusClass = baseStatus === 'read' ? 'chat-message-status read' : 'chat-message-status';
         const statusMarkup = (!isSystemMessage && isOwnMessage) ? `<span class="${statusClass}" data-message-status="${meta?.id || ''}">${statusSymbol}</span>` : '';
+        if (!isSystemMessage) {
+            row.classList.add(isOwnMessage ? 'chat-message-own' : 'chat-message-remote');
+        }
         row.innerHTML = `<b>${isSystemMessage ? 'Système' : escapeHtml(user)}</b> <span style="color:#7a7a7a">(${hh}:${mm})</span>${statusMarkup}<br>${escapeHtml(text)}`;
         messagesBox.appendChild(row);
         messagesBox.scrollTop = messagesBox.scrollHeight;
