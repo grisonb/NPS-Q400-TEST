@@ -180,7 +180,7 @@ html, body {
     max-height: min(88dvh, calc(100dvh - var(--safe-area-top) - 16px));
     background: rgba(255, 255, 255, 0.95);
     border: 1px solid var(--border-color);
-    border-radius: 14px;
+    border-radius: 0;
     box-shadow: var(--shadow);
     padding: 12px 12px calc(12px + env(safe-area-inset-bottom));
     display: none;
