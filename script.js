@@ -2112,16 +2112,6 @@ function initializeTeamChat() {
                 }
 
                 if (parsed.type !== 'chat' || !parsed.user || !parsed.text || !parsed.time || !parsed.id) return;
-                if (receivedTopic.startsWith(chatHistoryTopic)) {
-                    const ageHours = Math.abs(Date.now() - new Date(parsed.time).getTime()) / 3600000;
-                    if (Number.isFinite(ageHours) && ageHours > 48) {
-                        // Nettoyage automatique des messages retenus trop anciens (>48h) sur le canal.
-                        if (parsed.id && chatClient && chatHistoryTopic) {
-                            chatClient.publish(`${chatHistoryTopic}/${parsed.id}`, '', { qos: 1, retain: true });
-                        }
-                        return;
-                    }
-                }
 
                 if (!hasAnnouncedConnection) {
                     pendingChatMessages.push({ parsed, isCurrentChatTopic });
