@@ -1872,6 +1872,14 @@ function initializeTeamChat() {
 
     const shouldWarnUnread = () => panel.style.display !== 'flex';
 
+    const notifyWhenInBackground = (title, body, tag = 'pelic-chat') => {
+        if (typeof document === 'undefined' || !document.hidden) return;
+        if (typeof Notification === 'undefined' || Notification.permission !== 'granted') return;
+        try {
+            new Notification(title, { body, tag });
+        } catch (_) {}
+    };
+
     const refreshOnlineUsersLabel = () => {
         const users = Array.from(activeUsers.values())
             .filter((name) => typeof name === 'string' && name.trim())
@@ -2007,6 +2015,9 @@ function initializeTeamChat() {
                 // On annonce la connexion dès que le canal de chat principal est prêt,
                 // pour conserver un ordre visuel cohérent avec les messages reçus juste après reconnexion.
                 announceConnection();
+                if (typeof Notification !== 'undefined' && Notification.permission === 'default') {
+                    Notification.requestPermission().catch(() => {});
+                }
 
                 chatClient.subscribe(`${chatHistoryTopic}/#`, { qos: 1 }, (historyErr) => {
                     if (historyErr) {
@@ -2057,7 +2068,13 @@ function initializeTeamChat() {
                 if (renderedMessageIds.has(parsed.id) || persistedSeenIds.has(parsed.id)) return;
                 if (receivedTopic.startsWith(chatHistoryTopic)) {
                     const ageHours = Math.abs(Date.now() - new Date(parsed.time).getTime()) / 3600000;
-                    if (Number.isFinite(ageHours) && ageHours > 48) return;
+                    if (Number.isFinite(ageHours) && ageHours > 48) {
+                        // Nettoyage automatique des messages retenus trop anciens (>48h) sur le canal.
+                        if (parsed.id && chatClient && chatHistoryTopic) {
+                            chatClient.publish(`${chatHistoryTopic}/${parsed.id}`, '', { qos: 1, retain: true });
+                        }
+                        return;
+                    }
                 }
 
                 renderedMessageIds.add(parsed.id);
@@ -2079,6 +2096,10 @@ function initializeTeamChat() {
                 if (!isOwnMessage && shouldWarnUnread()) {
                     unreadCount += 1;
                     updateUnreadBadge();
+                }
+
+                if (!isOwnMessage && isCurrentChatTopic) {
+                    notifyWhenInBackground(`Pelic Chat • ${(roomInput.value || '').trim() || 'canal'}`, `${parsed.user}: ${parsed.text}`, `pelic-chat-${chatTopic}`);
                 }
             } catch (_) {}
         });
