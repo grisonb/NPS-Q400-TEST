@@ -1811,6 +1811,8 @@ function initializeTeamChat() {
     const CHAT_SEEN_IDS_KEY = 'teamChatSeenIds';
     let unreadCount = 0;
     let reconnectAfterOnlineTimeout = null;
+    let hasAnnouncedConnection = true;
+    const pendingChatMessages = [];
     const renderedMessageIds = new Set();
     const sentMessageElements = new Map();
     const activeUsers = new Map();
@@ -1950,6 +1952,36 @@ function initializeTeamChat() {
         appendChatMessage('Système', `${outbox.length} message(s) hors-ligne envoyé(s).`, new Date().toISOString(), true);
     };
 
+    const renderIncomingChatMessage = (parsed, isCurrentChatTopic) => {
+        if (!parsed || !parsed.id || !parsed.user || !parsed.text || !parsed.time) return;
+        if (renderedMessageIds.has(parsed.id) || persistedSeenIds.has(parsed.id)) return;
+
+        renderedMessageIds.add(parsed.id);
+        persistedSeenIds.add(parsed.id);
+        persistSeenIds();
+        const isOwnMessage = parsed.senderClientId === myClientId;
+        appendChatMessage(parsed.user, parsed.text, parsed.time, false, { ...parsed, isOwnMessage, status: isOwnMessage ? 'sent' : 'read' });
+        saveMessageInHistory({ ...parsed, status: isOwnMessage ? 'sent' : 'read' });
+
+        if (!isOwnMessage) {
+            chatClient.publish(chatTopic, JSON.stringify({
+                type: 'read_receipt',
+                messageId: parsed.id,
+                reader: (userInput.value || '').trim() || 'inconnu',
+                time: new Date().toISOString()
+            }), { qos: 1 });
+        }
+
+        if (!isOwnMessage && shouldWarnUnread()) {
+            unreadCount += 1;
+            updateUnreadBadge();
+        }
+
+        if (!isOwnMessage && isCurrentChatTopic) {
+            notifyWhenInBackground(`Pelic Chat • ${(roomInput.value || '').trim() || 'canal'}`, `${parsed.user}: ${parsed.text}`, `pelic-chat-${chatTopic}`);
+        }
+    };
+
     const reconnectIfNeeded = (reasonLabel = 'Reconnexion...') => {
         const roomName = (roomInput.value || '').trim().toLowerCase().replace(/[^a-z0-9-_]/g, '');
         const userName = (userInput.value || '').trim();
@@ -1984,6 +2016,8 @@ function initializeTeamChat() {
         chatHistoryTopic = `pelic/chat_history/${roomName}`;
         chatPresenceTopic = `pelic/chat_presence/${roomName}`;
         setConnectionState(false, 'Connexion...');
+        hasAnnouncedConnection = false;
+        pendingChatMessages.length = 0;
         chatClient = mqtt.connect('wss://test.mosquitto.org:8081/mqtt', {
             keepalive: 30,
             reconnectPeriod: 5000,
@@ -2006,12 +2040,16 @@ function initializeTeamChat() {
         });
 
         chatClient.on('connect', () => {
-            let hasAnnouncedConnection = false;
             const announceConnection = () => {
                 if (hasAnnouncedConnection) return;
                 hasAnnouncedConnection = true;
                 setConnectionState(true);
                 appendChatMessage('Système', `Connecté au canal "${roomName}".`, new Date().toISOString(), true);
+
+                while (pendingChatMessages.length) {
+                    const pendingItem = pendingChatMessages.shift();
+                    renderIncomingChatMessage(pendingItem.parsed, pendingItem.isCurrentChatTopic);
+                }
             };
 
             chatClient.subscribe(chatTopic, { qos: 1 }, (err) => {
@@ -2074,7 +2112,6 @@ function initializeTeamChat() {
                 }
 
                 if (parsed.type !== 'chat' || !parsed.user || !parsed.text || !parsed.time || !parsed.id) return;
-                if (renderedMessageIds.has(parsed.id) || persistedSeenIds.has(parsed.id)) return;
                 if (receivedTopic.startsWith(chatHistoryTopic)) {
                     const ageHours = Math.abs(Date.now() - new Date(parsed.time).getTime()) / 3600000;
                     if (Number.isFinite(ageHours) && ageHours > 48) {
@@ -2086,30 +2123,12 @@ function initializeTeamChat() {
                     }
                 }
 
-                renderedMessageIds.add(parsed.id);
-                persistedSeenIds.add(parsed.id);
-                persistSeenIds();
-                const isOwnMessage = parsed.senderClientId === myClientId;
-                appendChatMessage(parsed.user, parsed.text, parsed.time, false, { ...parsed, isOwnMessage, status: isOwnMessage ? 'sent' : 'read' });
-                saveMessageInHistory({ ...parsed, status: isOwnMessage ? 'sent' : 'read' });
-
-                if (!isOwnMessage) {
-                    chatClient.publish(chatTopic, JSON.stringify({
-                        type: 'read_receipt',
-                        messageId: parsed.id,
-                        reader: (userInput.value || '').trim() || 'inconnu',
-                        time: new Date().toISOString()
-                    }), { qos: 1 });
+                if (!hasAnnouncedConnection) {
+                    pendingChatMessages.push({ parsed, isCurrentChatTopic });
+                    return;
                 }
 
-                if (!isOwnMessage && shouldWarnUnread()) {
-                    unreadCount += 1;
-                    updateUnreadBadge();
-                }
-
-                if (!isOwnMessage && isCurrentChatTopic) {
-                    notifyWhenInBackground(`Pelic Chat • ${(roomInput.value || '').trim() || 'canal'}`, `${parsed.user}: ${parsed.text}`, `pelic-chat-${chatTopic}`);
-                }
+                renderIncomingChatMessage(parsed, isCurrentChatTopic);
             } catch (_) {}
         });
 
