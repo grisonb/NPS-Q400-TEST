@@ -268,6 +268,43 @@ function setupEventListeners() {
         versionDisplay.className = 'version-display';
         versionDisplay.innerText = (typeof APP_VERSION !== 'undefined' && APP_VERSION) ? APP_VERSION : 'version inconnue';
         mainActionButtons.appendChild(versionDisplay);
+
+        const forceUpdateButton = document.createElement('button');
+        forceUpdateButton.className = 'force-update-button';
+        forceUpdateButton.type = 'button';
+        forceUpdateButton.title = 'Forcer la recherche de mise à jour';
+        forceUpdateButton.textContent = '🔄 MAJ';
+        forceUpdateButton.addEventListener('click', async () => {
+            forceUpdateButton.disabled = true;
+            forceUpdateButton.textContent = '⏳ MAJ...';
+            try {
+                if (!('serviceWorker' in navigator)) {
+                    alert('Service Worker indisponible sur cet appareil.');
+                    return;
+                }
+
+                const registration = await navigator.serviceWorker.getRegistration();
+                if (registration) {
+                    await registration.update();
+                    if (registration.waiting) {
+                        registration.waiting.postMessage({ type: 'SKIP_WAITING' });
+                    }
+                }
+
+                if ('caches' in window) {
+                    const cacheKeys = await caches.keys();
+                    await Promise.all(cacheKeys.map((key) => caches.delete(key)));
+                }
+
+                window.location.reload();
+            } catch (error) {
+                alert(`Mise à jour impossible: ${error.message}`);
+            } finally {
+                forceUpdateButton.disabled = false;
+                forceUpdateButton.textContent = '🔄 MAJ';
+            }
+        });
+        mainActionButtons.appendChild(forceUpdateButton);
     }
 
     if (departmentsLayerButton) {
