@@ -36,6 +36,11 @@ const OFFLINE_FALLBACK_NATIVE_ZOOM = 14;
 const GLOBAL_MAX_ZOOM = 18;
 let baseTileMaxNativeZoom = ONLINE_MAX_NATIVE_ZOOM;
 let offlineTilesMode = DEFAULT_OFFLINE_TILES_ENABLED;
+const CHAT_STORAGE_KEY = 'teamChatConfig';
+const CHAT_HISTORY_KEY = 'teamChatHistory';
+let chatClient = null;
+let chatTopic = null;
+let chatConnected = false;
 
 const pelicanAirports = [
     { oaci: "LFLU", name: "Valence-Chabeuil", lat: 44.920, lon: 4.968 }, { oaci: "LFMU", name: "Béziers-Vias", lat: 43.323, lon: 3.354 }, { oaci: "LFJR", name: "Angers-Marcé", lat: 47.560, lon: -0.312 }, { oaci: "LFHO", name: "Aubenas-Ardèche Méridionale", lat: 44.545, lon: 4.385 }, { oaci: "LFLX", name: "Châteauroux-Déols", lat: 46.861, lon: 1.720 }, { oaci: "LFBM", name: "Mont-de-Marsan", lat: 43.894, lon: -0.509 }, { oaci: "LFBL", name: "Limoges-Bellegarde", lat: 45.862, lon: 1.180 }, { oaci: "LFAQ", name: "Albert-Bray", lat: 49.972, lon: 2.698 }, { oaci: "LFBP", name: "Pau-Pyrénées", lat: 43.380, lon: -0.418 }, { oaci: "LFTH", name: "Toulon-Hyères", lat: 43.097, lon: 6.146 }, { oaci: "LFSG", name: "Épinal-Mirecourt", lat: 48.325, lon: 6.068 }, { oaci: "LFKC", name: "Calvi-Sainte-Catherine", lat: 42.530, lon: 8.793 }, { oaci: "LFMD", name: "Cannes-Mandelieu", lat: 43.542, lon: 6.956 }, { oaci: "LFKB", name: "Bastia-Poretta", lat: 42.552, lon: 9.483 }, { oaci: "LFMH", name: "Saint-Étienne-Bouthéon", lat: 45.541, lon: 4.296 }, { oaci: "LFKF", name: "Figari-Sud-Corse", lat: 41.500, lon: 9.097 }, { oaci: "LFCC", name: "Cahors-Lalbenque", lat: 44.351, lon: 1.475 }, { oaci: "LFML", name: "Marseille-Provence", lat: 43.436, lon: 5.215 }, { oaci: "LFKJ", name: "Ajaccio-Napoléon-Bonaparte", lat: 41.923, lon: 8.802 }, { oaci: "LFMK", name: "Carcassonne-Salvaza", lat: 43.215, lon: 2.306 }, { oaci: "LFRV", name: "Vannes-Meucon", lat: 47.720, lon: -2.721 }, { oaci: "LFTW", name: "Nîmes-Garons", lat: 43.757, lon: 4.416 }, { oaci: "LFMP", name: "Perpignan-Rivesaltes", lat: 42.740, lon: 2.870 }, { oaci: "LFBD", name: "Bordeaux-Mérignac", lat: 44.828, lon: -0.691 }
@@ -131,6 +136,7 @@ async function initializeApp() {
         searchSection.style.display = 'block';
         initMap();
         setupEventListeners();
+        initializeTeamChat();
         setTimeout(() => {
             updateBaseTileNativeZoomFromAvailability({ forceScan: true }).catch(() => {});
         }, 0);
@@ -258,7 +264,7 @@ function setupEventListeners() {
     if (mainActionButtons) {
         const versionDisplay = document.createElement('div');
         versionDisplay.className = 'version-display';
-        versionDisplay.innerText = 'v8.35';
+        versionDisplay.innerText = (typeof APP_VERSION !== 'undefined' && APP_VERSION) ? APP_VERSION : 'version inconnue';
         mainActionButtons.appendChild(versionDisplay);
     }
 
@@ -1737,6 +1743,231 @@ function updateDeroutementTab() {
         { fuel: fuelSurFeu, time: heureSurFeu },
         { bingoBase, bingoPelic, consoRotation, rotationTime, csFeuTime, tmdTime, limiteHDV, transitTime: transitTimeFromGps, consoTransitFromGps: consoTransitFromGps }
     );
+}
+
+
+function initializeTeamChat() {
+    const panel = document.getElementById('team-chat-panel');
+    const toggleButton = document.getElementById('chat-toggle-button');
+    const minimizeButton = document.getElementById('chat-minimize-button');
+    const alertBadge = document.getElementById('chat-alert-badge');
+    const roomInput = document.getElementById('chat-room-input');
+    const userInput = document.getElementById('chat-user-input');
+    const connectButton = document.getElementById('chat-connect-button');
+    const sendButton = document.getElementById('chat-send-button');
+    const messageInput = document.getElementById('chat-message-input');
+    const messagesBox = document.getElementById('chat-messages');
+    const connectionState = document.getElementById('chat-connection-state');
+    if (!panel || !toggleButton || !minimizeButton || !alertBadge || !roomInput || !userInput || !connectButton || !sendButton || !messageInput || !messagesBox || !connectionState) return;
+
+    const CHAT_CLIENT_ID_KEY = 'teamChatClientId';
+    const CHAT_OUTBOX_KEY = 'teamChatOutbox';
+    const CHAT_PANEL_STATE_KEY = 'teamChatPanelState';
+    let unreadCount = 0;
+
+    const savedPanelState = JSON.parse(localStorage.getItem(CHAT_PANEL_STATE_KEY) || 'null') || { minimized: false };
+    if (savedPanelState.minimized) panel.classList.add('minimized');
+    minimizeButton.textContent = panel.classList.contains('minimized') ? '+' : '—';
+
+    const defaultConfig = { room: 'pelic-team', user: `Pélic-${Math.floor(Math.random() * 900) + 100}` };
+    const savedConfig = JSON.parse(localStorage.getItem(CHAT_STORAGE_KEY) || 'null') || defaultConfig;
+    roomInput.value = savedConfig.room || defaultConfig.room;
+    userInput.value = savedConfig.user || defaultConfig.user;
+
+    const history = JSON.parse(localStorage.getItem(CHAT_HISTORY_KEY) || '[]');
+    history.forEach((item) => appendChatMessage(item.user, item.text, item.time, item.system === true));
+
+    const setConnectionState = (isOnline, label = null) => {
+        chatConnected = isOnline;
+        connectionState.textContent = label || (isOnline ? 'Connecté' : 'Hors ligne');
+        connectionState.classList.toggle('online', isOnline);
+        connectionState.classList.toggle('offline', !isOnline);
+    };
+    setConnectionState(false);
+
+    const persistConfig = () => {
+        localStorage.setItem(CHAT_STORAGE_KEY, JSON.stringify({
+            room: (roomInput.value || '').trim().toLowerCase().replace(/[^a-z0-9-_]/g, ''),
+            user: (userInput.value || '').trim().slice(0, 24)
+        }));
+    };
+
+    const saveMessageInHistory = (entry) => {
+        const current = JSON.parse(localStorage.getItem(CHAT_HISTORY_KEY) || '[]');
+        current.push(entry);
+        const recent = current.slice(-200);
+        localStorage.setItem(CHAT_HISTORY_KEY, JSON.stringify(recent));
+    };
+
+    const getOrCreateClientId = () => {
+        const stored = localStorage.getItem(CHAT_CLIENT_ID_KEY);
+        if (stored && stored.trim()) return stored;
+        const created = `pelic_device_${Math.random().toString(16).slice(2, 10)}_${Date.now()}`;
+        localStorage.setItem(CHAT_CLIENT_ID_KEY, created);
+        return created;
+    };
+
+    const updateUnreadBadge = () => {
+        if (!unreadCount) {
+            alertBadge.style.display = 'none';
+            return;
+        }
+        alertBadge.style.display = 'flex';
+        alertBadge.textContent = unreadCount > 99 ? '99+' : `${unreadCount}`;
+    };
+
+    const shouldWarnUnread = () => panel.style.display !== 'flex' || panel.classList.contains('minimized');
+
+    const addToOutbox = (payload) => {
+        const outbox = JSON.parse(localStorage.getItem(CHAT_OUTBOX_KEY) || '[]');
+        outbox.push(payload);
+        localStorage.setItem(CHAT_OUTBOX_KEY, JSON.stringify(outbox.slice(-100)));
+    };
+
+    const flushOutbox = () => {
+        if (!chatClient || !chatConnected || !chatTopic) return;
+        const outbox = JSON.parse(localStorage.getItem(CHAT_OUTBOX_KEY) || '[]');
+        if (!outbox.length) return;
+        outbox.forEach((payload) => {
+            chatClient.publish(chatTopic, JSON.stringify(payload), { qos: 1 });
+        });
+        localStorage.removeItem(CHAT_OUTBOX_KEY);
+        appendChatMessage('Système', `${outbox.length} message(s) hors-ligne envoyé(s).`, new Date().toISOString(), true);
+    };
+
+    function connectToChat() {
+        if (typeof mqtt === 'undefined') {
+            appendChatMessage('Système', 'Client MQTT introuvable (connexion impossible).', new Date().toISOString(), true);
+            return;
+        }
+        const roomName = (roomInput.value || '').trim().toLowerCase().replace(/[^a-z0-9-_]/g, '');
+        const userName = (userInput.value || '').trim();
+        if (!roomName || !userName) {
+            appendChatMessage('Système', 'Canal et pseudo obligatoires.', new Date().toISOString(), true);
+            return;
+        }
+        persistConfig();
+        if (chatClient) {
+            try { chatClient.end(false); } catch (_) {}
+            chatClient = null;
+        }
+
+        chatTopic = `pelic/chat/${roomName}`;
+        setConnectionState(false, 'Connexion...');
+        const clientId = getOrCreateClientId();
+        chatClient = mqtt.connect('wss://test.mosquitto.org:8081/mqtt', {
+            keepalive: 30,
+            reconnectPeriod: 5000,
+            connectTimeout: 12000,
+            clean: false,
+            protocolVersion: 4,
+            clientId
+        });
+
+        chatClient.on('connect', () => {
+            chatClient.subscribe(chatTopic, { qos: 1 }, (err) => {
+                if (err) {
+                    setConnectionState(false, 'Erreur abonnement');
+                    appendChatMessage('Système', `Abonnement impossible: ${err.message}`, new Date().toISOString(), true);
+                    return;
+                }
+                setConnectionState(true);
+                appendChatMessage('Système', `Connecté au canal "${roomName}".`, new Date().toISOString(), true);
+                flushOutbox();
+            });
+        });
+
+        chatClient.on('message', (_topic, payload) => {
+            try {
+                const parsed = JSON.parse(payload.toString());
+                if (!parsed || !parsed.user || !parsed.text || !parsed.time) return;
+                appendChatMessage(parsed.user, parsed.text, parsed.time, false);
+                saveMessageInHistory(parsed);
+                if (shouldWarnUnread()) {
+                    unreadCount += 1;
+                    updateUnreadBadge();
+                }
+            } catch (_) {}
+        });
+
+        chatClient.on('reconnect', () => setConnectionState(false, 'Reconnexion...'));
+        chatClient.on('close', () => setConnectionState(false));
+        chatClient.on('offline', () => setConnectionState(false, 'Hors ligne'));
+        chatClient.on('error', (err) => {
+            setConnectionState(false, 'Erreur réseau');
+            appendChatMessage('Système', `Erreur réseau: ${err.message}`, new Date().toISOString(), true);
+        });
+    }
+
+    function sendCurrentMessage() {
+        const text = (messageInput.value || '').trim();
+        const user = (userInput.value || '').trim();
+        if (!text) return;
+        const payload = { user, text: text.slice(0, 280), time: new Date().toISOString() };
+
+        if (!chatClient || !chatConnected || !chatTopic) {
+            addToOutbox(payload);
+            appendChatMessage('Système', 'Réseau indisponible: message mis en file hors-ligne.', new Date().toISOString(), true);
+            messageInput.value = '';
+            return;
+        }
+
+        chatClient.publish(chatTopic, JSON.stringify(payload), { qos: 1 });
+        messageInput.value = '';
+    }
+
+    toggleButton.addEventListener('click', () => {
+        const visible = panel.style.display === 'flex';
+        panel.style.display = visible ? 'none' : 'flex';
+        if (!visible) {
+            unreadCount = 0;
+            updateUnreadBadge();
+        }
+    });
+
+    minimizeButton.addEventListener('click', () => {
+        panel.classList.toggle('minimized');
+        minimizeButton.textContent = panel.classList.contains('minimized') ? '+' : '—';
+        localStorage.setItem(CHAT_PANEL_STATE_KEY, JSON.stringify({ minimized: panel.classList.contains('minimized') }));
+    });
+
+    connectButton.addEventListener('click', connectToChat);
+    sendButton.addEventListener('click', sendCurrentMessage);
+    messageInput.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') {
+            e.preventDefault();
+            sendCurrentMessage();
+        }
+    });
+
+    window.addEventListener('online', () => {
+        appendChatMessage('Système', 'Réseau récupéré, tentative de reconnexion.', new Date().toISOString(), true);
+        if (!chatConnected) connectToChat();
+    });
+    window.addEventListener('offline', () => {
+        setConnectionState(false, 'Hors ligne');
+        appendChatMessage('Système', 'Réseau perdu, les messages sortants seront mis en file.', new Date().toISOString(), true);
+    });
+
+    function appendChatMessage(user, text, isoTime, isSystemMessage = false) {
+        const row = document.createElement('div');
+        row.className = 'chat-message';
+        const time = new Date(isoTime || Date.now());
+        const hh = `${time.getHours()}`.padStart(2, '0');
+        const mm = `${time.getMinutes()}`.padStart(2, '0');
+        row.innerHTML = `<b>${isSystemMessage ? 'Système' : escapeHtml(user)}</b> <span style="color:#7a7a7a">(${hh}:${mm})</span><br>${escapeHtml(text)}`;
+        messagesBox.appendChild(row);
+        messagesBox.scrollTop = messagesBox.scrollHeight;
+    }
+}
+
+function escapeHtml(value) {
+    return String(value || '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
 }
 
 function initializeCalculator() {
