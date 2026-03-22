@@ -40,6 +40,7 @@ const CHAT_STORAGE_KEY = 'teamChatConfig';
 const CHAT_HISTORY_KEY = 'teamChatHistory';
 let chatClient = null;
 let chatTopic = null;
+let chatHistoryTopic = null;
 let chatConnected = false;
 
 const pelicanAirports = [
@@ -1854,14 +1855,20 @@ function initializeTeamChat() {
         localStorage.setItem(CHAT_OUTBOX_KEY, JSON.stringify(outbox.slice(-100)));
     };
 
+    const publishChatPayload = (payload, onLiveAck = null) => {
+        if (!chatClient || !chatTopic || !chatHistoryTopic) return;
+        chatClient.publish(chatTopic, JSON.stringify(payload), { qos: 1 }, (err) => {
+            if (!err && typeof onLiveAck === 'function') onLiveAck();
+        });
+        chatClient.publish(`${chatHistoryTopic}/${payload.id}`, JSON.stringify(payload), { qos: 1, retain: true });
+    };
+
     const flushOutbox = () => {
         if (!chatClient || !chatConnected || !chatTopic) return;
         const outbox = JSON.parse(localStorage.getItem(CHAT_OUTBOX_KEY) || '[]');
         if (!outbox.length) return;
         outbox.forEach((payload) => {
-            chatClient.publish(chatTopic, JSON.stringify(payload), { qos: 1 }, (err) => {
-                if (!err) updateMessageStatus(payload.id, 'sent');
-            });
+            publishChatPayload(payload, () => updateMessageStatus(payload.id, 'sent'));
         });
         localStorage.removeItem(CHAT_OUTBOX_KEY);
         appendChatMessage('Système', `${outbox.length} message(s) hors-ligne envoyé(s).`, new Date().toISOString(), true);
@@ -1885,6 +1892,7 @@ function initializeTeamChat() {
         }
 
         chatTopic = `pelic/chat/${roomName}`;
+        chatHistoryTopic = `pelic/chat_history/${roomName}`;
         setConnectionState(false, 'Connexion...');
         chatClient = mqtt.connect('wss://test.mosquitto.org:8081/mqtt', {
             keepalive: 30,
@@ -1902,13 +1910,20 @@ function initializeTeamChat() {
                     appendChatMessage('Système', `Abonnement impossible: ${err.message}`, new Date().toISOString(), true);
                     return;
                 }
-                setConnectionState(true);
-                appendChatMessage('Système', `Connecté au canal "${roomName}".`, new Date().toISOString(), true);
-                flushOutbox();
+                chatClient.subscribe(`${chatHistoryTopic}/#`, { qos: 1 }, (historyErr) => {
+                    if (historyErr) {
+                        setConnectionState(false, 'Erreur historique');
+                        appendChatMessage('Système', `Abonnement historique impossible: ${historyErr.message}`, new Date().toISOString(), true);
+                        return;
+                    }
+                    setConnectionState(true);
+                    appendChatMessage('Système', `Connecté au canal "${roomName}".`, new Date().toISOString(), true);
+                    flushOutbox();
+                });
             });
         });
 
-        chatClient.on('message', (_topic, payload) => {
+        chatClient.on('message', (receivedTopic, payload) => {
             try {
                 const parsed = JSON.parse(payload.toString());
                 if (!parsed || !parsed.type) return;
@@ -1920,6 +1935,10 @@ function initializeTeamChat() {
 
                 if (parsed.type !== 'chat' || !parsed.user || !parsed.text || !parsed.time || !parsed.id) return;
                 if (renderedMessageIds.has(parsed.id) || persistedSeenIds.has(parsed.id)) return;
+                if (receivedTopic.startsWith(chatHistoryTopic)) {
+                    const ageHours = Math.abs(Date.now() - new Date(parsed.time).getTime()) / 3600000;
+                    if (Number.isFinite(ageHours) && ageHours > 48) return;
+                }
 
                 renderedMessageIds.add(parsed.id);
                 persistedSeenIds.add(parsed.id);
@@ -1978,9 +1997,7 @@ function initializeTeamChat() {
             return;
         }
 
-        chatClient.publish(chatTopic, JSON.stringify(payload), { qos: 1 }, (err) => {
-            if (!err) updateMessageStatus(payload.id, 'sent');
-        });
+        publishChatPayload(payload, () => updateMessageStatus(payload.id, 'sent'));
         messageInput.value = '';
     }
 
