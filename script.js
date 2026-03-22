@@ -1800,7 +1800,11 @@ function initializeTeamChat() {
     const messagesBox = document.getElementById('chat-messages');
     const connectionState = document.getElementById('chat-connection-state');
     const onlineUsersLabel = document.getElementById('chat-online-users');
-    if (!panel || !toggleButton || !minimizeButton || !clearButton || !alertBadge || !offlineBadge || !roomInput || !userInput || !connectButton || !sendButton || !messageInput || !messagesBox || !connectionState || !onlineUsersLabel) return;
+    const clearModal = document.getElementById('chat-clear-modal');
+    const clearLocalButton = document.getElementById('chat-clear-local-button');
+    const clearChannelButton = document.getElementById('chat-clear-channel-button');
+    const clearCancelButton = document.getElementById('chat-clear-cancel-button');
+    if (!panel || !toggleButton || !minimizeButton || !clearButton || !alertBadge || !offlineBadge || !roomInput || !userInput || !connectButton || !sendButton || !messageInput || !messagesBox || !connectionState || !onlineUsersLabel || !clearModal || !clearLocalButton || !clearChannelButton || !clearCancelButton) return;
 
     const CHAT_CLIENT_ID_KEY = 'teamChatClientId';
     const CHAT_OUTBOX_KEY = 'teamChatOutbox';
@@ -2122,49 +2126,50 @@ function initializeTeamChat() {
         toggleChatPanel();
     });
 
-    clearButton.addEventListener('click', () => {
-        const choice = prompt(
-            'Que voulez-vous supprimer ?\n' +
-            '1 = Messages de cet iPad uniquement\n' +
-            '2 = Messages de cet iPad + messages enregistrés du canal\n' +
-            '3 = Annuler',
-            '1'
-        );
-        if (!choice || choice.trim() === '3') return;
+    const clearLocalHistory = () => {
+        messagesBox.innerHTML = '';
+        localStorage.removeItem(CHAT_HISTORY_KEY);
+        localStorage.removeItem(CHAT_SEEN_IDS_KEY);
+        renderedMessageIds.clear();
+        persistedSeenIds.clear();
+        sentMessageElements.clear();
+        unreadCount = 0;
+        updateUnreadBadge();
+    };
 
+    const openClearModal = () => {
+        clearModal.style.display = 'flex';
+    };
+
+    const closeClearModal = () => {
+        clearModal.style.display = 'none';
+    };
+
+    clearButton.addEventListener('click', openClearModal);
+    clearCancelButton.addEventListener('click', closeClearModal);
+    clearModal.addEventListener('click', (event) => {
+        if (event.target === clearModal) closeClearModal();
+    });
+
+    clearLocalButton.addEventListener('click', () => {
+        clearLocalHistory();
+        appendChatMessage('Système', 'Historique local supprimé.', new Date().toISOString(), true);
+        closeClearModal();
+    });
+
+    clearChannelButton.addEventListener('click', () => {
         const history = JSON.parse(localStorage.getItem(CHAT_HISTORY_KEY) || '[]');
-        const clearLocalHistory = () => {
-            messagesBox.innerHTML = '';
-            localStorage.removeItem(CHAT_HISTORY_KEY);
-            localStorage.removeItem(CHAT_SEEN_IDS_KEY);
-            renderedMessageIds.clear();
-            persistedSeenIds.clear();
-            sentMessageElements.clear();
-            unreadCount = 0;
-            updateUnreadBadge();
-        };
-
-        if (choice.trim() === '1') {
-            clearLocalHistory();
-            appendChatMessage('Système', 'Historique local supprimé.', new Date().toISOString(), true);
+        if (!chatClient || !chatConnected || !chatHistoryTopic) {
+            alert('Connexion au canal requise pour supprimer les messages enregistrés du canal.');
             return;
         }
-
-        if (choice.trim() === '2') {
-            if (!chatClient || !chatConnected || !chatHistoryTopic) {
-                alert('Connexion au canal requise pour supprimer les messages enregistrés du canal.');
-                return;
-            }
-            const historyIds = Array.from(new Set(history.map((item) => item?.id).filter(Boolean)));
-            historyIds.forEach((messageId) => {
-                chatClient.publish(`${chatHistoryTopic}/${messageId}`, '', { qos: 1, retain: true });
-            });
-            clearLocalHistory();
-            appendChatMessage('Système', `Historique local supprimé + ${historyIds.length} message(s) canal nettoyé(s).`, new Date().toISOString(), true);
-            return;
-        }
-
-        alert('Choix invalide. Utilisez 1, 2 ou 3.');
+        const historyIds = Array.from(new Set(history.map((item) => item?.id).filter(Boolean)));
+        historyIds.forEach((messageId) => {
+            chatClient.publish(`${chatHistoryTopic}/${messageId}`, '', { qos: 1, retain: true });
+        });
+        clearLocalHistory();
+        appendChatMessage('Système', `Historique local supprimé + ${historyIds.length} message(s) canal nettoyé(s).`, new Date().toISOString(), true);
+        closeClearModal();
     });
 
     connectButton.addEventListener('click', connectToChat);
