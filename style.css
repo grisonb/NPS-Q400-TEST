@@ -161,18 +161,18 @@ html, body {
 /* --- Chat équipe --- */
 #team-chat-panel {
     position: fixed;
-    left: 0;
-    top: 0;
-    transform: none;
+    left: 50%;
+    top: calc(var(--safe-area-top) + 8px);
+    transform: translateX(-50%);
     z-index: 1100;
-    width: 100vw;
-    height: 100dvh;
-    max-height: 100dvh;
+    width: min(1100px, calc(100vw - 20px));
+    height: min(88dvh, calc(100dvh - var(--safe-area-top) - 16px));
+    max-height: min(88dvh, calc(100dvh - var(--safe-area-top) - 16px));
     background: rgba(255, 255, 255, 0.95);
     border: 1px solid var(--border-color);
     border-radius: 0;
     box-shadow: var(--shadow);
-    padding: 12px;
+    padding: 12px 12px calc(12px + env(safe-area-inset-bottom));
     display: none;
     flex-direction: column;
     gap: 10px;
