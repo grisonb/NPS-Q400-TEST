@@ -165,8 +165,8 @@ html, body {
     top: 50%;
     transform: translate(-50%, -50%);
     z-index: 1100;
-    width: min(480px, calc(100vw - 32px));
-    max-height: min(58vh, 560px);
+    width: min(680px, calc(100vw - 24px));
+    max-height: min(72vh, 760px);
     background: rgba(255, 255, 255, 0.95);
     border: 1px solid var(--border-color);
     border-radius: 14px;
@@ -187,10 +187,20 @@ html, body {
     line-height: 1;
     cursor: pointer;
 }
+#chat-clear-button {
+    border: 1px solid var(--border-color);
+    background: #fff;
+    border-radius: 8px;
+    font-size: 16px;
+    width: 34px;
+    height: 30px;
+    line-height: 1;
+    cursor: pointer;
+}
 #team-chat-panel.minimized {
     top: 50%;
     max-height: none;
-    width: min(360px, calc(100vw - 32px));
+    width: min(420px, calc(100vw - 24px));
 }
 #team-chat-panel.minimized .chat-config-row,
 #team-chat-panel.minimized #chat-messages,
@@ -201,13 +211,15 @@ html, body {
 #chat-connection-state.online { color: var(--success-color); font-weight: 700; }
 #chat-connection-state.offline { color: var(--secondary-color); font-weight: 700; }
 .chat-config-row, .chat-send-row { display: grid; gap: 8px; }
-.chat-config-row { grid-template-columns: 1.2fr 1fr auto; }
+.chat-config-row { grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr) auto; }
 .chat-send-row { grid-template-columns: 1fr auto; }
 #chat-room-input, #chat-user-input, #chat-message-input {
     border: 1px solid var(--border-color);
     border-radius: 10px;
     padding: 10px;
     font-size: 14px;
+    width: 100%;
+    box-sizing: border-box;
 }
 #chat-connect-button, #chat-send-button {
     border: 1px solid var(--primary-color);
@@ -237,6 +249,8 @@ html, body {
     line-height: 1.35;
 }
 .chat-message b { color: var(--primary-color); }
+.chat-message-status { font-size: 12px; color: #76829a; margin-left: 6px; font-weight: 700; }
+.chat-message-status.read { color: #13a1ff; }
 @keyframes pulse { 0% { box-shadow: 0 0 0 0 rgba(0, 90, 156, 0.7); } 70% { box-shadow: 0 0 0 10px rgba(0, 90, 156, 0); } 100% { box-shadow: 0 0 0 0 rgba(0, 90, 156, 0); } }
 .extra-controls, #gaar-controls { margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--border-color); display: flex; justify-content: center; gap: 15px; }
 .toggle-button { padding: 8px 16px; font-size: 14px; font-weight: bold; border: 1px solid var(--primary-color); border-radius: var(--border-radius); cursor: pointer; background-color: transparent; color: var(--primary-color); transition: background-color 0.2s, color 0.2s; }

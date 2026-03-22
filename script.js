@@ -1750,6 +1750,7 @@ function initializeTeamChat() {
     const panel = document.getElementById('team-chat-panel');
     const toggleButton = document.getElementById('chat-toggle-button');
     const minimizeButton = document.getElementById('chat-minimize-button');
+    const clearButton = document.getElementById('chat-clear-button');
     const alertBadge = document.getElementById('chat-alert-badge');
     const roomInput = document.getElementById('chat-room-input');
     const userInput = document.getElementById('chat-user-input');
@@ -1758,12 +1759,16 @@ function initializeTeamChat() {
     const messageInput = document.getElementById('chat-message-input');
     const messagesBox = document.getElementById('chat-messages');
     const connectionState = document.getElementById('chat-connection-state');
-    if (!panel || !toggleButton || !minimizeButton || !alertBadge || !roomInput || !userInput || !connectButton || !sendButton || !messageInput || !messagesBox || !connectionState) return;
+    if (!panel || !toggleButton || !minimizeButton || !clearButton || !alertBadge || !roomInput || !userInput || !connectButton || !sendButton || !messageInput || !messagesBox || !connectionState) return;
 
     const CHAT_CLIENT_ID_KEY = 'teamChatClientId';
     const CHAT_OUTBOX_KEY = 'teamChatOutbox';
     const CHAT_PANEL_STATE_KEY = 'teamChatPanelState';
+    const CHAT_SEEN_IDS_KEY = 'teamChatSeenIds';
     let unreadCount = 0;
+    const renderedMessageIds = new Set();
+    const sentMessageElements = new Map();
+    const myClientId = getOrCreateClientId();
 
     const savedPanelState = JSON.parse(localStorage.getItem(CHAT_PANEL_STATE_KEY) || 'null') || { minimized: false };
     if (savedPanelState.minimized) panel.classList.add('minimized');
@@ -1774,8 +1779,12 @@ function initializeTeamChat() {
     roomInput.value = savedConfig.room || defaultConfig.room;
     userInput.value = savedConfig.user || defaultConfig.user;
 
+    const persistedSeenIds = new Set(JSON.parse(localStorage.getItem(CHAT_SEEN_IDS_KEY) || '[]'));
     const history = JSON.parse(localStorage.getItem(CHAT_HISTORY_KEY) || '[]');
-    history.forEach((item) => appendChatMessage(item.user, item.text, item.time, item.system === true));
+    history.forEach((item) => {
+        if (item?.id) renderedMessageIds.add(item.id);
+        appendChatMessage(item.user, item.text, item.time, item.system === true, item);
+    });
 
     const setConnectionState = (isOnline, label = null) => {
         chatConnected = isOnline;
@@ -1794,18 +1803,19 @@ function initializeTeamChat() {
 
     const saveMessageInHistory = (entry) => {
         const current = JSON.parse(localStorage.getItem(CHAT_HISTORY_KEY) || '[]');
+        if (entry?.id && current.some((msg) => msg.id === entry.id)) return;
         current.push(entry);
         const recent = current.slice(-200);
         localStorage.setItem(CHAT_HISTORY_KEY, JSON.stringify(recent));
     };
 
-    const getOrCreateClientId = () => {
+    function getOrCreateClientId() {
         const stored = localStorage.getItem(CHAT_CLIENT_ID_KEY);
         if (stored && stored.trim()) return stored;
         const created = `pelic_device_${Math.random().toString(16).slice(2, 10)}_${Date.now()}`;
         localStorage.setItem(CHAT_CLIENT_ID_KEY, created);
         return created;
-    };
+    }
 
     const updateUnreadBadge = () => {
         if (!unreadCount) {
@@ -1818,6 +1828,26 @@ function initializeTeamChat() {
 
     const shouldWarnUnread = () => panel.style.display !== 'flex' || panel.classList.contains('minimized');
 
+    const persistSeenIds = () => {
+        localStorage.setItem(CHAT_SEEN_IDS_KEY, JSON.stringify(Array.from(persistedSeenIds).slice(-400)));
+    };
+
+    const updateMessageStatus = (messageId, nextStatus) => {
+        if (!messageId || !sentMessageElements.has(messageId)) return;
+        const statusEl = sentMessageElements.get(messageId);
+        if (!statusEl) return;
+        const isRead = nextStatus === 'read';
+        statusEl.textContent = isRead ? '✓✓' : (nextStatus === 'sent' ? '✓' : '⏳');
+        statusEl.classList.toggle('read', isRead);
+
+        const current = JSON.parse(localStorage.getItem(CHAT_HISTORY_KEY) || '[]');
+        const index = current.findIndex((m) => m.id === messageId);
+        if (index >= 0) {
+            current[index].status = nextStatus;
+            localStorage.setItem(CHAT_HISTORY_KEY, JSON.stringify(current));
+        }
+    };
+
     const addToOutbox = (payload) => {
         const outbox = JSON.parse(localStorage.getItem(CHAT_OUTBOX_KEY) || '[]');
         outbox.push(payload);
@@ -1829,7 +1859,9 @@ function initializeTeamChat() {
         const outbox = JSON.parse(localStorage.getItem(CHAT_OUTBOX_KEY) || '[]');
         if (!outbox.length) return;
         outbox.forEach((payload) => {
-            chatClient.publish(chatTopic, JSON.stringify(payload), { qos: 1 });
+            chatClient.publish(chatTopic, JSON.stringify(payload), { qos: 1 }, (err) => {
+                if (!err) updateMessageStatus(payload.id, 'sent');
+            });
         });
         localStorage.removeItem(CHAT_OUTBOX_KEY);
         appendChatMessage('Système', `${outbox.length} message(s) hors-ligne envoyé(s).`, new Date().toISOString(), true);
@@ -1854,14 +1886,13 @@ function initializeTeamChat() {
 
         chatTopic = `pelic/chat/${roomName}`;
         setConnectionState(false, 'Connexion...');
-        const clientId = getOrCreateClientId();
         chatClient = mqtt.connect('wss://test.mosquitto.org:8081/mqtt', {
             keepalive: 30,
             reconnectPeriod: 5000,
             connectTimeout: 12000,
             clean: false,
             protocolVersion: 4,
-            clientId
+            clientId: myClientId
         });
 
         chatClient.on('connect', () => {
@@ -1880,10 +1911,33 @@ function initializeTeamChat() {
         chatClient.on('message', (_topic, payload) => {
             try {
                 const parsed = JSON.parse(payload.toString());
-                if (!parsed || !parsed.user || !parsed.text || !parsed.time) return;
-                appendChatMessage(parsed.user, parsed.text, parsed.time, false);
-                saveMessageInHistory(parsed);
-                if (shouldWarnUnread()) {
+                if (!parsed || !parsed.type) return;
+
+                if (parsed.type === 'read_receipt' && parsed.messageId) {
+                    updateMessageStatus(parsed.messageId, 'read');
+                    return;
+                }
+
+                if (parsed.type !== 'chat' || !parsed.user || !parsed.text || !parsed.time || !parsed.id) return;
+                if (renderedMessageIds.has(parsed.id) || persistedSeenIds.has(parsed.id)) return;
+
+                renderedMessageIds.add(parsed.id);
+                persistedSeenIds.add(parsed.id);
+                persistSeenIds();
+                const isOwnMessage = parsed.senderClientId === myClientId;
+                appendChatMessage(parsed.user, parsed.text, parsed.time, false, { ...parsed, isOwnMessage, status: isOwnMessage ? 'sent' : 'read' });
+                saveMessageInHistory({ ...parsed, status: isOwnMessage ? 'sent' : 'read' });
+
+                if (!isOwnMessage) {
+                    chatClient.publish(chatTopic, JSON.stringify({
+                        type: 'read_receipt',
+                        messageId: parsed.id,
+                        reader: (userInput.value || '').trim() || 'inconnu',
+                        time: new Date().toISOString()
+                    }), { qos: 1 });
+                }
+
+                if (!isOwnMessage && shouldWarnUnread()) {
                     unreadCount += 1;
                     updateUnreadBadge();
                 }
@@ -1903,7 +1957,19 @@ function initializeTeamChat() {
         const text = (messageInput.value || '').trim();
         const user = (userInput.value || '').trim();
         if (!text) return;
-        const payload = { user, text: text.slice(0, 280), time: new Date().toISOString() };
+        const payload = {
+            type: 'chat',
+            id: `msg_${Date.now()}_${Math.random().toString(16).slice(2, 8)}`,
+            senderClientId: myClientId,
+            user,
+            text: text.slice(0, 280),
+            time: new Date().toISOString()
+        };
+        renderedMessageIds.add(payload.id);
+        persistedSeenIds.add(payload.id);
+        persistSeenIds();
+        appendChatMessage(payload.user, payload.text, payload.time, false, { ...payload, isOwnMessage: true, status: 'pending' });
+        saveMessageInHistory({ ...payload, status: 'pending' });
 
         if (!chatClient || !chatConnected || !chatTopic) {
             addToOutbox(payload);
@@ -1912,7 +1978,9 @@ function initializeTeamChat() {
             return;
         }
 
-        chatClient.publish(chatTopic, JSON.stringify(payload), { qos: 1 });
+        chatClient.publish(chatTopic, JSON.stringify(payload), { qos: 1 }, (err) => {
+            if (!err) updateMessageStatus(payload.id, 'sent');
+        });
         messageInput.value = '';
     }
 
@@ -1929,6 +1997,19 @@ function initializeTeamChat() {
         panel.classList.toggle('minimized');
         minimizeButton.textContent = panel.classList.contains('minimized') ? '+' : '—';
         localStorage.setItem(CHAT_PANEL_STATE_KEY, JSON.stringify({ minimized: panel.classList.contains('minimized') }));
+    });
+
+    clearButton.addEventListener('click', () => {
+        if (!confirm('Supprimer tous les messages du chat sur cet iPad ?')) return;
+        messagesBox.innerHTML = '';
+        localStorage.removeItem(CHAT_HISTORY_KEY);
+        localStorage.removeItem(CHAT_SEEN_IDS_KEY);
+        renderedMessageIds.clear();
+        persistedSeenIds.clear();
+        sentMessageElements.clear();
+        unreadCount = 0;
+        updateUnreadBadge();
+        appendChatMessage('Système', 'Historique local supprimé.', new Date().toISOString(), true);
     });
 
     connectButton.addEventListener('click', connectToChat);
@@ -1949,15 +2030,24 @@ function initializeTeamChat() {
         appendChatMessage('Système', 'Réseau perdu, les messages sortants seront mis en file.', new Date().toISOString(), true);
     });
 
-    function appendChatMessage(user, text, isoTime, isSystemMessage = false) {
+    function appendChatMessage(user, text, isoTime, isSystemMessage = false, meta = null) {
         const row = document.createElement('div');
         row.className = 'chat-message';
         const time = new Date(isoTime || Date.now());
         const hh = `${time.getHours()}`.padStart(2, '0');
         const mm = `${time.getMinutes()}`.padStart(2, '0');
-        row.innerHTML = `<b>${isSystemMessage ? 'Système' : escapeHtml(user)}</b> <span style="color:#7a7a7a">(${hh}:${mm})</span><br>${escapeHtml(text)}`;
+        const isOwnMessage = meta?.isOwnMessage === true;
+        const baseStatus = meta?.status || 'sent';
+        const statusSymbol = baseStatus === 'read' ? '✓✓' : (baseStatus === 'sent' ? '✓' : '⏳');
+        const statusClass = baseStatus === 'read' ? 'chat-message-status read' : 'chat-message-status';
+        const statusMarkup = (!isSystemMessage && isOwnMessage) ? `<span class="${statusClass}" data-message-status="${meta?.id || ''}">${statusSymbol}</span>` : '';
+        row.innerHTML = `<b>${isSystemMessage ? 'Système' : escapeHtml(user)}</b> <span style="color:#7a7a7a">(${hh}:${mm})</span>${statusMarkup}<br>${escapeHtml(text)}`;
         messagesBox.appendChild(row);
         messagesBox.scrollTop = messagesBox.scrollHeight;
+        if (meta?.id && isOwnMessage) {
+            const statusEl = row.querySelector(`[data-message-status=\"${meta.id}\"]`);
+            if (statusEl) sentMessageElements.set(meta.id, statusEl);
+        }
     }
 }
 
