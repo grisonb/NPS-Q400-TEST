@@ -41,6 +41,7 @@ const CHAT_HISTORY_KEY = 'teamChatHistory';
 let chatClient = null;
 let chatTopic = null;
 let chatHistoryTopic = null;
+let chatPresenceTopic = null;
 let chatConnected = false;
 
 const pelicanAirports = [
@@ -267,6 +268,43 @@ function setupEventListeners() {
         versionDisplay.className = 'version-display';
         versionDisplay.innerText = (typeof APP_VERSION !== 'undefined' && APP_VERSION) ? APP_VERSION : 'version inconnue';
         mainActionButtons.appendChild(versionDisplay);
+
+        const forceUpdateButton = document.createElement('button');
+        forceUpdateButton.className = 'force-update-button';
+        forceUpdateButton.type = 'button';
+        forceUpdateButton.title = 'Forcer la recherche de mise à jour';
+        forceUpdateButton.textContent = '🔄 MAJ';
+        forceUpdateButton.addEventListener('click', async () => {
+            forceUpdateButton.disabled = true;
+            forceUpdateButton.textContent = '⏳ MAJ...';
+            try {
+                if (!('serviceWorker' in navigator)) {
+                    alert('Service Worker indisponible sur cet appareil.');
+                    return;
+                }
+
+                const registration = await navigator.serviceWorker.getRegistration();
+                if (registration) {
+                    await registration.update();
+                    if (registration.waiting) {
+                        registration.waiting.postMessage({ type: 'SKIP_WAITING' });
+                    }
+                }
+
+                if ('caches' in window) {
+                    const cacheKeys = await caches.keys();
+                    await Promise.all(cacheKeys.map((key) => caches.delete(key)));
+                }
+
+                window.location.reload();
+            } catch (error) {
+                alert(`Mise à jour impossible: ${error.message}`);
+            } finally {
+                forceUpdateButton.disabled = false;
+                forceUpdateButton.textContent = '🔄 MAJ';
+            }
+        });
+        mainActionButtons.appendChild(forceUpdateButton);
     }
 
     if (departmentsLayerButton) {
@@ -1753,6 +1791,7 @@ function initializeTeamChat() {
     const minimizeButton = document.getElementById('chat-minimize-button');
     const clearButton = document.getElementById('chat-clear-button');
     const alertBadge = document.getElementById('chat-alert-badge');
+    const offlineBadge = document.getElementById('chat-offline-badge');
     const roomInput = document.getElementById('chat-room-input');
     const userInput = document.getElementById('chat-user-input');
     const connectButton = document.getElementById('chat-connect-button');
@@ -1760,21 +1799,19 @@ function initializeTeamChat() {
     const messageInput = document.getElementById('chat-message-input');
     const messagesBox = document.getElementById('chat-messages');
     const connectionState = document.getElementById('chat-connection-state');
-    if (!panel || !toggleButton || !minimizeButton || !clearButton || !alertBadge || !roomInput || !userInput || !connectButton || !sendButton || !messageInput || !messagesBox || !connectionState) return;
+    const onlineUsersLabel = document.getElementById('chat-online-users');
+    if (!panel || !toggleButton || !minimizeButton || !clearButton || !alertBadge || !offlineBadge || !roomInput || !userInput || !connectButton || !sendButton || !messageInput || !messagesBox || !connectionState || !onlineUsersLabel) return;
 
     const CHAT_CLIENT_ID_KEY = 'teamChatClientId';
     const CHAT_OUTBOX_KEY = 'teamChatOutbox';
-    const CHAT_PANEL_STATE_KEY = 'teamChatPanelState';
     const CHAT_SEEN_IDS_KEY = 'teamChatSeenIds';
     let unreadCount = 0;
     let reconnectAfterOnlineTimeout = null;
     const renderedMessageIds = new Set();
     const sentMessageElements = new Map();
+    const activeUsers = new Map();
     const myClientId = getOrCreateClientId();
-
-    const savedPanelState = JSON.parse(localStorage.getItem(CHAT_PANEL_STATE_KEY) || 'null') || { minimized: false };
-    if (savedPanelState.minimized) panel.classList.add('minimized');
-    minimizeButton.textContent = panel.classList.contains('minimized') ? '+' : '—';
+    minimizeButton.textContent = '—';
 
     const defaultConfig = { room: 'Milan', user: '' };
     const savedConfig = JSON.parse(localStorage.getItem(CHAT_STORAGE_KEY) || 'null') || defaultConfig;
@@ -1793,6 +1830,7 @@ function initializeTeamChat() {
         connectionState.textContent = label || (isOnline ? 'Connecté' : 'Hors ligne');
         connectionState.classList.toggle('online', isOnline);
         connectionState.classList.toggle('offline', !isOnline);
+        offlineBadge.style.display = isOnline ? 'none' : 'flex';
     };
     setConnectionState(false);
 
@@ -1828,7 +1866,32 @@ function initializeTeamChat() {
         alertBadge.textContent = unreadCount > 99 ? '99+' : `${unreadCount}`;
     };
 
-    const shouldWarnUnread = () => panel.style.display !== 'flex' || panel.classList.contains('minimized');
+    const shouldWarnUnread = () => panel.style.display !== 'flex';
+
+    const refreshOnlineUsersLabel = () => {
+        const users = Array.from(activeUsers.values())
+            .filter((name) => typeof name === 'string' && name.trim())
+            .sort((a, b) => a.localeCompare(b, 'fr'));
+        if (!users.length) {
+            onlineUsersLabel.textContent = 'En ligne: 0';
+            return;
+        }
+        const preview = users.slice(0, 4).join(', ');
+        const suffix = users.length > 4 ? ` +${users.length - 4}` : '';
+        onlineUsersLabel.textContent = `En ligne: ${users.length} (${preview}${suffix})`;
+    };
+
+    const publishPresence = (status, explicitUser = null) => {
+        if (!chatClient || !chatPresenceTopic || !myClientId) return;
+        const username = (explicitUser || userInput.value || '').trim();
+        chatClient.publish(`${chatPresenceTopic}/${myClientId}`, JSON.stringify({
+            type: 'presence',
+            senderClientId: myClientId,
+            user: username || 'inconnu',
+            status,
+            time: new Date().toISOString()
+        }), { qos: 1, retain: true });
+    };
 
     const persistSeenIds = () => {
         localStorage.setItem(CHAT_SEEN_IDS_KEY, JSON.stringify(Array.from(persistedSeenIds).slice(-400)));
@@ -1887,13 +1950,18 @@ function initializeTeamChat() {
             return;
         }
         persistConfig();
+        const previousUser = activeUsers.get(myClientId) || (userInput.value || '').trim();
+        publishPresence('offline', previousUser);
         if (chatClient) {
             try { chatClient.end(false); } catch (_) {}
             chatClient = null;
         }
+        activeUsers.clear();
+        refreshOnlineUsersLabel();
 
         chatTopic = `pelic/chat/${roomName}`;
         chatHistoryTopic = `pelic/chat_history/${roomName}`;
+        chatPresenceTopic = `pelic/chat_presence/${roomName}`;
         setConnectionState(false, 'Connexion...');
         chatClient = mqtt.connect('wss://test.mosquitto.org:8081/mqtt', {
             keepalive: 30,
@@ -1901,7 +1969,19 @@ function initializeTeamChat() {
             connectTimeout: 12000,
             clean: false,
             protocolVersion: 4,
-            clientId: myClientId
+            clientId: myClientId,
+            will: {
+                topic: `${chatPresenceTopic}/${myClientId}`,
+                payload: JSON.stringify({
+                    type: 'presence',
+                    senderClientId: myClientId,
+                    user: userName,
+                    status: 'offline',
+                    time: new Date().toISOString()
+                }),
+                qos: 1,
+                retain: true
+            }
         });
 
         chatClient.on('connect', () => {
@@ -1917,9 +1997,17 @@ function initializeTeamChat() {
                         appendChatMessage('Système', `Abonnement historique impossible: ${historyErr.message}`, new Date().toISOString(), true);
                         return;
                     }
-                    setConnectionState(true);
-                    appendChatMessage('Système', `Connecté au canal "${roomName}".`, new Date().toISOString(), true);
-                    flushOutbox();
+                    chatClient.subscribe(`${chatPresenceTopic}/#`, { qos: 1 }, (presenceErr) => {
+                        if (presenceErr) {
+                            setConnectionState(false, 'Erreur présence');
+                            appendChatMessage('Système', `Abonnement présence impossible: ${presenceErr.message}`, new Date().toISOString(), true);
+                            return;
+                        }
+                        setConnectionState(true);
+                        appendChatMessage('Système', `Connecté au canal "${roomName}".`, new Date().toISOString(), true);
+                        publishPresence('online', userName);
+                        flushOutbox();
+                    });
                 });
             });
         });
@@ -1931,6 +2019,16 @@ function initializeTeamChat() {
 
                 if (parsed.type === 'read_receipt' && parsed.messageId) {
                     updateMessageStatus(parsed.messageId, 'read');
+                    return;
+                }
+
+                if (parsed.type === 'presence' && parsed.senderClientId) {
+                    if (parsed.status === 'offline') {
+                        activeUsers.delete(parsed.senderClientId);
+                    } else {
+                        activeUsers.set(parsed.senderClientId, (parsed.user || '').trim() || 'inconnu');
+                    }
+                    refreshOnlineUsersLabel();
                     return;
                 }
 
@@ -1965,8 +2063,16 @@ function initializeTeamChat() {
         });
 
         chatClient.on('reconnect', () => setConnectionState(false, 'Reconnexion...'));
-        chatClient.on('close', () => setConnectionState(false));
-        chatClient.on('offline', () => setConnectionState(false, 'Hors ligne'));
+        chatClient.on('close', () => {
+            setConnectionState(false);
+            activeUsers.clear();
+            refreshOnlineUsersLabel();
+        });
+        chatClient.on('offline', () => {
+            setConnectionState(false, 'Hors ligne');
+            activeUsers.clear();
+            refreshOnlineUsersLabel();
+        });
         chatClient.on('error', (err) => {
             setConnectionState(false, 'Erreur réseau');
             appendChatMessage('Système', `Erreur réseau: ${err.message}`, new Date().toISOString(), true);
@@ -2002,32 +2108,63 @@ function initializeTeamChat() {
         messageInput.value = '';
     }
 
-    toggleButton.addEventListener('click', () => {
+    const toggleChatPanel = () => {
         const visible = panel.style.display === 'flex';
         panel.style.display = visible ? 'none' : 'flex';
         if (!visible) {
             unreadCount = 0;
             updateUnreadBadge();
         }
-    });
+    };
+    toggleButton.addEventListener('click', toggleChatPanel);
 
     minimizeButton.addEventListener('click', () => {
-        panel.classList.toggle('minimized');
-        minimizeButton.textContent = panel.classList.contains('minimized') ? '+' : '—';
-        localStorage.setItem(CHAT_PANEL_STATE_KEY, JSON.stringify({ minimized: panel.classList.contains('minimized') }));
+        toggleChatPanel();
     });
 
     clearButton.addEventListener('click', () => {
-        if (!confirm('Supprimer tous les messages du chat sur cet iPad ?')) return;
-        messagesBox.innerHTML = '';
-        localStorage.removeItem(CHAT_HISTORY_KEY);
-        localStorage.removeItem(CHAT_SEEN_IDS_KEY);
-        renderedMessageIds.clear();
-        persistedSeenIds.clear();
-        sentMessageElements.clear();
-        unreadCount = 0;
-        updateUnreadBadge();
-        appendChatMessage('Système', 'Historique local supprimé.', new Date().toISOString(), true);
+        const choice = prompt(
+            'Que voulez-vous supprimer ?\n' +
+            '1 = Messages de cet iPad uniquement\n' +
+            '2 = Messages de cet iPad + messages enregistrés du canal\n' +
+            '3 = Annuler',
+            '1'
+        );
+        if (!choice || choice.trim() === '3') return;
+
+        const history = JSON.parse(localStorage.getItem(CHAT_HISTORY_KEY) || '[]');
+        const clearLocalHistory = () => {
+            messagesBox.innerHTML = '';
+            localStorage.removeItem(CHAT_HISTORY_KEY);
+            localStorage.removeItem(CHAT_SEEN_IDS_KEY);
+            renderedMessageIds.clear();
+            persistedSeenIds.clear();
+            sentMessageElements.clear();
+            unreadCount = 0;
+            updateUnreadBadge();
+        };
+
+        if (choice.trim() === '1') {
+            clearLocalHistory();
+            appendChatMessage('Système', 'Historique local supprimé.', new Date().toISOString(), true);
+            return;
+        }
+
+        if (choice.trim() === '2') {
+            if (!chatClient || !chatConnected || !chatHistoryTopic) {
+                alert('Connexion au canal requise pour supprimer les messages enregistrés du canal.');
+                return;
+            }
+            const historyIds = Array.from(new Set(history.map((item) => item?.id).filter(Boolean)));
+            historyIds.forEach((messageId) => {
+                chatClient.publish(`${chatHistoryTopic}/${messageId}`, '', { qos: 1, retain: true });
+            });
+            clearLocalHistory();
+            appendChatMessage('Système', `Historique local supprimé + ${historyIds.length} message(s) canal nettoyé(s).`, new Date().toISOString(), true);
+            return;
+        }
+
+        alert('Choix invalide. Utilisez 1, 2 ou 3.');
     });
 
     connectButton.addEventListener('click', connectToChat);
@@ -2053,6 +2190,10 @@ function initializeTeamChat() {
         }
         setConnectionState(false, 'Hors ligne');
         appendChatMessage('Système', 'Réseau perdu, les messages sortants seront mis en file.', new Date().toISOString(), true);
+    });
+
+    window.addEventListener('beforeunload', () => {
+        publishPresence('offline');
     });
 
     function appendChatMessage(user, text, isoTime, isSystemMessage = false, meta = null) {

@@ -11,7 +11,7 @@
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <script>
-        const APP_VERSION = 'v8.40';
+        const APP_VERSION = 'v8.44';
 
         if ('serviceWorker' in navigator) {
             window.addEventListener('load', async () => {
@@ -58,7 +58,7 @@
         <button id="toggle-search-button" title="Rechercher une commune">🏙️</button>
         <button id="calculator-button" title="Ouvrir le calculateur de mission">✈️</button>
         <button id="gps-feu-button" title="Créer un feu à ma position">🎯</button>
-        <button id="chat-toggle-button" title="Ouvrir/Fermer le chat équipe">💬<span id="chat-alert-badge" style="display:none;">0</span></button>
+        <button id="chat-toggle-button" title="Ouvrir/Fermer le chat équipe">💬<span id="chat-alert-badge" style="display:none;">0</span><span id="chat-offline-badge" aria-hidden="true">✕</span></button>
     </div>
       <div id="bingo-map-display" style="display: none;">
         <span id="map-bingo-lftw"></span>
@@ -71,6 +71,7 @@
             <strong>Chat équipe</strong>
             <div class="chat-header-actions">
                 <span id="chat-connection-state">Hors ligne</span>
+                <span id="chat-online-users">En ligne: --</span>
                 <button id="chat-clear-button" title="Supprimer les messages">🗑️</button>
                 <button id="chat-minimize-button" title="Réduire/Agrandir le chat">—</button>
             </div>
