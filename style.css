@@ -650,6 +650,26 @@ html, body {
     cursor: pointer;
 }
 
+.offline-pack-select-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin: 0 0 12px;
+}
+
+.offline-pack-select-row label {
+    font-weight: 600;
+    color: var(--primary-color);
+}
+
+#offline-pack-select {
+    flex: 1;
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    padding: 8px 10px;
+    font-size: 14px;
+}
+
 #offline-status {
     margin-top: 8px;
     color: var(--light-text-color);

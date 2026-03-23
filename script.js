@@ -30,12 +30,14 @@ let db; // Variable pour la connexion à la base de données IndexedDB
 const OFFLINE_TILES_ENABLED_KEY = 'offlineTilesEnabled';
 const DEFAULT_OFFLINE_TILES_ENABLED = true;
 const OFFLINE_TILES_MAX_ZOOM_KEY = 'offlineTilesMaxZoom';
+const OFFLINE_SELECTED_PACK_KEY = 'offlineSelectedPack';
 const SHOW_DEPARTMENTS_LAYER_KEY = 'showDepartmentsLayer';
 const ONLINE_MAX_NATIVE_ZOOM = 18;
 const OFFLINE_FALLBACK_NATIVE_ZOOM = 14;
 const GLOBAL_MAX_ZOOM = 18;
 let baseTileMaxNativeZoom = ONLINE_MAX_NATIVE_ZOOM;
 let offlineTilesMode = DEFAULT_OFFLINE_TILES_ENABLED;
+let selectedOfflinePack = '';
 const CHAT_STORAGE_KEY = 'teamChatConfig';
 const CHAT_HISTORY_KEY = 'teamChatHistory';
 let chatClient = null;
@@ -126,6 +128,7 @@ async function initializeApp() {
         gaarCircuits = JSON.parse(savedGaarJSON);
     }
     await initDB();
+    selectedOfflinePack = localStorage.getItem(OFFLINE_SELECTED_PACK_KEY) || '';
     await initializeOfflineTilePreference();
     await updateBaseTileNativeZoomFromAvailability();
     displayInstalledMaps();
@@ -263,6 +266,7 @@ function setupEventListeners() {
     const closeOfflineMapButton = document.getElementById('close-offline-map-btn');
     const zipImporterInput = document.getElementById('zip-importer-input');
     const offlineTilesEnabledToggle = document.getElementById('offline-tiles-enabled-toggle');
+    const offlinePackSelect = document.getElementById('offline-pack-select');
     
     if (mainActionButtons) {
         const versionDisplay = document.createElement('div');
@@ -446,6 +450,15 @@ function setupEventListeners() {
         });
     }
 
+    if (offlinePackSelect) {
+        offlinePackSelect.addEventListener('change', async (event) => {
+            await setOfflineSelectedPack(event.target.value || '');
+            await updateBaseTileNativeZoomFromAvailability({ forceScan: true });
+            setupBaseTileLayer();
+            updateOfflineStatus();
+        });
+    }
+
     updateBaseLabels();
     updateLftwButtonState();
     updateGaarButtonState();
@@ -473,6 +486,7 @@ function displayResults(results) {
 
 async function findMaxOfflineTileZoom() {
     if (!db) return null;
+    const targetPack = selectedOfflinePack || '';
     return new Promise((resolve) => {
         const tx = db.transaction('tiles', 'readonly');
         const store = tx.objectStore('tiles');
@@ -483,6 +497,10 @@ async function findMaxOfflineTileZoom() {
             const cursor = event.target.result;
             if (!cursor) {
                 resolve(maxZoom);
+                return;
+            }
+            if (targetPack && cursor.value?.packName !== targetPack) {
+                cursor.continue();
                 return;
             }
             const url = cursor.value?.url;
@@ -504,13 +522,14 @@ async function findMaxOfflineTileZoom() {
 
 async function updateBaseTileNativeZoomFromAvailability({ forceScan = false } = {}) {
     const offlineEnabled = await getOfflineTilesEnabled();
+    const shouldForceScan = forceScan || !!selectedOfflinePack;
     if (!offlineEnabled) {
         baseTileMaxNativeZoom = ONLINE_MAX_NATIVE_ZOOM;
     } else {
         const storedOfflineMaxZoom = Number.parseInt(localStorage.getItem(OFFLINE_TILES_MAX_ZOOM_KEY) || '', 10);
         let offlineMaxZoom = Number.isFinite(storedOfflineMaxZoom) ? storedOfflineMaxZoom : null;
 
-        if (forceScan) {
+        if (shouldForceScan) {
             offlineMaxZoom = await findMaxOfflineTileZoom();
             if (offlineMaxZoom === null) {
                 localStorage.removeItem(OFFLINE_TILES_MAX_ZOOM_KEY);
@@ -1095,14 +1114,39 @@ function notifyServiceWorkerOfflineTilesPreference(enabled) {
     });
 }
 
+function notifyServiceWorkerSelectedPack(packName) {
+    if (!('serviceWorker' in navigator)) return;
+    if (!navigator.serviceWorker.controller) return;
+    navigator.serviceWorker.controller.postMessage({
+        type: 'OFFLINE_SELECTED_PACK_CHANGED',
+        value: packName || ''
+    });
+}
+
+async function setOfflineSelectedPack(packName) {
+    selectedOfflinePack = (packName || '').trim();
+    localStorage.setItem(OFFLINE_SELECTED_PACK_KEY, selectedOfflinePack);
+    if (db) {
+        try {
+            const tx = db.transaction('settings', 'readwrite');
+            tx.objectStore('settings').put({ key: OFFLINE_SELECTED_PACK_KEY, value: selectedOfflinePack });
+        } catch (_) {}
+    }
+    notifyServiceWorkerSelectedPack(selectedOfflinePack);
+}
+
 function updateOfflineStatus() {
     const status = document.getElementById('offline-status');
     const toggle = document.getElementById('offline-tiles-enabled-toggle');
     if (!status || !toggle) return;
 
-    status.textContent = toggle.checked
-        ? 'Cartes téléchargées activées (prioritaires sur la carte en ligne).'
-        : 'Cartes téléchargées désactivées (utilisation de la carte en ligne).';
+    if (!toggle.checked) {
+        status.textContent = 'Cartes téléchargées désactivées (utilisation de la carte en ligne).';
+        return;
+    }
+
+    const selectedLabel = selectedOfflinePack ? `Pack actif : ${selectedOfflinePack}.` : 'Tous les packs actifs.';
+    status.textContent = `Cartes téléchargées activées (prioritaires sur la carte en ligne). ${selectedLabel}`;
 }
 
 async function initializeOfflineTilePreference() {
@@ -1112,6 +1156,7 @@ async function initializeOfflineTilePreference() {
     const enabled = await getOfflineTilesEnabled();
     toggle.checked = enabled;
     notifyServiceWorkerOfflineTilesPreference(enabled);
+    notifyServiceWorkerSelectedPack(selectedOfflinePack);
     updateOfflineStatus();
 }
 
@@ -1214,6 +1259,9 @@ async function handleZipImport(file) {
             installedPacks.push({ name: packName, date: new Date().toLocaleDateString() });
             localStorage.setItem('installedMapPacks', JSON.stringify(installedPacks));
         }
+        if (!selectedOfflinePack) {
+            await setOfflineSelectedPack(packName);
+        }
         const currentOfflineMax = Number.parseInt(localStorage.getItem(OFFLINE_TILES_MAX_ZOOM_KEY) || '', 10);
         const nextOfflineMax = Number.isFinite(currentOfflineMax) ? Math.max(currentOfflineMax, importedMaxZoom) : importedMaxZoom;
         localStorage.setItem(OFFLINE_TILES_MAX_ZOOM_KEY, String(nextOfflineMax));
@@ -1230,11 +1278,30 @@ async function handleZipImport(file) {
 
 function displayInstalledMaps() {
     const list = document.getElementById('installed-maps-list');
+    const select = document.getElementById('offline-pack-select');
     const installedPacks = JSON.parse(localStorage.getItem('installedMapPacks') || '[]');
     list.innerHTML = '';
 
+    if (select) {
+        select.innerHTML = '<option value="">Tous les packs</option>';
+        installedPacks.forEach((pack) => {
+            const option = document.createElement('option');
+            option.value = pack.name;
+            option.textContent = pack.name;
+            select.appendChild(option);
+        });
+
+        if (selectedOfflinePack && !installedPacks.some((pack) => pack.name === selectedOfflinePack)) {
+            setOfflineSelectedPack('');
+        }
+
+        select.value = selectedOfflinePack || '';
+        select.disabled = installedPacks.length === 0;
+    }
+
     if (installedPacks.length === 0) {
         list.innerHTML = '<li class="no-maps-placeholder">Aucun pack de cartes installé.</li>';
+        updateOfflineStatus();
         return;
     }
 
@@ -1246,6 +1313,7 @@ function displayInstalledMaps() {
         `;
         list.appendChild(li);
     });
+    updateOfflineStatus();
 }
 
 window.deleteMapPack = async function(packName) {
