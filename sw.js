@@ -1,6 +1,6 @@
-const APP_CACHE_NAME = 'test-communes-app-cache-v860'; 
-const DATA_CACHE_NAME = 'test-communes-data-cache-v860';
-const TILE_CACHE_NAME = 'test-communes-tile-cache-v860';
+const APP_CACHE_NAME = 'test-communes-app-cache-v861'; 
+const DATA_CACHE_NAME = 'test-communes-data-cache-v861';
+const TILE_CACHE_NAME = 'test-communes-tile-cache-v861';
 
 const APP_SHELL_URLS = [
     './',
@@ -56,6 +56,12 @@ self.addEventListener('message', event => {
         offlineSelectedPackCache = (event.data.value || '').trim();
         offlineSelectedPackLoaded = true;
         memoryTileCache.clear();
+        return;
+    }
+
+    if (event.data && event.data.type === 'OFFLINE_ONLINE_FALLBACK_CHANGED') {
+        offlineOnlineFallbackCache = !!event.data.value;
+        offlineOnlineFallbackLoaded = true;
     }
 });
 
@@ -65,6 +71,8 @@ const OFFLINE_SELECTED_PACK_KEY = 'offlineSelectedPack';
 const DEFAULT_OFFLINE_TILES_ENABLED = true;
 let offlineTilesEnabledCache = DEFAULT_OFFLINE_TILES_ENABLED;
 let offlineTilesEnabledLoaded = false;
+let offlineOnlineFallbackCache = true;
+let offlineOnlineFallbackLoaded = false;
 let offlineSelectedPackCache = '';
 let offlineSelectedPackLoaded = false;
 let tileCachePromise = null;
@@ -175,6 +183,13 @@ function getSelectedOfflinePack() {
     });
 }
 
+function isOfflineOnlineFallbackEnabled() {
+    if (offlineOnlineFallbackLoaded) {
+        return Promise.resolve(offlineOnlineFallbackCache);
+    }
+    return Promise.resolve(offlineOnlineFallbackCache);
+}
+
 function getTileFromDb(url) {
     const normalizedUrl = normalizeTileUrl(url);
     return Promise.all([getDb(), getSelectedOfflinePack()]).then(([db, selectedPack]) => {
@@ -275,24 +290,21 @@ function getTileFromCacheOnly(request) {
 self.addEventListener('fetch', event => {
     const requestUrl = new URL(event.request.url);
 
-    // Stratégie pour les tuiles de carte : DB d'abord, puis réseau, avec mise en cache réseau
+    // Stratégie pour les tuiles de carte
     if (requestUrl.hostname.includes('tile.openstreetmap.org')) {
         event.respondWith(
-            isOfflineTilesEnabled().then(enabled => {
+            Promise.all([isOfflineTilesEnabled(), isOfflineOnlineFallbackEnabled()]).then(([enabled, onlineFallbackEnabled]) => {
                 if (!enabled) {
                     return getTileFromNetworkOrCache(event.request);
                 }
 
-                const offlineLikely = typeof navigator !== 'undefined' && navigator.onLine === false;
-
-                if (offlineLikely) {
-                    return getTileFromDb(event.request.url).then(dbTile => {
-                        if (dbTile) return dbTile;
+                return getTileFromDb(event.request.url).then(dbTile => {
+                    if (dbTile) return dbTile;
+                    if (!onlineFallbackEnabled) {
                         return getTileFromCacheOnly(event.request);
-                    });
-                }
-
-                return getTileFromNetworkOrCache(event.request).catch(() => getTileFromDb(event.request.url));
+                    }
+                    return getTileFromNetworkOrCache(event.request).catch(() => getTileFromCacheOnly(event.request));
+                });
             })
         );
         return;

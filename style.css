@@ -596,7 +596,8 @@ html, body {
 
 .import-button {
     display: block;
-    width: 100%;
+    width: min(100%, 420px);
+    margin: 0 auto;
     padding: 15px;
     background-color: var(--primary-color);
     color: white;

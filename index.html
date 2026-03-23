@@ -11,7 +11,7 @@
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <script>
-        const APP_VERSION = 'v8.60';
+        const APP_VERSION = 'v8.61';
 
         if ('serviceWorker' in navigator) {
             window.addEventListener('load', async () => {
@@ -285,6 +285,12 @@
                         <label>
                             <input type="checkbox" id="offline-tiles-enabled-toggle" checked>
                             Utiliser les cartes téléchargées (hors-ligne prioritaire)
+                        </label>
+                    </div>
+                    <div class="offline-toggle-row">
+                        <label>
+                            <input type="checkbox" id="offline-online-fallback-toggle" checked>
+                            Autoriser le secours carte en ligne si tuile offline absente
                         </label>
                     </div>
                     <div class="offline-pack-select-row">

@@ -29,6 +29,8 @@ let gaarLayer = null;
 let db; // Variable pour la connexion à la base de données IndexedDB
 const OFFLINE_TILES_ENABLED_KEY = 'offlineTilesEnabled';
 const DEFAULT_OFFLINE_TILES_ENABLED = true;
+const OFFLINE_ONLINE_FALLBACK_KEY = 'offlineOnlineFallback';
+const DEFAULT_OFFLINE_ONLINE_FALLBACK = true;
 const OFFLINE_TILES_MAX_ZOOM_KEY = 'offlineTilesMaxZoom';
 const OFFLINE_SELECTED_PACK_KEY = 'offlineSelectedPack';
 const SHOW_DEPARTMENTS_LAYER_KEY = 'showDepartmentsLayer';
@@ -37,6 +39,7 @@ const OFFLINE_FALLBACK_NATIVE_ZOOM = 14;
 const GLOBAL_MAX_ZOOM = 18;
 let baseTileMaxNativeZoom = ONLINE_MAX_NATIVE_ZOOM;
 let offlineTilesMode = DEFAULT_OFFLINE_TILES_ENABLED;
+let offlineOnlineFallbackMode = DEFAULT_OFFLINE_ONLINE_FALLBACK;
 let selectedOfflinePack = '';
 const CHAT_STORAGE_KEY = 'teamChatConfig';
 const CHAT_HISTORY_KEY = 'teamChatHistory';
@@ -129,6 +132,9 @@ async function initializeApp() {
     }
     await initDB();
     selectedOfflinePack = localStorage.getItem(OFFLINE_SELECTED_PACK_KEY) || '';
+    offlineOnlineFallbackMode = localStorage.getItem(OFFLINE_ONLINE_FALLBACK_KEY) === null
+        ? DEFAULT_OFFLINE_ONLINE_FALLBACK
+        : localStorage.getItem(OFFLINE_ONLINE_FALLBACK_KEY) === 'true';
     await initializeOfflineTilePreference();
     await updateBaseTileNativeZoomFromAvailability();
     displayInstalledMaps();
@@ -266,6 +272,7 @@ function setupEventListeners() {
     const closeOfflineMapButton = document.getElementById('close-offline-map-btn');
     const zipImporterInput = document.getElementById('zip-importer-input');
     const offlineTilesEnabledToggle = document.getElementById('offline-tiles-enabled-toggle');
+    const offlineOnlineFallbackToggle = document.getElementById('offline-online-fallback-toggle');
     const offlinePackSelect = document.getElementById('offline-pack-select');
     
     if (mainActionButtons) {
@@ -446,6 +453,13 @@ function setupEventListeners() {
             const enabled = event.target.checked;
             await setOfflineTilesEnabled(enabled);
             await updateBaseTileNativeZoomFromAvailability();
+            updateOfflineStatus();
+        });
+    }
+
+    if (offlineOnlineFallbackToggle) {
+        offlineOnlineFallbackToggle.addEventListener('change', () => {
+            setOfflineOnlineFallbackMode(offlineOnlineFallbackToggle.checked);
             updateOfflineStatus();
         });
     }
@@ -1114,6 +1128,15 @@ function notifyServiceWorkerOfflineTilesPreference(enabled) {
     });
 }
 
+function notifyServiceWorkerOfflineOnlineFallback(enabled) {
+    if (!('serviceWorker' in navigator)) return;
+    if (!navigator.serviceWorker.controller) return;
+    navigator.serviceWorker.controller.postMessage({
+        type: 'OFFLINE_ONLINE_FALLBACK_CHANGED',
+        value: !!enabled
+    });
+}
+
 function notifyServiceWorkerSelectedPack(packName) {
     if (!('serviceWorker' in navigator)) return;
     if (!navigator.serviceWorker.controller) return;
@@ -1135,6 +1158,18 @@ async function setOfflineSelectedPack(packName) {
     notifyServiceWorkerSelectedPack(selectedOfflinePack);
 }
 
+function setOfflineOnlineFallbackMode(enabled) {
+    offlineOnlineFallbackMode = !!enabled;
+    localStorage.setItem(OFFLINE_ONLINE_FALLBACK_KEY, String(offlineOnlineFallbackMode));
+    if (db) {
+        try {
+            const tx = db.transaction('settings', 'readwrite');
+            tx.objectStore('settings').put({ key: OFFLINE_ONLINE_FALLBACK_KEY, value: offlineOnlineFallbackMode });
+        } catch (_) {}
+    }
+    notifyServiceWorkerOfflineOnlineFallback(offlineOnlineFallbackMode);
+}
+
 function updateOfflineStatus() {
     const status = document.getElementById('offline-status');
     const toggle = document.getElementById('offline-tiles-enabled-toggle');
@@ -1146,16 +1181,24 @@ function updateOfflineStatus() {
     }
 
     const selectedLabel = selectedOfflinePack ? `Pack actif : ${selectedOfflinePack}.` : 'Tous les packs actifs.';
-    status.textContent = `Cartes téléchargées activées (prioritaires sur la carte en ligne). ${selectedLabel}`;
+    const fallbackLabel = offlineOnlineFallbackMode
+        ? 'Secours online actif si tuile absente.'
+        : 'Secours online désactivé (offline strict).';
+    status.textContent = `Cartes téléchargées activées. ${selectedLabel} ${fallbackLabel}`;
 }
 
 async function initializeOfflineTilePreference() {
     const toggle = document.getElementById('offline-tiles-enabled-toggle');
+    const fallbackToggle = document.getElementById('offline-online-fallback-toggle');
     if (!toggle) return;
 
     const enabled = await getOfflineTilesEnabled();
     toggle.checked = enabled;
+    if (fallbackToggle) {
+        fallbackToggle.checked = offlineOnlineFallbackMode;
+    }
     notifyServiceWorkerOfflineTilesPreference(enabled);
+    notifyServiceWorkerOfflineOnlineFallback(offlineOnlineFallbackMode);
     notifyServiceWorkerSelectedPack(selectedOfflinePack);
     updateOfflineStatus();
 }
