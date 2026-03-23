@@ -1,6 +1,6 @@
-const APP_CACHE_NAME = 'test-communes-app-cache-v863'; 
-const DATA_CACHE_NAME = 'test-communes-data-cache-v863';
-const TILE_CACHE_NAME = 'test-communes-tile-cache-v863';
+const APP_CACHE_NAME = 'test-communes-app-cache-v864'; 
+const DATA_CACHE_NAME = 'test-communes-data-cache-v864';
+const TILE_CACHE_NAME = 'test-communes-tile-cache-v864';
 
 const APP_SHELL_URLS = [
     './',
@@ -244,18 +244,15 @@ function getTileFromNetworkOrCache(request) {
     }
 
     return tileCachePromise.then(cache => {
-        return cache.match(request).then(cachedResponse => {
-            if (cachedResponse) return cachedResponse;
-
-            const normalizedUrl = normalizeTileUrl(request.url);
-            if (normalizedUrl !== request.url) {
-                return cache.match(normalizedUrl).then(normalizedCachedResponse => {
-                    if (normalizedCachedResponse) return normalizedCachedResponse;
-                    return fetchAndCacheTile(cache, request, normalizedUrl);
-                });
-            }
-
-            return fetchAndCacheTile(cache, request, normalizedUrl);
+        const normalizedUrl = normalizeTileUrl(request.url);
+        return fetchAndCacheTile(cache, request, normalizedUrl).catch(() => {
+            return cache.match(request).then(cachedResponse => {
+                if (cachedResponse) return cachedResponse;
+                if (normalizedUrl !== request.url) {
+                    return cache.match(normalizedUrl);
+                }
+                return null;
+            });
         });
     });
 }
