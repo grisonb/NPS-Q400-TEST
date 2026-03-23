@@ -165,7 +165,7 @@ function initMap() {
         zoomControl: false,
         maxZoom: GLOBAL_MAX_ZOOM
     }).setView([46.6, 2.2], 5.5);
-    L.control.zoom({ position: 'bottomright' }).addTo(map);
+    L.control.zoom({ position: 'bottomleft' }).addTo(map);
     setupBaseTileLayer();
     permanentAirportLayer = L.layerGroup().addTo(map);
     routesLayer = L.layerGroup().addTo(map);
