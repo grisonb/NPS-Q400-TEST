@@ -1844,7 +1844,7 @@ function initializeTeamChat() {
 
     const persistConfig = () => {
         localStorage.setItem(CHAT_STORAGE_KEY, JSON.stringify({
-            room: (roomInput.value || '').trim().toLowerCase().replace(/[^a-z0-9-_]/g, ''),
+            room: (roomInput.value || '').trim().replace(/[^a-zA-Z0-9-_]/g, ''),
             user: (userInput.value || '').trim().slice(0, 24)
         }));
     };
@@ -1985,7 +1985,7 @@ function initializeTeamChat() {
     };
 
     const reconnectIfNeeded = (reasonLabel = 'Reconnexion...') => {
-        const roomName = (roomInput.value || '').trim().toLowerCase().replace(/[^a-z0-9-_]/g, '');
+        const roomName = (roomInput.value || '').trim().replace(/[^a-zA-Z0-9-_]/g, '');
         const userName = (userInput.value || '').trim();
         if (!roomName || !userName) return;
         if (chatConnected || isChatConnecting) return;
@@ -2002,7 +2002,7 @@ function initializeTeamChat() {
             appendChatMessage('Système', 'Client MQTT introuvable (connexion impossible).', new Date().toISOString(), true);
             return;
         }
-        const roomName = (roomInput.value || '').trim().toLowerCase().replace(/[^a-z0-9-_]/g, '');
+        const roomName = (roomInput.value || '').trim().replace(/[^a-zA-Z0-9-_]/g, '');
         const userName = (userInput.value || '').trim();
         if (!roomName || !userName) {
             appendChatMessage('Système', 'Canal et pseudo obligatoires.', new Date().toISOString(), true);
