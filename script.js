@@ -543,7 +543,7 @@ async function findMaxOfflineTileZoom() {
 
 async function updateBaseTileNativeZoomFromAvailability({ forceScan = false } = {}) {
     const offlineEnabled = await getOfflineTilesEnabled();
-    const shouldForceScan = forceScan || !!selectedOfflinePack;
+    const shouldForceScan = forceScan;
     if (!offlineEnabled) {
         baseTileMaxNativeZoom = ONLINE_MAX_NATIVE_ZOOM;
     } else {
