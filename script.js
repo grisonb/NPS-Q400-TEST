@@ -130,14 +130,21 @@ async function initializeApp() {
     if (savedGaarJSON) {
         gaarCircuits = JSON.parse(savedGaarJSON);
     }
-    await initDB();
-    selectedOfflinePack = localStorage.getItem(OFFLINE_SELECTED_PACK_KEY) || '';
-    offlineOnlineFallbackMode = localStorage.getItem(OFFLINE_ONLINE_FALLBACK_KEY) === null
-        ? DEFAULT_OFFLINE_ONLINE_FALLBACK
-        : localStorage.getItem(OFFLINE_ONLINE_FALLBACK_KEY) === 'true';
-    await initializeOfflineTilePreference();
-    await updateBaseTileNativeZoomFromAvailability();
-    displayInstalledMaps();
+    try {
+        await initDB();
+        selectedOfflinePack = localStorage.getItem(OFFLINE_SELECTED_PACK_KEY) || '';
+        offlineOnlineFallbackMode = localStorage.getItem(OFFLINE_ONLINE_FALLBACK_KEY) === null
+            ? DEFAULT_OFFLINE_ONLINE_FALLBACK
+            : localStorage.getItem(OFFLINE_ONLINE_FALLBACK_KEY) === 'true';
+        await initializeOfflineTilePreference();
+        await updateBaseTileNativeZoomFromAvailability();
+        displayInstalledMaps();
+    } catch (startupError) {
+        console.error('Initialisation offline incomplète:', startupError);
+        selectedOfflinePack = '';
+        offlineOnlineFallbackMode = DEFAULT_OFFLINE_ONLINE_FALLBACK;
+        displayInstalledMaps();
+    }
     try {
         const response = await fetch('./communes.json');
         if (!response.ok) throw new Error(`HTTP ${response.status}`);
