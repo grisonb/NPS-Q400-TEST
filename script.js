@@ -1812,6 +1812,7 @@ function initializeTeamChat() {
     const CHAT_SEEN_IDS_KEY = 'teamChatSeenIds';
     let unreadCount = 0;
     let reconnectAfterOnlineTimeout = null;
+    let isChatConnecting = false;
     let hasAnnouncedConnection = true;
     const pendingChatMessages = [];
     const renderedMessageIds = new Set();
@@ -1987,13 +1988,17 @@ function initializeTeamChat() {
         const roomName = (roomInput.value || '').trim().toLowerCase().replace(/[^a-z0-9-_]/g, '');
         const userName = (userInput.value || '').trim();
         if (!roomName || !userName) return;
-        if (chatConnected) return;
+        if (chatConnected || isChatConnecting) return;
         appendChatMessage('Système', reasonLabel, new Date().toISOString(), true);
         connectToChat();
     };
 
     function connectToChat() {
+        if (isChatConnecting) return;
+        isChatConnecting = true;
+
         if (typeof mqtt === 'undefined') {
+            isChatConnecting = false;
             appendChatMessage('Système', 'Client MQTT introuvable (connexion impossible).', new Date().toISOString(), true);
             return;
         }
@@ -2001,6 +2006,7 @@ function initializeTeamChat() {
         const userName = (userInput.value || '').trim();
         if (!roomName || !userName) {
             appendChatMessage('Système', 'Canal et pseudo obligatoires.', new Date().toISOString(), true);
+            isChatConnecting = false;
             return;
         }
         persistConfig();
@@ -2045,6 +2051,7 @@ function initializeTeamChat() {
                 if (hasAnnouncedConnection) return;
                 hasAnnouncedConnection = true;
                 setConnectionState(true);
+                isChatConnecting = false;
                 appendChatMessage('Système', `Connecté au canal "${roomName}" (${CHAT_BROKER_URL}).`, new Date().toISOString(), true);
 
                 while (pendingChatMessages.length) {
@@ -2056,6 +2063,7 @@ function initializeTeamChat() {
             chatClient.subscribe(chatTopic, { qos: 1 }, (err) => {
                 if (err) {
                     setConnectionState(false, 'Erreur abonnement');
+                    isChatConnecting = false;
                     appendChatMessage('Système', `Abonnement impossible: ${err.message}`, new Date().toISOString(), true);
                     return;
                 }
@@ -2070,12 +2078,14 @@ function initializeTeamChat() {
                 chatClient.subscribe(`${chatHistoryTopic}/#`, { qos: 1 }, (historyErr) => {
                     if (historyErr) {
                         setConnectionState(false, 'Erreur historique');
+                        isChatConnecting = false;
                         appendChatMessage('Système', `Abonnement historique impossible: ${historyErr.message}`, new Date().toISOString(), true);
                         return;
                     }
                     chatClient.subscribe(`${chatPresenceTopic}/#`, { qos: 1 }, (presenceErr) => {
                         if (presenceErr) {
                             setConnectionState(false, 'Erreur présence');
+                            isChatConnecting = false;
                             appendChatMessage('Système', `Abonnement présence impossible: ${presenceErr.message}`, new Date().toISOString(), true);
                             return;
                         }
@@ -2133,18 +2143,26 @@ function initializeTeamChat() {
             } catch (_) {}
         });
 
-        chatClient.on('reconnect', () => setConnectionState(false, 'Reconnexion...'));
+        chatClient.on('reconnect', () => {
+            hasAnnouncedConnection = false;
+            setConnectionState(false, 'Reconnexion...');
+        });
         chatClient.on('close', () => {
+            hasAnnouncedConnection = false;
+            isChatConnecting = false;
             setConnectionState(false);
             activeUsers.clear();
             refreshOnlineUsersLabel();
         });
         chatClient.on('offline', () => {
+            hasAnnouncedConnection = false;
+            isChatConnecting = false;
             setConnectionState(false, 'Hors ligne');
             activeUsers.clear();
             refreshOnlineUsersLabel();
         });
         chatClient.on('error', (err) => {
+            isChatConnecting = false;
             setConnectionState(false, 'Erreur réseau');
             appendChatMessage('Système', `Erreur réseau: ${err.message}`, new Date().toISOString(), true);
         });
