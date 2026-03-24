@@ -1,6 +1,6 @@
-const APP_CACHE_NAME = 'test-communes-app-cache-v865'; 
-const DATA_CACHE_NAME = 'test-communes-data-cache-v865';
-const TILE_CACHE_NAME = 'test-communes-tile-cache-v865';
+const APP_CACHE_NAME = 'test-communes-app-cache-v866'; 
+const DATA_CACHE_NAME = 'test-communes-data-cache-v866';
+const TILE_CACHE_NAME = 'test-communes-tile-cache-v866';
 
 const APP_SHELL_URLS = [
     './',
@@ -174,7 +174,8 @@ function getSelectedOfflinePack() {
             const store = transaction.objectStore('settings');
             const request = store.get(OFFLINE_SELECTED_PACK_KEY);
             request.onsuccess = () => {
-                const value = (typeof request.result?.value === 'string') ? request.result.value : '';
+                const result = request.result;
+                const value = (result && typeof result.value === 'string') ? result.value : '';
                 offlineSelectedPackCache = value;
                 offlineSelectedPackLoaded = true;
                 resolve(value);
