@@ -32,7 +32,6 @@ const DEFAULT_OFFLINE_TILES_ENABLED = true;
 const OFFLINE_ONLINE_FALLBACK_KEY = 'offlineOnlineFallback';
 const DEFAULT_OFFLINE_ONLINE_FALLBACK = true;
 const OFFLINE_TILES_MAX_ZOOM_KEY = 'offlineTilesMaxZoom';
-const OFFLINE_SELECTED_PACK_KEY = 'offlineSelectedPack';
 const OFFLINE_ACTIVE_PACKS_KEY = 'offlineActivePacks';
 const SHOW_DEPARTMENTS_LAYER_KEY = 'showDepartmentsLayer';
 const ONLINE_MAX_NATIVE_ZOOM = 18;
@@ -41,7 +40,6 @@ const GLOBAL_MAX_ZOOM = 18;
 let baseTileMaxNativeZoom = ONLINE_MAX_NATIVE_ZOOM;
 let offlineTilesMode = DEFAULT_OFFLINE_TILES_ENABLED;
 let offlineOnlineFallbackMode = DEFAULT_OFFLINE_ONLINE_FALLBACK;
-let selectedOfflinePack = '';
 let activeOfflinePacks = [];
 const CHAT_STORAGE_KEY = 'teamChatConfig';
 const CHAT_HISTORY_KEY = 'teamChatHistory';
@@ -134,7 +132,6 @@ async function initializeApp() {
     }
     try {
         await initDB();
-        selectedOfflinePack = localStorage.getItem(OFFLINE_SELECTED_PACK_KEY) || '';
         activeOfflinePacks = JSON.parse(localStorage.getItem(OFFLINE_ACTIVE_PACKS_KEY) || '[]');
         if (!Array.isArray(activeOfflinePacks)) activeOfflinePacks = [];
         offlineOnlineFallbackMode = localStorage.getItem(OFFLINE_ONLINE_FALLBACK_KEY) === null
@@ -145,8 +142,8 @@ async function initializeApp() {
         displayInstalledMaps();
     } catch (startupError) {
         console.error('Initialisation offline incomplète:', startupError);
-        selectedOfflinePack = '';
         offlineOnlineFallbackMode = DEFAULT_OFFLINE_ONLINE_FALLBACK;
+        activeOfflinePacks = [];
         displayInstalledMaps();
     }
     try {
@@ -284,7 +281,6 @@ function setupEventListeners() {
     const zipImporterInput = document.getElementById('zip-importer-input');
     const offlineTilesEnabledToggle = document.getElementById('offline-tiles-enabled-toggle');
     const offlineOnlineFallbackToggle = document.getElementById('offline-online-fallback-toggle');
-    const offlinePackSelect = document.getElementById('offline-pack-select');
     
     if (mainActionButtons) {
         const versionDisplay = document.createElement('div');
@@ -471,23 +467,6 @@ function setupEventListeners() {
     if (offlineOnlineFallbackToggle) {
         offlineOnlineFallbackToggle.addEventListener('change', () => {
             setOfflineOnlineFallbackMode(offlineOnlineFallbackToggle.checked);
-            updateOfflineStatus();
-        });
-    }
-
-    if (offlinePackSelect) {
-        offlinePackSelect.addEventListener('change', async (event) => {
-            const selectedValue = event.target.value || '';
-            await setOfflineSelectedPack(selectedValue);
-            if (!selectedValue) {
-                const installedPacks = JSON.parse(localStorage.getItem('installedMapPacks') || '[]').map((pack) => pack.name);
-                await setOfflineActivePacks(installedPacks);
-            } else {
-                await setOfflineActivePacks([selectedValue]);
-            }
-            await updateBaseTileNativeZoomFromAvailability({ forceScan: true });
-            setupBaseTileLayer();
-            displayInstalledMaps();
             updateOfflineStatus();
         });
     }
@@ -1156,15 +1135,6 @@ function notifyServiceWorkerOfflineOnlineFallback(enabled) {
     });
 }
 
-function notifyServiceWorkerSelectedPack(packName) {
-    if (!('serviceWorker' in navigator)) return;
-    if (!navigator.serviceWorker.controller) return;
-    navigator.serviceWorker.controller.postMessage({
-        type: 'OFFLINE_SELECTED_PACK_CHANGED',
-        value: packName || ''
-    });
-}
-
 function notifyServiceWorkerActivePacks(packs) {
     if (!('serviceWorker' in navigator)) return;
     if (!navigator.serviceWorker.controller) return;
@@ -1172,18 +1142,6 @@ function notifyServiceWorkerActivePacks(packs) {
         type: 'OFFLINE_ACTIVE_PACKS_CHANGED',
         value: Array.isArray(packs) ? packs : []
     });
-}
-
-async function setOfflineSelectedPack(packName) {
-    selectedOfflinePack = (packName || '').trim();
-    localStorage.setItem(OFFLINE_SELECTED_PACK_KEY, selectedOfflinePack);
-    if (db) {
-        try {
-            const tx = db.transaction('settings', 'readwrite');
-            tx.objectStore('settings').put({ key: OFFLINE_SELECTED_PACK_KEY, value: selectedOfflinePack });
-        } catch (_) {}
-    }
-    notifyServiceWorkerSelectedPack(selectedOfflinePack);
 }
 
 async function setOfflineActivePacks(packs) {
@@ -1241,7 +1199,6 @@ async function initializeOfflineTilePreference() {
     }
     notifyServiceWorkerOfflineTilesPreference(enabled);
     notifyServiceWorkerOfflineOnlineFallback(offlineOnlineFallbackMode);
-    notifyServiceWorkerSelectedPack(selectedOfflinePack);
     notifyServiceWorkerActivePacks(activeOfflinePacks);
     updateOfflineStatus();
 }
@@ -1348,9 +1305,6 @@ async function handleZipImport(file) {
         if (!activeOfflinePacks.includes(packName)) {
             await setOfflineActivePacks([...activeOfflinePacks, packName]);
         }
-        if (!selectedOfflinePack) {
-            await setOfflineSelectedPack(packName);
-        }
         const currentOfflineMax = Number.parseInt(localStorage.getItem(OFFLINE_TILES_MAX_ZOOM_KEY) || '', 10);
         const nextOfflineMax = Number.isFinite(currentOfflineMax) ? Math.max(currentOfflineMax, importedMaxZoom) : importedMaxZoom;
         localStorage.setItem(OFFLINE_TILES_MAX_ZOOM_KEY, String(nextOfflineMax));
@@ -1384,23 +1338,6 @@ function displayInstalledMaps() {
             localStorage.setItem(OFFLINE_ACTIVE_PACKS_KEY, JSON.stringify(activeOfflinePacks));
             notifyServiceWorkerActivePacks(activeOfflinePacks);
         }
-    }
-
-    if (select) {
-        select.innerHTML = '<option value="">Tous les packs</option>';
-        installedPacks.forEach((pack) => {
-            const option = document.createElement('option');
-            option.value = pack.name;
-            option.textContent = pack.name;
-            select.appendChild(option);
-        });
-
-        if (selectedOfflinePack && !installedPacks.some((pack) => pack.name === selectedOfflinePack)) {
-            setOfflineSelectedPack('');
-        }
-
-        select.value = selectedOfflinePack || '';
-        select.disabled = installedPacks.length === 0;
     }
 
     if (installedPacks.length === 0) {
