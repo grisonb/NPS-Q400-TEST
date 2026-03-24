@@ -11,7 +11,7 @@
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <script>
-        const APP_VERSION = 'v8.67';
+        const APP_VERSION = 'v8.68';
 
         if ('serviceWorker' in navigator) {
             window.addEventListener('load', async () => {
@@ -24,7 +24,10 @@
                 });
 
                 try {
-                    const reg = await navigator.serviceWorker.register(`./sw.js?version=${APP_VERSION}`, { updateViaCache: 'none' });
+                    // Important: keep a stable URL for the SW script.
+                    // Some environments fail SW updates with a "script load failed"
+                    // error when cache-busting query params are used on sw.js.
+                    const reg = await navigator.serviceWorker.register('./sw.js', { updateViaCache: 'none' });
                     console.log('Service Worker enregistré:', reg);
 
                     const requestSkipWaiting = (registration) => {
