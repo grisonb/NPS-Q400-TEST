@@ -1,6 +1,6 @@
-const APP_CACHE_NAME = 'test-communes-app-cache-v844'; 
-const DATA_CACHE_NAME = 'test-communes-data-cache-v844';
-const TILE_CACHE_NAME = 'test-communes-tile-cache-v844';
+const APP_CACHE_NAME = 'test-communes-app-cache-v867'; 
+const DATA_CACHE_NAME = 'test-communes-data-cache-v867';
+const TILE_CACHE_NAME = 'test-communes-tile-cache-v867';
 
 const APP_SHELL_URLS = [
     './',
@@ -49,6 +49,19 @@ self.addEventListener('message', event => {
     if (event.data && event.data.type === 'OFFLINE_TILES_ENABLED_CHANGED') {
         offlineTilesEnabledCache = !!event.data.value;
         offlineTilesEnabledLoaded = true;
+        return;
+    }
+
+    if (event.data && event.data.type === 'OFFLINE_ONLINE_FALLBACK_CHANGED') {
+        offlineOnlineFallbackCache = !!event.data.value;
+        offlineOnlineFallbackLoaded = true;
+        return;
+    }
+
+    if (event.data && event.data.type === 'OFFLINE_ACTIVE_PACKS_CHANGED') {
+        offlineActivePacksCache = Array.isArray(event.data.value) ? event.data.value.filter(Boolean) : [];
+        offlineActivePacksLoaded = true;
+        memoryTileCache.clear();
     }
 });
 
@@ -57,6 +70,10 @@ const OFFLINE_TILES_ENABLED_KEY = 'offlineTilesEnabled';
 const DEFAULT_OFFLINE_TILES_ENABLED = true;
 let offlineTilesEnabledCache = DEFAULT_OFFLINE_TILES_ENABLED;
 let offlineTilesEnabledLoaded = false;
+let offlineOnlineFallbackCache = true;
+let offlineOnlineFallbackLoaded = false;
+let offlineActivePacksCache = [];
+let offlineActivePacksLoaded = false;
 let tileCachePromise = null;
 const MEMORY_TILE_CACHE_LIMIT = 300;
 const memoryTileCache = new Map();
@@ -136,16 +153,31 @@ function normalizeTileUrl(url) {
     return url;
 }
 
+function isOfflineOnlineFallbackEnabled() {
+    if (offlineOnlineFallbackLoaded) {
+        return Promise.resolve(offlineOnlineFallbackCache);
+    }
+    return Promise.resolve(offlineOnlineFallbackCache);
+}
+
+function getOfflineActivePacks() {
+    if (offlineActivePacksLoaded) {
+        return Promise.resolve(offlineActivePacksCache);
+    }
+    return Promise.resolve(offlineActivePacksCache);
+}
+
 function getTileFromDb(url) {
     const normalizedUrl = normalizeTileUrl(url);
-    const inMemoryTile = memoryTileCache.get(normalizedUrl);
-    if (inMemoryTile) {
-        memoryTileCache.delete(normalizedUrl);
-        memoryTileCache.set(normalizedUrl, inMemoryTile);
-        return Promise.resolve(new Response(inMemoryTile));
-    }
+    return Promise.all([getDb(), getOfflineActivePacks()]).then(([db, activePacks]) => {
+        const activeSet = new Set(Array.isArray(activePacks) ? activePacks : []);
+        const inMemoryTile = memoryTileCache.get(normalizedUrl);
+        if (inMemoryTile && (!activeSet.size || activeSet.has(inMemoryTile.packName || ''))) {
+            memoryTileCache.delete(normalizedUrl);
+            memoryTileCache.set(normalizedUrl, inMemoryTile);
+            return new Response(inMemoryTile.tileBlob);
+        }
 
-    return getDb().then(db => {
         return new Promise(resolve => {
             const transaction = db.transaction('tiles', 'readonly');
             const store = transaction.objectStore('tiles');
@@ -163,9 +195,10 @@ function getTileFromDb(url) {
                 const candidateUrl = candidates.shift();
                 const request = store.get(candidateUrl);
                 request.onsuccess = () => {
-                    if (request.result) {
-                        const tileBlob = request.result.tile;
-                        memoryTileCache.set(normalizedUrl, tileBlob);
+                    const record = request.result;
+                    if (record && (!activeSet.size || activeSet.has(record.packName || ''))) {
+                        const tileBlob = record.tile;
+                        memoryTileCache.set(normalizedUrl, { tileBlob, packName: record.packName || '' });
                         if (memoryTileCache.size > MEMORY_TILE_CACHE_LIMIT) {
                             const oldestKey = memoryTileCache.keys().next().value;
                             memoryTileCache.delete(oldestKey);
@@ -189,18 +222,15 @@ function getTileFromNetworkOrCache(request) {
     }
 
     return tileCachePromise.then(cache => {
-        return cache.match(request).then(cachedResponse => {
-            if (cachedResponse) return cachedResponse;
-
-            const normalizedUrl = normalizeTileUrl(request.url);
-            if (normalizedUrl !== request.url) {
-                return cache.match(normalizedUrl).then(normalizedCachedResponse => {
-                    if (normalizedCachedResponse) return normalizedCachedResponse;
-                    return fetchAndCacheTile(cache, request, normalizedUrl);
-                });
-            }
-
-            return fetchAndCacheTile(cache, request, normalizedUrl);
+        const normalizedUrl = normalizeTileUrl(request.url);
+        return fetchAndCacheTile(cache, request, normalizedUrl).catch(() => {
+            return cache.match(request).then(cachedResponse => {
+                if (cachedResponse) return cachedResponse;
+                if (normalizedUrl !== request.url) {
+                    return cache.match(normalizedUrl);
+                }
+                return null;
+            });
         });
     });
 }
@@ -235,24 +265,21 @@ function getTileFromCacheOnly(request) {
 self.addEventListener('fetch', event => {
     const requestUrl = new URL(event.request.url);
 
-    // Stratégie pour les tuiles de carte : DB d'abord, puis réseau, avec mise en cache réseau
+    // Stratégie pour les tuiles de carte
     if (requestUrl.hostname.includes('tile.openstreetmap.org')) {
         event.respondWith(
-            isOfflineTilesEnabled().then(enabled => {
+            Promise.all([isOfflineTilesEnabled(), isOfflineOnlineFallbackEnabled()]).then(([enabled, onlineFallbackEnabled]) => {
                 if (!enabled) {
                     return getTileFromNetworkOrCache(event.request);
                 }
 
-                const offlineLikely = typeof navigator !== 'undefined' && navigator.onLine === false;
-
-                if (offlineLikely) {
-                    return getTileFromDb(event.request.url).then(dbTile => {
-                        if (dbTile) return dbTile;
+                return getTileFromDb(event.request.url).then(dbTile => {
+                    if (dbTile) return dbTile;
+                    if (!onlineFallbackEnabled) {
                         return getTileFromCacheOnly(event.request);
-                    });
-                }
-
-                return getTileFromNetworkOrCache(event.request).catch(() => getTileFromDb(event.request.url));
+                    }
+                    return getTileFromNetworkOrCache(event.request).catch(() => getTileFromCacheOnly(event.request));
+                });
             })
         );
         return;
