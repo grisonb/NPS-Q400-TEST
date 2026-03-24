@@ -33,6 +33,7 @@ const OFFLINE_ONLINE_FALLBACK_KEY = 'offlineOnlineFallback';
 const DEFAULT_OFFLINE_ONLINE_FALLBACK = true;
 const OFFLINE_TILES_MAX_ZOOM_KEY = 'offlineTilesMaxZoom';
 const OFFLINE_SELECTED_PACK_KEY = 'offlineSelectedPack';
+const OFFLINE_ACTIVE_PACKS_KEY = 'offlineActivePacks';
 const SHOW_DEPARTMENTS_LAYER_KEY = 'showDepartmentsLayer';
 const ONLINE_MAX_NATIVE_ZOOM = 18;
 const OFFLINE_FALLBACK_NATIVE_ZOOM = 14;
@@ -41,6 +42,7 @@ let baseTileMaxNativeZoom = ONLINE_MAX_NATIVE_ZOOM;
 let offlineTilesMode = DEFAULT_OFFLINE_TILES_ENABLED;
 let offlineOnlineFallbackMode = DEFAULT_OFFLINE_ONLINE_FALLBACK;
 let selectedOfflinePack = '';
+let activeOfflinePacks = [];
 const CHAT_STORAGE_KEY = 'teamChatConfig';
 const CHAT_HISTORY_KEY = 'teamChatHistory';
 let chatClient = null;
@@ -133,6 +135,8 @@ async function initializeApp() {
     try {
         await initDB();
         selectedOfflinePack = localStorage.getItem(OFFLINE_SELECTED_PACK_KEY) || '';
+        activeOfflinePacks = JSON.parse(localStorage.getItem(OFFLINE_ACTIVE_PACKS_KEY) || '[]');
+        if (!Array.isArray(activeOfflinePacks)) activeOfflinePacks = [];
         offlineOnlineFallbackMode = localStorage.getItem(OFFLINE_ONLINE_FALLBACK_KEY) === null
             ? DEFAULT_OFFLINE_ONLINE_FALLBACK
             : localStorage.getItem(OFFLINE_ONLINE_FALLBACK_KEY) === 'true';
@@ -473,9 +477,17 @@ function setupEventListeners() {
 
     if (offlinePackSelect) {
         offlinePackSelect.addEventListener('change', async (event) => {
-            await setOfflineSelectedPack(event.target.value || '');
+            const selectedValue = event.target.value || '';
+            await setOfflineSelectedPack(selectedValue);
+            if (!selectedValue) {
+                const installedPacks = JSON.parse(localStorage.getItem('installedMapPacks') || '[]').map((pack) => pack.name);
+                await setOfflineActivePacks(installedPacks);
+            } else {
+                await setOfflineActivePacks([selectedValue]);
+            }
             await updateBaseTileNativeZoomFromAvailability({ forceScan: true });
             setupBaseTileLayer();
+            displayInstalledMaps();
             updateOfflineStatus();
         });
     }
@@ -507,7 +519,7 @@ function displayResults(results) {
 
 async function findMaxOfflineTileZoom() {
     if (!db) return null;
-    const targetPack = selectedOfflinePack || '';
+    const targetPacks = new Set(activeOfflinePacks);
     return new Promise((resolve) => {
         const tx = db.transaction('tiles', 'readonly');
         const store = tx.objectStore('tiles');
@@ -520,7 +532,7 @@ async function findMaxOfflineTileZoom() {
                 resolve(maxZoom);
                 return;
             }
-            if (targetPack && cursor.value?.packName !== targetPack) {
+            if (targetPacks.size && !targetPacks.has(cursor.value?.packName || '')) {
                 cursor.continue();
                 return;
             }
@@ -1153,6 +1165,15 @@ function notifyServiceWorkerSelectedPack(packName) {
     });
 }
 
+function notifyServiceWorkerActivePacks(packs) {
+    if (!('serviceWorker' in navigator)) return;
+    if (!navigator.serviceWorker.controller) return;
+    navigator.serviceWorker.controller.postMessage({
+        type: 'OFFLINE_ACTIVE_PACKS_CHANGED',
+        value: Array.isArray(packs) ? packs : []
+    });
+}
+
 async function setOfflineSelectedPack(packName) {
     selectedOfflinePack = (packName || '').trim();
     localStorage.setItem(OFFLINE_SELECTED_PACK_KEY, selectedOfflinePack);
@@ -1163,6 +1184,18 @@ async function setOfflineSelectedPack(packName) {
         } catch (_) {}
     }
     notifyServiceWorkerSelectedPack(selectedOfflinePack);
+}
+
+async function setOfflineActivePacks(packs) {
+    activeOfflinePacks = Array.isArray(packs) ? packs.filter(Boolean) : [];
+    localStorage.setItem(OFFLINE_ACTIVE_PACKS_KEY, JSON.stringify(activeOfflinePacks));
+    if (db) {
+        try {
+            const tx = db.transaction('settings', 'readwrite');
+            tx.objectStore('settings').put({ key: OFFLINE_ACTIVE_PACKS_KEY, value: activeOfflinePacks });
+        } catch (_) {}
+    }
+    notifyServiceWorkerActivePacks(activeOfflinePacks);
 }
 
 function setOfflineOnlineFallbackMode(enabled) {
@@ -1187,7 +1220,9 @@ function updateOfflineStatus() {
         return;
     }
 
-    const selectedLabel = selectedOfflinePack ? `Pack actif : ${selectedOfflinePack}.` : 'Tous les packs actifs.';
+    const selectedLabel = activeOfflinePacks.length
+        ? `Packs actifs : ${activeOfflinePacks.join(', ')}.`
+        : 'Aucun pack actif.';
     const fallbackLabel = offlineOnlineFallbackMode
         ? 'Secours online actif si tuile absente.'
         : 'Secours online désactivé (offline strict).';
@@ -1207,6 +1242,7 @@ async function initializeOfflineTilePreference() {
     notifyServiceWorkerOfflineTilesPreference(enabled);
     notifyServiceWorkerOfflineOnlineFallback(offlineOnlineFallbackMode);
     notifyServiceWorkerSelectedPack(selectedOfflinePack);
+    notifyServiceWorkerActivePacks(activeOfflinePacks);
     updateOfflineStatus();
 }
 
@@ -1309,6 +1345,9 @@ async function handleZipImport(file) {
             installedPacks.push({ name: packName, date: new Date().toLocaleDateString() });
             localStorage.setItem('installedMapPacks', JSON.stringify(installedPacks));
         }
+        if (!activeOfflinePacks.includes(packName)) {
+            await setOfflineActivePacks([...activeOfflinePacks, packName]);
+        }
         if (!selectedOfflinePack) {
             await setOfflineSelectedPack(packName);
         }
@@ -1330,7 +1369,22 @@ function displayInstalledMaps() {
     const list = document.getElementById('installed-maps-list');
     const select = document.getElementById('offline-pack-select');
     const installedPacks = JSON.parse(localStorage.getItem('installedMapPacks') || '[]');
+    const installedPackNames = installedPacks.map((pack) => pack.name);
+    const previousActive = new Set(activeOfflinePacks);
     list.innerHTML = '';
+
+    if (activeOfflinePacks.length === 0 && installedPacks.length > 0) {
+        activeOfflinePacks = [...installedPackNames];
+        localStorage.setItem(OFFLINE_ACTIVE_PACKS_KEY, JSON.stringify(activeOfflinePacks));
+        notifyServiceWorkerActivePacks(activeOfflinePacks);
+    } else {
+        const filtered = activeOfflinePacks.filter((pack) => installedPackNames.includes(pack));
+        if (filtered.length !== activeOfflinePacks.length) {
+            activeOfflinePacks = filtered;
+            localStorage.setItem(OFFLINE_ACTIVE_PACKS_KEY, JSON.stringify(activeOfflinePacks));
+            notifyServiceWorkerActivePacks(activeOfflinePacks);
+        }
+    }
 
     if (select) {
         select.innerHTML = '<option value="">Tous les packs</option>';
@@ -1357,11 +1411,28 @@ function displayInstalledMaps() {
 
     installedPacks.forEach(pack => {
         const li = document.createElement('li');
+        const checked = previousActive.has(pack.name) || activeOfflinePacks.includes(pack.name);
         li.innerHTML = `
-            <span><strong>${pack.name}</strong> (Installé le ${pack.date})</span>
+            <span>
+                <label style="display:flex;align-items:center;gap:8px;">
+                    <input type="checkbox" class="offline-pack-active-toggle" data-pack-name="${pack.name}" ${checked ? 'checked' : ''}>
+                    <strong>${pack.name}</strong> (Installé le ${pack.date})
+                </label>
+            </span>
             <button class="delete-map-btn" onclick="window.deleteMapPack('${pack.name}')">Supprimer</button>
         `;
         list.appendChild(li);
+    });
+
+    list.querySelectorAll('.offline-pack-active-toggle').forEach((checkbox) => {
+        checkbox.addEventListener('change', async () => {
+            const toggles = Array.from(list.querySelectorAll('.offline-pack-active-toggle'));
+            const nextActive = toggles.filter((el) => el.checked).map((el) => el.dataset.packName).filter(Boolean);
+            await setOfflineActivePacks(nextActive);
+            await updateBaseTileNativeZoomFromAvailability({ forceScan: true });
+            setupBaseTileLayer();
+            updateOfflineStatus();
+        });
     });
     updateOfflineStatus();
 }

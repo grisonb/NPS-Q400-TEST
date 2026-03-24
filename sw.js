@@ -1,6 +1,6 @@
-const APP_CACHE_NAME = 'test-communes-app-cache-v864'; 
-const DATA_CACHE_NAME = 'test-communes-data-cache-v864';
-const TILE_CACHE_NAME = 'test-communes-tile-cache-v864';
+const APP_CACHE_NAME = 'test-communes-app-cache-v865'; 
+const DATA_CACHE_NAME = 'test-communes-data-cache-v865';
+const TILE_CACHE_NAME = 'test-communes-tile-cache-v865';
 
 const APP_SHELL_URLS = [
     './',
@@ -62,6 +62,13 @@ self.addEventListener('message', event => {
     if (event.data && event.data.type === 'OFFLINE_ONLINE_FALLBACK_CHANGED') {
         offlineOnlineFallbackCache = !!event.data.value;
         offlineOnlineFallbackLoaded = true;
+        return;
+    }
+
+    if (event.data && event.data.type === 'OFFLINE_ACTIVE_PACKS_CHANGED') {
+        offlineActivePacksCache = Array.isArray(event.data.value) ? event.data.value.filter(Boolean) : [];
+        offlineActivePacksLoaded = true;
+        memoryTileCache.clear();
     }
 });
 
@@ -75,6 +82,8 @@ let offlineOnlineFallbackCache = true;
 let offlineOnlineFallbackLoaded = false;
 let offlineSelectedPackCache = '';
 let offlineSelectedPackLoaded = false;
+let offlineActivePacksCache = [];
+let offlineActivePacksLoaded = false;
 let tileCachePromise = null;
 const MEMORY_TILE_CACHE_LIMIT = 300;
 const memoryTileCache = new Map();
@@ -190,11 +199,19 @@ function isOfflineOnlineFallbackEnabled() {
     return Promise.resolve(offlineOnlineFallbackCache);
 }
 
+function getOfflineActivePacks() {
+    if (offlineActivePacksLoaded) {
+        return Promise.resolve(offlineActivePacksCache);
+    }
+    return Promise.resolve(offlineActivePacksCache);
+}
+
 function getTileFromDb(url) {
     const normalizedUrl = normalizeTileUrl(url);
-    return Promise.all([getDb(), getSelectedOfflinePack()]).then(([db, selectedPack]) => {
+    return Promise.all([getDb(), getSelectedOfflinePack(), getOfflineActivePacks()]).then(([db, selectedPack, activePacks]) => {
+        const activeSet = new Set(Array.isArray(activePacks) ? activePacks : []);
         const inMemoryTile = memoryTileCache.get(normalizedUrl);
-        if (inMemoryTile && (!selectedPack || inMemoryTile.packName === selectedPack)) {
+        if (inMemoryTile && (!selectedPack || inMemoryTile.packName === selectedPack) && (!activeSet.size || activeSet.has(inMemoryTile.packName || ''))) {
             memoryTileCache.delete(normalizedUrl);
             memoryTileCache.set(normalizedUrl, inMemoryTile);
             return new Response(inMemoryTile.tileBlob);
@@ -218,7 +235,7 @@ function getTileFromDb(url) {
                 const request = store.get(candidateUrl);
                 request.onsuccess = () => {
                     const record = request.result;
-                    if (record && (!selectedPack || record.packName === selectedPack)) {
+                    if (record && (!selectedPack || record.packName === selectedPack) && (!activeSet.size || activeSet.has(record.packName || ''))) {
                         const tileBlob = record.tile;
                         memoryTileCache.set(normalizedUrl, { tileBlob, packName: record.packName || '' });
                         if (memoryTileCache.size > MEMORY_TILE_CACHE_LIMIT) {
