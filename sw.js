@@ -67,6 +67,7 @@ self.addEventListener('message', event => {
 
 let db;
 const OFFLINE_TILES_ENABLED_KEY = 'offlineTilesEnabled';
+const OFFLINE_SELECTED_PACK_KEY = 'offlineSelectedPack';
 const DEFAULT_OFFLINE_TILES_ENABLED = true;
 let offlineTilesEnabledCache = DEFAULT_OFFLINE_TILES_ENABLED;
 let offlineTilesEnabledLoaded = false;
@@ -173,6 +174,55 @@ function getTileFromDb(url) {
         const activeSet = new Set(Array.isArray(activePacks) ? activePacks : []);
         const inMemoryTile = memoryTileCache.get(normalizedUrl);
         if (inMemoryTile && (!activeSet.size || activeSet.has(inMemoryTile.packName || ''))) {
+            memoryTileCache.delete(normalizedUrl);
+            memoryTileCache.set(normalizedUrl, inMemoryTile);
+            return new Response(inMemoryTile.tileBlob);
+        }
+
+        return new Promise(resolve => {
+            const transaction = db.transaction('settings', 'readonly');
+            const store = transaction.objectStore('settings');
+            const request = store.get(OFFLINE_SELECTED_PACK_KEY);
+            request.onsuccess = () => {
+                const result = request.result;
+                const value = (result && typeof result.value === 'string') ? result.value : '';
+                offlineSelectedPackCache = value;
+                offlineSelectedPackLoaded = true;
+                resolve(value);
+            };
+            request.onerror = () => {
+                offlineSelectedPackCache = '';
+                offlineSelectedPackLoaded = true;
+                resolve('');
+            };
+        });
+    }).catch(() => {
+        offlineSelectedPackCache = '';
+        offlineSelectedPackLoaded = true;
+        return '';
+    });
+}
+
+function isOfflineOnlineFallbackEnabled() {
+    if (offlineOnlineFallbackLoaded) {
+        return Promise.resolve(offlineOnlineFallbackCache);
+    }
+    return Promise.resolve(offlineOnlineFallbackCache);
+}
+
+function getOfflineActivePacks() {
+    if (offlineActivePacksLoaded) {
+        return Promise.resolve(offlineActivePacksCache);
+    }
+    return Promise.resolve(offlineActivePacksCache);
+}
+
+function getTileFromDb(url) {
+    const normalizedUrl = normalizeTileUrl(url);
+    return Promise.all([getDb(), getSelectedOfflinePack(), getOfflineActivePacks()]).then(([db, selectedPack, activePacks]) => {
+        const activeSet = new Set(Array.isArray(activePacks) ? activePacks : []);
+        const inMemoryTile = memoryTileCache.get(normalizedUrl);
+        if (inMemoryTile && (!selectedPack || inMemoryTile.packName === selectedPack) && (!activeSet.size || activeSet.has(inMemoryTile.packName || ''))) {
             memoryTileCache.delete(normalizedUrl);
             memoryTileCache.set(normalizedUrl, inMemoryTile);
             return new Response(inMemoryTile.tileBlob);
