@@ -11,7 +11,7 @@
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <script>
-        const APP_VERSION = 'v8.44';
+        const APP_VERSION = 'v8.65';
 
         if ('serviceWorker' in navigator) {
             window.addEventListener('load', async () => {
@@ -85,6 +85,18 @@
         <div class="chat-send-row">
             <input type="text" id="chat-message-input" maxlength="280" placeholder="Message...">
             <button id="chat-send-button">Envoyer</button>
+        </div>
+    </div>
+
+    <div id="chat-clear-modal" class="chat-clear-modal" style="display: none;">
+        <div class="chat-clear-modal-content">
+            <h3>Suppression des messages</h3>
+            <p>Choisissez l’action à effectuer :</p>
+            <div class="chat-clear-modal-actions">
+                <button id="chat-clear-local-button" class="chat-clear-option">Supprimer localement</button>
+                <button id="chat-clear-channel-button" class="chat-clear-option chat-clear-option-danger">Local + canal</button>
+                <button id="chat-clear-cancel-button" class="chat-clear-option">Annuler</button>
+            </div>
         </div>
     </div>
     <div id="ui-overlay">
@@ -274,6 +286,18 @@
                             <input type="checkbox" id="offline-tiles-enabled-toggle" checked>
                             Utiliser les cartes téléchargées (hors-ligne prioritaire)
                         </label>
+                    </div>
+                    <div class="offline-toggle-row">
+                        <label>
+                            <input type="checkbox" id="offline-online-fallback-toggle" checked>
+                            Autoriser le secours carte en ligne si tuile offline absente
+                        </label>
+                    </div>
+                    <div class="offline-pack-select-row">
+                        <label for="offline-pack-select">Pack affiché :</label>
+                        <select id="offline-pack-select">
+                            <option value="">Tous les packs</option>
+                        </select>
                     </div>
                     <ul id="installed-maps-list">
                         <!-- Les packs installés seront listés ici par le JavaScript -->

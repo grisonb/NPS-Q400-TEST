@@ -29,13 +29,20 @@ let gaarLayer = null;
 let db; // Variable pour la connexion à la base de données IndexedDB
 const OFFLINE_TILES_ENABLED_KEY = 'offlineTilesEnabled';
 const DEFAULT_OFFLINE_TILES_ENABLED = true;
+const OFFLINE_ONLINE_FALLBACK_KEY = 'offlineOnlineFallback';
+const DEFAULT_OFFLINE_ONLINE_FALLBACK = true;
 const OFFLINE_TILES_MAX_ZOOM_KEY = 'offlineTilesMaxZoom';
+const OFFLINE_SELECTED_PACK_KEY = 'offlineSelectedPack';
+const OFFLINE_ACTIVE_PACKS_KEY = 'offlineActivePacks';
 const SHOW_DEPARTMENTS_LAYER_KEY = 'showDepartmentsLayer';
 const ONLINE_MAX_NATIVE_ZOOM = 18;
 const OFFLINE_FALLBACK_NATIVE_ZOOM = 14;
 const GLOBAL_MAX_ZOOM = 18;
 let baseTileMaxNativeZoom = ONLINE_MAX_NATIVE_ZOOM;
 let offlineTilesMode = DEFAULT_OFFLINE_TILES_ENABLED;
+let offlineOnlineFallbackMode = DEFAULT_OFFLINE_ONLINE_FALLBACK;
+let selectedOfflinePack = '';
+let activeOfflinePacks = [];
 const CHAT_STORAGE_KEY = 'teamChatConfig';
 const CHAT_HISTORY_KEY = 'teamChatHistory';
 let chatClient = null;
@@ -43,6 +50,7 @@ let chatTopic = null;
 let chatHistoryTopic = null;
 let chatPresenceTopic = null;
 let chatConnected = false;
+const CHAT_BROKER_URL = 'wss://broker.emqx.io:8084/mqtt';
 
 const pelicanAirports = [
     { oaci: "LFLU", name: "Valence-Chabeuil", lat: 44.920, lon: 4.968 }, { oaci: "LFMU", name: "Béziers-Vias", lat: 43.323, lon: 3.354 }, { oaci: "LFJR", name: "Angers-Marcé", lat: 47.560, lon: -0.312 }, { oaci: "LFHO", name: "Aubenas-Ardèche Méridionale", lat: 44.545, lon: 4.385 }, { oaci: "LFLX", name: "Châteauroux-Déols", lat: 46.861, lon: 1.720 }, { oaci: "LFBM", name: "Mont-de-Marsan", lat: 43.894, lon: -0.509 }, { oaci: "LFBL", name: "Limoges-Bellegarde", lat: 45.862, lon: 1.180 }, { oaci: "LFAQ", name: "Albert-Bray", lat: 49.972, lon: 2.698 }, { oaci: "LFBP", name: "Pau-Pyrénées", lat: 43.380, lon: -0.418 }, { oaci: "LFTH", name: "Toulon-Hyères", lat: 43.097, lon: 6.146 }, { oaci: "LFSG", name: "Épinal-Mirecourt", lat: 48.325, lon: 6.068 }, { oaci: "LFKC", name: "Calvi-Sainte-Catherine", lat: 42.530, lon: 8.793 }, { oaci: "LFMD", name: "Cannes-Mandelieu", lat: 43.542, lon: 6.956 }, { oaci: "LFKB", name: "Bastia-Poretta", lat: 42.552, lon: 9.483 }, { oaci: "LFMH", name: "Saint-Étienne-Bouthéon", lat: 45.541, lon: 4.296 }, { oaci: "LFKF", name: "Figari-Sud-Corse", lat: 41.500, lon: 9.097 }, { oaci: "LFCC", name: "Cahors-Lalbenque", lat: 44.351, lon: 1.475 }, { oaci: "LFML", name: "Marseille-Provence", lat: 43.436, lon: 5.215 }, { oaci: "LFKJ", name: "Ajaccio-Napoléon-Bonaparte", lat: 41.923, lon: 8.802 }, { oaci: "LFMK", name: "Carcassonne-Salvaza", lat: 43.215, lon: 2.306 }, { oaci: "LFRV", name: "Vannes-Meucon", lat: 47.720, lon: -2.721 }, { oaci: "LFTW", name: "Nîmes-Garons", lat: 43.757, lon: 4.416 }, { oaci: "LFMP", name: "Perpignan-Rivesaltes", lat: 42.740, lon: 2.870 }, { oaci: "LFBD", name: "Bordeaux-Mérignac", lat: 44.828, lon: -0.691 }
@@ -124,10 +132,23 @@ async function initializeApp() {
     if (savedGaarJSON) {
         gaarCircuits = JSON.parse(savedGaarJSON);
     }
-    await initDB();
-    await initializeOfflineTilePreference();
-    await updateBaseTileNativeZoomFromAvailability();
-    displayInstalledMaps();
+    try {
+        await initDB();
+        selectedOfflinePack = localStorage.getItem(OFFLINE_SELECTED_PACK_KEY) || '';
+        activeOfflinePacks = JSON.parse(localStorage.getItem(OFFLINE_ACTIVE_PACKS_KEY) || '[]');
+        if (!Array.isArray(activeOfflinePacks)) activeOfflinePacks = [];
+        offlineOnlineFallbackMode = localStorage.getItem(OFFLINE_ONLINE_FALLBACK_KEY) === null
+            ? DEFAULT_OFFLINE_ONLINE_FALLBACK
+            : localStorage.getItem(OFFLINE_ONLINE_FALLBACK_KEY) === 'true';
+        await initializeOfflineTilePreference();
+        await updateBaseTileNativeZoomFromAvailability();
+        displayInstalledMaps();
+    } catch (startupError) {
+        console.error('Initialisation offline incomplète:', startupError);
+        selectedOfflinePack = '';
+        offlineOnlineFallbackMode = DEFAULT_OFFLINE_ONLINE_FALLBACK;
+        displayInstalledMaps();
+    }
     try {
         const response = await fetch('./communes.json');
         if (!response.ok) throw new Error(`HTTP ${response.status}`);
@@ -164,7 +185,7 @@ function initMap() {
         zoomControl: false,
         maxZoom: GLOBAL_MAX_ZOOM
     }).setView([46.6, 2.2], 5.5);
-    L.control.zoom({ position: 'bottomright' }).addTo(map);
+    L.control.zoom({ position: 'bottomleft' }).addTo(map);
     setupBaseTileLayer();
     permanentAirportLayer = L.layerGroup().addTo(map);
     routesLayer = L.layerGroup().addTo(map);
@@ -262,6 +283,8 @@ function setupEventListeners() {
     const closeOfflineMapButton = document.getElementById('close-offline-map-btn');
     const zipImporterInput = document.getElementById('zip-importer-input');
     const offlineTilesEnabledToggle = document.getElementById('offline-tiles-enabled-toggle');
+    const offlineOnlineFallbackToggle = document.getElementById('offline-online-fallback-toggle');
+    const offlinePackSelect = document.getElementById('offline-pack-select');
     
     if (mainActionButtons) {
         const versionDisplay = document.createElement('div');
@@ -445,6 +468,30 @@ function setupEventListeners() {
         });
     }
 
+    if (offlineOnlineFallbackToggle) {
+        offlineOnlineFallbackToggle.addEventListener('change', () => {
+            setOfflineOnlineFallbackMode(offlineOnlineFallbackToggle.checked);
+            updateOfflineStatus();
+        });
+    }
+
+    if (offlinePackSelect) {
+        offlinePackSelect.addEventListener('change', async (event) => {
+            const selectedValue = event.target.value || '';
+            await setOfflineSelectedPack(selectedValue);
+            if (!selectedValue) {
+                const installedPacks = JSON.parse(localStorage.getItem('installedMapPacks') || '[]').map((pack) => pack.name);
+                await setOfflineActivePacks(installedPacks);
+            } else {
+                await setOfflineActivePacks([selectedValue]);
+            }
+            await updateBaseTileNativeZoomFromAvailability({ forceScan: true });
+            setupBaseTileLayer();
+            displayInstalledMaps();
+            updateOfflineStatus();
+        });
+    }
+
     updateBaseLabels();
     updateLftwButtonState();
     updateGaarButtonState();
@@ -472,6 +519,7 @@ function displayResults(results) {
 
 async function findMaxOfflineTileZoom() {
     if (!db) return null;
+    const targetPacks = new Set(activeOfflinePacks);
     return new Promise((resolve) => {
         const tx = db.transaction('tiles', 'readonly');
         const store = tx.objectStore('tiles');
@@ -482,6 +530,10 @@ async function findMaxOfflineTileZoom() {
             const cursor = event.target.result;
             if (!cursor) {
                 resolve(maxZoom);
+                return;
+            }
+            if (targetPacks.size && !targetPacks.has(cursor.value?.packName || '')) {
+                cursor.continue();
                 return;
             }
             const url = cursor.value?.url;
@@ -503,13 +555,14 @@ async function findMaxOfflineTileZoom() {
 
 async function updateBaseTileNativeZoomFromAvailability({ forceScan = false } = {}) {
     const offlineEnabled = await getOfflineTilesEnabled();
+    const shouldForceScan = forceScan;
     if (!offlineEnabled) {
         baseTileMaxNativeZoom = ONLINE_MAX_NATIVE_ZOOM;
     } else {
         const storedOfflineMaxZoom = Number.parseInt(localStorage.getItem(OFFLINE_TILES_MAX_ZOOM_KEY) || '', 10);
         let offlineMaxZoom = Number.isFinite(storedOfflineMaxZoom) ? storedOfflineMaxZoom : null;
 
-        if (forceScan) {
+        if (shouldForceScan) {
             offlineMaxZoom = await findMaxOfflineTileZoom();
             if (offlineMaxZoom === null) {
                 localStorage.removeItem(OFFLINE_TILES_MAX_ZOOM_KEY);
@@ -1094,23 +1147,102 @@ function notifyServiceWorkerOfflineTilesPreference(enabled) {
     });
 }
 
+function notifyServiceWorkerOfflineOnlineFallback(enabled) {
+    if (!('serviceWorker' in navigator)) return;
+    if (!navigator.serviceWorker.controller) return;
+    navigator.serviceWorker.controller.postMessage({
+        type: 'OFFLINE_ONLINE_FALLBACK_CHANGED',
+        value: !!enabled
+    });
+}
+
+function notifyServiceWorkerSelectedPack(packName) {
+    if (!('serviceWorker' in navigator)) return;
+    if (!navigator.serviceWorker.controller) return;
+    navigator.serviceWorker.controller.postMessage({
+        type: 'OFFLINE_SELECTED_PACK_CHANGED',
+        value: packName || ''
+    });
+}
+
+function notifyServiceWorkerActivePacks(packs) {
+    if (!('serviceWorker' in navigator)) return;
+    if (!navigator.serviceWorker.controller) return;
+    navigator.serviceWorker.controller.postMessage({
+        type: 'OFFLINE_ACTIVE_PACKS_CHANGED',
+        value: Array.isArray(packs) ? packs : []
+    });
+}
+
+async function setOfflineSelectedPack(packName) {
+    selectedOfflinePack = (packName || '').trim();
+    localStorage.setItem(OFFLINE_SELECTED_PACK_KEY, selectedOfflinePack);
+    if (db) {
+        try {
+            const tx = db.transaction('settings', 'readwrite');
+            tx.objectStore('settings').put({ key: OFFLINE_SELECTED_PACK_KEY, value: selectedOfflinePack });
+        } catch (_) {}
+    }
+    notifyServiceWorkerSelectedPack(selectedOfflinePack);
+}
+
+async function setOfflineActivePacks(packs) {
+    activeOfflinePacks = Array.isArray(packs) ? packs.filter(Boolean) : [];
+    localStorage.setItem(OFFLINE_ACTIVE_PACKS_KEY, JSON.stringify(activeOfflinePacks));
+    if (db) {
+        try {
+            const tx = db.transaction('settings', 'readwrite');
+            tx.objectStore('settings').put({ key: OFFLINE_ACTIVE_PACKS_KEY, value: activeOfflinePacks });
+        } catch (_) {}
+    }
+    notifyServiceWorkerActivePacks(activeOfflinePacks);
+}
+
+function setOfflineOnlineFallbackMode(enabled) {
+    offlineOnlineFallbackMode = !!enabled;
+    localStorage.setItem(OFFLINE_ONLINE_FALLBACK_KEY, String(offlineOnlineFallbackMode));
+    if (db) {
+        try {
+            const tx = db.transaction('settings', 'readwrite');
+            tx.objectStore('settings').put({ key: OFFLINE_ONLINE_FALLBACK_KEY, value: offlineOnlineFallbackMode });
+        } catch (_) {}
+    }
+    notifyServiceWorkerOfflineOnlineFallback(offlineOnlineFallbackMode);
+}
+
 function updateOfflineStatus() {
     const status = document.getElementById('offline-status');
     const toggle = document.getElementById('offline-tiles-enabled-toggle');
     if (!status || !toggle) return;
 
-    status.textContent = toggle.checked
-        ? 'Cartes téléchargées activées (prioritaires sur la carte en ligne).'
-        : 'Cartes téléchargées désactivées (utilisation de la carte en ligne).';
+    if (!toggle.checked) {
+        status.textContent = 'Cartes téléchargées désactivées (utilisation de la carte en ligne).';
+        return;
+    }
+
+    const selectedLabel = activeOfflinePacks.length
+        ? `Packs actifs : ${activeOfflinePacks.join(', ')}.`
+        : 'Aucun pack actif.';
+    const fallbackLabel = offlineOnlineFallbackMode
+        ? 'Secours online actif si tuile absente.'
+        : 'Secours online désactivé (offline strict).';
+    status.textContent = `Cartes téléchargées activées. ${selectedLabel} ${fallbackLabel}`;
 }
 
 async function initializeOfflineTilePreference() {
     const toggle = document.getElementById('offline-tiles-enabled-toggle');
+    const fallbackToggle = document.getElementById('offline-online-fallback-toggle');
     if (!toggle) return;
 
     const enabled = await getOfflineTilesEnabled();
     toggle.checked = enabled;
+    if (fallbackToggle) {
+        fallbackToggle.checked = offlineOnlineFallbackMode;
+    }
     notifyServiceWorkerOfflineTilesPreference(enabled);
+    notifyServiceWorkerOfflineOnlineFallback(offlineOnlineFallbackMode);
+    notifyServiceWorkerSelectedPack(selectedOfflinePack);
+    notifyServiceWorkerActivePacks(activeOfflinePacks);
     updateOfflineStatus();
 }
 
@@ -1213,6 +1345,12 @@ async function handleZipImport(file) {
             installedPacks.push({ name: packName, date: new Date().toLocaleDateString() });
             localStorage.setItem('installedMapPacks', JSON.stringify(installedPacks));
         }
+        if (!activeOfflinePacks.includes(packName)) {
+            await setOfflineActivePacks([...activeOfflinePacks, packName]);
+        }
+        if (!selectedOfflinePack) {
+            await setOfflineSelectedPack(packName);
+        }
         const currentOfflineMax = Number.parseInt(localStorage.getItem(OFFLINE_TILES_MAX_ZOOM_KEY) || '', 10);
         const nextOfflineMax = Number.isFinite(currentOfflineMax) ? Math.max(currentOfflineMax, importedMaxZoom) : importedMaxZoom;
         localStorage.setItem(OFFLINE_TILES_MAX_ZOOM_KEY, String(nextOfflineMax));
@@ -1229,22 +1367,74 @@ async function handleZipImport(file) {
 
 function displayInstalledMaps() {
     const list = document.getElementById('installed-maps-list');
+    const select = document.getElementById('offline-pack-select');
     const installedPacks = JSON.parse(localStorage.getItem('installedMapPacks') || '[]');
+    const installedPackNames = installedPacks.map((pack) => pack.name);
+    const previousActive = new Set(activeOfflinePacks);
     list.innerHTML = '';
+
+    if (activeOfflinePacks.length === 0 && installedPacks.length > 0) {
+        activeOfflinePacks = [...installedPackNames];
+        localStorage.setItem(OFFLINE_ACTIVE_PACKS_KEY, JSON.stringify(activeOfflinePacks));
+        notifyServiceWorkerActivePacks(activeOfflinePacks);
+    } else {
+        const filtered = activeOfflinePacks.filter((pack) => installedPackNames.includes(pack));
+        if (filtered.length !== activeOfflinePacks.length) {
+            activeOfflinePacks = filtered;
+            localStorage.setItem(OFFLINE_ACTIVE_PACKS_KEY, JSON.stringify(activeOfflinePacks));
+            notifyServiceWorkerActivePacks(activeOfflinePacks);
+        }
+    }
+
+    if (select) {
+        select.innerHTML = '<option value="">Tous les packs</option>';
+        installedPacks.forEach((pack) => {
+            const option = document.createElement('option');
+            option.value = pack.name;
+            option.textContent = pack.name;
+            select.appendChild(option);
+        });
+
+        if (selectedOfflinePack && !installedPacks.some((pack) => pack.name === selectedOfflinePack)) {
+            setOfflineSelectedPack('');
+        }
+
+        select.value = selectedOfflinePack || '';
+        select.disabled = installedPacks.length === 0;
+    }
 
     if (installedPacks.length === 0) {
         list.innerHTML = '<li class="no-maps-placeholder">Aucun pack de cartes installé.</li>';
+        updateOfflineStatus();
         return;
     }
 
     installedPacks.forEach(pack => {
         const li = document.createElement('li');
+        const checked = previousActive.has(pack.name) || activeOfflinePacks.includes(pack.name);
         li.innerHTML = `
-            <span><strong>${pack.name}</strong> (Installé le ${pack.date})</span>
+            <span>
+                <label style="display:flex;align-items:center;gap:8px;">
+                    <input type="checkbox" class="offline-pack-active-toggle" data-pack-name="${pack.name}" ${checked ? 'checked' : ''}>
+                    <strong>${pack.name}</strong> (Installé le ${pack.date})
+                </label>
+            </span>
             <button class="delete-map-btn" onclick="window.deleteMapPack('${pack.name}')">Supprimer</button>
         `;
         list.appendChild(li);
     });
+
+    list.querySelectorAll('.offline-pack-active-toggle').forEach((checkbox) => {
+        checkbox.addEventListener('change', async () => {
+            const toggles = Array.from(list.querySelectorAll('.offline-pack-active-toggle'));
+            const nextActive = toggles.filter((el) => el.checked).map((el) => el.dataset.packName).filter(Boolean);
+            await setOfflineActivePacks(nextActive);
+            await updateBaseTileNativeZoomFromAvailability({ forceScan: true });
+            setupBaseTileLayer();
+            updateOfflineStatus();
+        });
+    });
+    updateOfflineStatus();
 }
 
 window.deleteMapPack = async function(packName) {
@@ -1800,13 +1990,20 @@ function initializeTeamChat() {
     const messagesBox = document.getElementById('chat-messages');
     const connectionState = document.getElementById('chat-connection-state');
     const onlineUsersLabel = document.getElementById('chat-online-users');
-    if (!panel || !toggleButton || !minimizeButton || !clearButton || !alertBadge || !offlineBadge || !roomInput || !userInput || !connectButton || !sendButton || !messageInput || !messagesBox || !connectionState || !onlineUsersLabel) return;
+    const clearModal = document.getElementById('chat-clear-modal');
+    const clearLocalButton = document.getElementById('chat-clear-local-button');
+    const clearChannelButton = document.getElementById('chat-clear-channel-button');
+    const clearCancelButton = document.getElementById('chat-clear-cancel-button');
+    if (!panel || !toggleButton || !minimizeButton || !clearButton || !alertBadge || !offlineBadge || !roomInput || !userInput || !connectButton || !sendButton || !messageInput || !messagesBox || !connectionState || !onlineUsersLabel || !clearModal || !clearLocalButton || !clearChannelButton || !clearCancelButton) return;
 
     const CHAT_CLIENT_ID_KEY = 'teamChatClientId';
     const CHAT_OUTBOX_KEY = 'teamChatOutbox';
     const CHAT_SEEN_IDS_KEY = 'teamChatSeenIds';
     let unreadCount = 0;
     let reconnectAfterOnlineTimeout = null;
+    let isChatConnecting = false;
+    let hasAnnouncedConnection = true;
+    const pendingChatMessages = [];
     const renderedMessageIds = new Set();
     const sentMessageElements = new Map();
     const activeUsers = new Map();
@@ -1836,7 +2033,7 @@ function initializeTeamChat() {
 
     const persistConfig = () => {
         localStorage.setItem(CHAT_STORAGE_KEY, JSON.stringify({
-            room: (roomInput.value || '').trim().toLowerCase().replace(/[^a-z0-9-_]/g, ''),
+            room: (roomInput.value || '').trim().replace(/[^a-zA-Z0-9-_]/g, ''),
             user: (userInput.value || '').trim().slice(0, 24)
         }));
     };
@@ -1867,6 +2064,14 @@ function initializeTeamChat() {
     };
 
     const shouldWarnUnread = () => panel.style.display !== 'flex';
+
+    const notifyWhenInBackground = (title, body, tag = 'pelic-chat') => {
+        if (typeof document === 'undefined' || !document.hidden) return;
+        if (typeof Notification === 'undefined' || Notification.permission !== 'granted') return;
+        try {
+            new Notification(title, { body, tag });
+        } catch (_) {}
+    };
 
     const refreshOnlineUsersLabel = () => {
         const users = Array.from(activeUsers.values())
@@ -1938,22 +2143,66 @@ function initializeTeamChat() {
         appendChatMessage('Système', `${outbox.length} message(s) hors-ligne envoyé(s).`, new Date().toISOString(), true);
     };
 
+    const renderIncomingChatMessage = (parsed, isCurrentChatTopic) => {
+        if (!parsed || !parsed.id || !parsed.user || !parsed.text || !parsed.time) return;
+        if (renderedMessageIds.has(parsed.id) || persistedSeenIds.has(parsed.id)) return;
+
+        renderedMessageIds.add(parsed.id);
+        persistedSeenIds.add(parsed.id);
+        persistSeenIds();
+        const isOwnMessage = parsed.senderClientId === myClientId;
+        appendChatMessage(parsed.user, parsed.text, parsed.time, false, { ...parsed, isOwnMessage, status: isOwnMessage ? 'sent' : 'read' });
+        saveMessageInHistory({ ...parsed, status: isOwnMessage ? 'sent' : 'read' });
+
+        if (!isOwnMessage) {
+            chatClient.publish(chatTopic, JSON.stringify({
+                type: 'read_receipt',
+                messageId: parsed.id,
+                reader: (userInput.value || '').trim() || 'inconnu',
+                time: new Date().toISOString()
+            }), { qos: 1 });
+        }
+
+        if (!isOwnMessage && shouldWarnUnread()) {
+            unreadCount += 1;
+            updateUnreadBadge();
+        }
+
+        if (!isOwnMessage && isCurrentChatTopic) {
+            notifyWhenInBackground(`Pelic Chat • ${(roomInput.value || '').trim() || 'canal'}`, `${parsed.user}: ${parsed.text}`, `pelic-chat-${chatTopic}`);
+        }
+    };
+
+    const reconnectIfNeeded = (reasonLabel = 'Reconnexion...') => {
+        const roomName = (roomInput.value || '').trim().replace(/[^a-zA-Z0-9-_]/g, '');
+        const userName = (userInput.value || '').trim();
+        if (!roomName || !userName) return;
+        if (chatConnected || isChatConnecting) return;
+        appendChatMessage('Système', reasonLabel, new Date().toISOString(), true);
+        connectToChat();
+    };
+
     function connectToChat() {
+        if (isChatConnecting) return;
+        isChatConnecting = true;
+
         if (typeof mqtt === 'undefined') {
+            isChatConnecting = false;
             appendChatMessage('Système', 'Client MQTT introuvable (connexion impossible).', new Date().toISOString(), true);
             return;
         }
-        const roomName = (roomInput.value || '').trim().toLowerCase().replace(/[^a-z0-9-_]/g, '');
+        const roomName = (roomInput.value || '').trim().replace(/[^a-zA-Z0-9-_]/g, '');
         const userName = (userInput.value || '').trim();
         if (!roomName || !userName) {
             appendChatMessage('Système', 'Canal et pseudo obligatoires.', new Date().toISOString(), true);
+            isChatConnecting = false;
             return;
         }
         persistConfig();
         const previousUser = activeUsers.get(myClientId) || (userInput.value || '').trim();
         publishPresence('offline', previousUser);
         if (chatClient) {
-            try { chatClient.end(false); } catch (_) {}
+            try { chatClient.end(true); } catch (_) {}
             chatClient = null;
         }
         activeUsers.clear();
@@ -1963,11 +2212,13 @@ function initializeTeamChat() {
         chatHistoryTopic = `pelic/chat_history/${roomName}`;
         chatPresenceTopic = `pelic/chat_presence/${roomName}`;
         setConnectionState(false, 'Connexion...');
-        chatClient = mqtt.connect('wss://test.mosquitto.org:8081/mqtt', {
-            keepalive: 30,
+        hasAnnouncedConnection = false;
+        pendingChatMessages.length = 0;
+        chatClient = mqtt.connect(CHAT_BROKER_URL, {
+            keepalive: 45,
             reconnectPeriod: 5000,
-            connectTimeout: 12000,
-            clean: false,
+            connectTimeout: 20000,
+            clean: true, // session non persistante: évite de conserver des abonnements d'anciens canaux
             protocolVersion: 4,
             clientId: myClientId,
             will: {
@@ -1985,26 +2236,49 @@ function initializeTeamChat() {
         });
 
         chatClient.on('connect', () => {
+            const announceConnection = () => {
+                if (hasAnnouncedConnection) return;
+                hasAnnouncedConnection = true;
+                setConnectionState(true);
+                isChatConnecting = false;
+                appendChatMessage('Système', `Connecté au canal "${roomName}" (${CHAT_BROKER_URL}).`, new Date().toISOString(), true);
+
+                while (pendingChatMessages.length) {
+                    const pendingItem = pendingChatMessages.shift();
+                    renderIncomingChatMessage(pendingItem.parsed, pendingItem.isCurrentChatTopic);
+                }
+            };
+
             chatClient.subscribe(chatTopic, { qos: 1 }, (err) => {
                 if (err) {
                     setConnectionState(false, 'Erreur abonnement');
+                    isChatConnecting = false;
                     appendChatMessage('Système', `Abonnement impossible: ${err.message}`, new Date().toISOString(), true);
                     return;
                 }
+
+                // On annonce la connexion dès que le canal de chat principal est prêt,
+                // pour conserver un ordre visuel cohérent avec les messages reçus juste après reconnexion.
+                announceConnection();
+                if (typeof Notification !== 'undefined' && Notification.permission === 'default') {
+                    Notification.requestPermission().catch(() => {});
+                }
+
                 chatClient.subscribe(`${chatHistoryTopic}/#`, { qos: 1 }, (historyErr) => {
                     if (historyErr) {
                         setConnectionState(false, 'Erreur historique');
+                        isChatConnecting = false;
                         appendChatMessage('Système', `Abonnement historique impossible: ${historyErr.message}`, new Date().toISOString(), true);
                         return;
                     }
                     chatClient.subscribe(`${chatPresenceTopic}/#`, { qos: 1 }, (presenceErr) => {
                         if (presenceErr) {
                             setConnectionState(false, 'Erreur présence');
+                            isChatConnecting = false;
                             appendChatMessage('Système', `Abonnement présence impossible: ${presenceErr.message}`, new Date().toISOString(), true);
                             return;
                         }
-                        setConnectionState(true);
-                        appendChatMessage('Système', `Connecté au canal "${roomName}".`, new Date().toISOString(), true);
+                        announceConnection();
                         publishPresence('online', userName);
                         flushOutbox();
                     });
@@ -2014,6 +2288,11 @@ function initializeTeamChat() {
 
         chatClient.on('message', (receivedTopic, payload) => {
             try {
+                const isCurrentChatTopic = receivedTopic === chatTopic;
+                const isCurrentHistoryTopic = receivedTopic.startsWith(`${chatHistoryTopic}/`);
+                const isCurrentPresenceTopic = receivedTopic.startsWith(`${chatPresenceTopic}/`);
+                if (!isCurrentChatTopic && !isCurrentHistoryTopic && !isCurrentPresenceTopic) return;
+
                 const parsed = JSON.parse(payload.toString());
                 if (!parsed || !parsed.type) return;
 
@@ -2033,47 +2312,46 @@ function initializeTeamChat() {
                 }
 
                 if (parsed.type !== 'chat' || !parsed.user || !parsed.text || !parsed.time || !parsed.id) return;
-                if (renderedMessageIds.has(parsed.id) || persistedSeenIds.has(parsed.id)) return;
                 if (receivedTopic.startsWith(chatHistoryTopic)) {
                     const ageHours = Math.abs(Date.now() - new Date(parsed.time).getTime()) / 3600000;
-                    if (Number.isFinite(ageHours) && ageHours > 48) return;
+                    if (Number.isFinite(ageHours) && ageHours > 12) {
+                        // Nettoyage automatique des messages retenus trop anciens (>12h) sur le canal.
+                        if (parsed.id && chatClient && chatHistoryTopic) {
+                            chatClient.publish(`${chatHistoryTopic}/${parsed.id}`, '', { qos: 1, retain: true });
+                        }
+                        return;
+                    }
                 }
 
-                renderedMessageIds.add(parsed.id);
-                persistedSeenIds.add(parsed.id);
-                persistSeenIds();
-                const isOwnMessage = parsed.senderClientId === myClientId;
-                appendChatMessage(parsed.user, parsed.text, parsed.time, false, { ...parsed, isOwnMessage, status: isOwnMessage ? 'sent' : 'read' });
-                saveMessageInHistory({ ...parsed, status: isOwnMessage ? 'sent' : 'read' });
-
-                if (!isOwnMessage) {
-                    chatClient.publish(chatTopic, JSON.stringify({
-                        type: 'read_receipt',
-                        messageId: parsed.id,
-                        reader: (userInput.value || '').trim() || 'inconnu',
-                        time: new Date().toISOString()
-                    }), { qos: 1 });
+                if (!hasAnnouncedConnection) {
+                    pendingChatMessages.push({ parsed, isCurrentChatTopic });
+                    return;
                 }
 
-                if (!isOwnMessage && shouldWarnUnread()) {
-                    unreadCount += 1;
-                    updateUnreadBadge();
-                }
+                renderIncomingChatMessage(parsed, isCurrentChatTopic);
             } catch (_) {}
         });
 
-        chatClient.on('reconnect', () => setConnectionState(false, 'Reconnexion...'));
+        chatClient.on('reconnect', () => {
+            hasAnnouncedConnection = false;
+            setConnectionState(false, 'Reconnexion...');
+        });
         chatClient.on('close', () => {
+            hasAnnouncedConnection = false;
+            isChatConnecting = false;
             setConnectionState(false);
             activeUsers.clear();
             refreshOnlineUsersLabel();
         });
         chatClient.on('offline', () => {
+            hasAnnouncedConnection = false;
+            isChatConnecting = false;
             setConnectionState(false, 'Hors ligne');
             activeUsers.clear();
             refreshOnlineUsersLabel();
         });
         chatClient.on('error', (err) => {
+            isChatConnecting = false;
             setConnectionState(false, 'Erreur réseau');
             appendChatMessage('Système', `Erreur réseau: ${err.message}`, new Date().toISOString(), true);
         });
@@ -2122,49 +2400,50 @@ function initializeTeamChat() {
         toggleChatPanel();
     });
 
-    clearButton.addEventListener('click', () => {
-        const choice = prompt(
-            'Que voulez-vous supprimer ?\n' +
-            '1 = Messages de cet iPad uniquement\n' +
-            '2 = Messages de cet iPad + messages enregistrés du canal\n' +
-            '3 = Annuler',
-            '1'
-        );
-        if (!choice || choice.trim() === '3') return;
+    const clearLocalHistory = () => {
+        messagesBox.innerHTML = '';
+        localStorage.removeItem(CHAT_HISTORY_KEY);
+        localStorage.removeItem(CHAT_SEEN_IDS_KEY);
+        renderedMessageIds.clear();
+        persistedSeenIds.clear();
+        sentMessageElements.clear();
+        unreadCount = 0;
+        updateUnreadBadge();
+    };
 
+    const openClearModal = () => {
+        clearModal.style.display = 'flex';
+    };
+
+    const closeClearModal = () => {
+        clearModal.style.display = 'none';
+    };
+
+    clearButton.addEventListener('click', openClearModal);
+    clearCancelButton.addEventListener('click', closeClearModal);
+    clearModal.addEventListener('click', (event) => {
+        if (event.target === clearModal) closeClearModal();
+    });
+
+    clearLocalButton.addEventListener('click', () => {
+        clearLocalHistory();
+        appendChatMessage('Système', 'Historique local supprimé.', new Date().toISOString(), true);
+        closeClearModal();
+    });
+
+    clearChannelButton.addEventListener('click', () => {
         const history = JSON.parse(localStorage.getItem(CHAT_HISTORY_KEY) || '[]');
-        const clearLocalHistory = () => {
-            messagesBox.innerHTML = '';
-            localStorage.removeItem(CHAT_HISTORY_KEY);
-            localStorage.removeItem(CHAT_SEEN_IDS_KEY);
-            renderedMessageIds.clear();
-            persistedSeenIds.clear();
-            sentMessageElements.clear();
-            unreadCount = 0;
-            updateUnreadBadge();
-        };
-
-        if (choice.trim() === '1') {
-            clearLocalHistory();
-            appendChatMessage('Système', 'Historique local supprimé.', new Date().toISOString(), true);
+        if (!chatClient || !chatConnected || !chatHistoryTopic) {
+            alert('Connexion au canal requise pour supprimer les messages enregistrés du canal.');
             return;
         }
-
-        if (choice.trim() === '2') {
-            if (!chatClient || !chatConnected || !chatHistoryTopic) {
-                alert('Connexion au canal requise pour supprimer les messages enregistrés du canal.');
-                return;
-            }
-            const historyIds = Array.from(new Set(history.map((item) => item?.id).filter(Boolean)));
-            historyIds.forEach((messageId) => {
-                chatClient.publish(`${chatHistoryTopic}/${messageId}`, '', { qos: 1, retain: true });
-            });
-            clearLocalHistory();
-            appendChatMessage('Système', `Historique local supprimé + ${historyIds.length} message(s) canal nettoyé(s).`, new Date().toISOString(), true);
-            return;
-        }
-
-        alert('Choix invalide. Utilisez 1, 2 ou 3.');
+        const historyIds = Array.from(new Set(history.map((item) => item?.id).filter(Boolean)));
+        historyIds.forEach((messageId) => {
+            chatClient.publish(`${chatHistoryTopic}/${messageId}`, '', { qos: 1, retain: true });
+        });
+        clearLocalHistory();
+        appendChatMessage('Système', `Historique local supprimé + ${historyIds.length} message(s) canal nettoyé(s).`, new Date().toISOString(), true);
+        closeClearModal();
     });
 
     connectButton.addEventListener('click', connectToChat);
@@ -2177,10 +2456,9 @@ function initializeTeamChat() {
     });
 
     window.addEventListener('online', () => {
-        appendChatMessage('Système', 'Réseau récupéré, tentative de reconnexion.', new Date().toISOString(), true);
         if (reconnectAfterOnlineTimeout) clearTimeout(reconnectAfterOnlineTimeout);
         reconnectAfterOnlineTimeout = setTimeout(() => {
-            connectToChat();
+            reconnectIfNeeded('Réseau récupéré, tentative de reconnexion.');
         }, 400);
     });
     window.addEventListener('offline', () => {
@@ -2190,6 +2468,15 @@ function initializeTeamChat() {
         }
         setConnectionState(false, 'Hors ligne');
         appendChatMessage('Système', 'Réseau perdu, les messages sortants seront mis en file.', new Date().toISOString(), true);
+    });
+
+    document.addEventListener('visibilitychange', () => {
+        if (!document.hidden) {
+            if (reconnectAfterOnlineTimeout) clearTimeout(reconnectAfterOnlineTimeout);
+            reconnectAfterOnlineTimeout = setTimeout(() => {
+                reconnectIfNeeded('Retour au premier plan, reconnexion du chat.');
+            }, 200);
+        }
     });
 
     window.addEventListener('beforeunload', () => {
