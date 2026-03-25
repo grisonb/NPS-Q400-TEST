@@ -669,6 +669,11 @@ html, body {
     cursor: pointer;
 }
 
+.map-source-btn:disabled {
+    opacity: 0.6;
+    cursor: wait;
+}
+
 .map-source-btn.active {
     background: var(--primary-color);
     color: #fff;

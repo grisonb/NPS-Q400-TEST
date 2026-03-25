@@ -44,6 +44,8 @@ let offlineTilesMode = DEFAULT_OFFLINE_TILES_ENABLED;
 let mapSourceMode = DEFAULT_MAP_SOURCE_MODE;
 let offlineOnlineFallbackMode = DEFAULT_OFFLINE_ONLINE_FALLBACK;
 let activeOfflinePacks = [];
+let isMapSourceSwitching = false;
+let isZipImportRunning = false;
 const CHAT_STORAGE_KEY = 'teamChatConfig';
 const CHAT_HISTORY_KEY = 'teamChatHistory';
 let chatClient = null;
@@ -1211,22 +1213,34 @@ function updateMapSourceButtons() {
     if (!onlineBtn || !offlineBtn) return;
     onlineBtn.classList.toggle('active', mapSourceMode !== 'offline');
     offlineBtn.classList.toggle('active', mapSourceMode === 'offline');
+    onlineBtn.disabled = isMapSourceSwitching;
+    offlineBtn.disabled = isMapSourceSwitching;
     onlineBtn.setAttribute('aria-pressed', String(mapSourceMode !== 'offline'));
     offlineBtn.setAttribute('aria-pressed', String(mapSourceMode === 'offline'));
 }
 
 async function setMapSourceMode(mode) {
+    if (isMapSourceSwitching) return;
+    isMapSourceSwitching = true;
     mapSourceMode = mode === 'offline' ? 'offline' : 'online';
     localStorage.setItem(MAP_SOURCE_MODE_KEY, mapSourceMode);
+    updateMapSourceButtons();
+    updateOfflineStatus();
     try {
         await setOfflineTilesEnabled(mapSourceMode === 'offline');
         setOfflineOnlineFallbackMode(false);
         notifyServiceWorkerActivePacks(activeOfflinePacks);
-        await updateBaseTileNativeZoomFromAvailability({ forceScan: mapSourceMode === 'offline' });
+        await updateBaseTileNativeZoomFromAvailability({ forceScan: false });
         if (map && baseTileLayer) setupBaseTileLayer();
+        if (mapSourceMode === 'offline') {
+            setTimeout(() => {
+                updateBaseTileNativeZoomFromAvailability({ forceScan: true }).catch(() => {});
+            }, 0);
+        }
     } finally {
         updateMapSourceButtons();
         updateOfflineStatus();
+        isMapSourceSwitching = false;
     }
 }
 
@@ -1299,6 +1313,10 @@ async function purgeInactivePacksCache() {
 
 async function handleZipImport(file) {
     if (!file) return;
+    if (isZipImportRunning) {
+        alert("Un import est déjà en cours. Veuillez attendre la fin avant d'importer un autre ZIP.");
+        return;
+    }
     if (typeof JSZip === 'undefined') {
         alert("ERREUR : La librairie d'importation (JSZip) n'est pas chargée.");
         return;
@@ -1321,11 +1339,14 @@ async function handleZipImport(file) {
     progressSection.style.display = 'block';
     progressBar.style.width = '0%';
     statusMessage.textContent = `Analyse du fichier ${packName}...`;
+    isZipImportRunning = true;
 
     try {
         const zip = await JSZip.loadAsync(file);
-        const tileCandidates = [];
         const zipEntries = Object.values(zip.files);
+        const validEntries = [];
+        let importedMaxZoom = 0;
+
         for (let i = 0; i < zipEntries.length; i += 1) {
             const fileEntry = zipEntries[i];
             if (fileEntry.dir) continue;
@@ -1337,22 +1358,22 @@ async function handleZipImport(file) {
 
             // Canonicalise la clé en .png pour éviter les ratés d'affichage
             // quand le pack contient des .jpg mais Leaflet demande des .png.
-            tileCandidates.push({
+            validEntries.push({
                 fileEntry,
                 tilePath: `${parts[1]}/${parts[2]}/${parts[3]}.png`
             });
+            const zoom = Number.parseInt(parts[1], 10);
+            if (Number.isFinite(zoom)) {
+                importedMaxZoom = Math.max(importedMaxZoom, zoom);
+            }
 
-            if (i % 3000 === 0) {
+            if (i % 1000 === 0) {
                 statusMessage.textContent = `Préparation des tuiles... ${i} / ${zipEntries.length}`;
                 await new Promise((resolve) => setTimeout(resolve, 0));
             }
         }
 
-        const totalFiles = tileCandidates.length;
-        const importedMaxZoom = tileCandidates.reduce((max, entry) => {
-            const z = Number.parseInt(entry.tilePath.split('/')[0], 10);
-            return Number.isFinite(z) ? Math.max(max, z) : max;
-        }, 0);
+        const totalFiles = validEntries.length;
 
         if (totalFiles === 0) {
             throw new Error("Aucune tuile valide trouvée dans le ZIP. Formats acceptés : z/x/y.png (avec sous-dossiers possibles) ou z_x_y.png (z-y-x aussi accepté).");
@@ -1360,11 +1381,11 @@ async function handleZipImport(file) {
 
         statusMessage.textContent = `Préparation terminée. Importation de ${totalFiles} tuiles...`;
 
-        const batchSize = 100;
+        const batchSize = 40;
         let processedFiles = 0;
 
-        for (let i = 0; i < tileCandidates.length; i += batchSize) {
-            const batchEntries = tileCandidates.slice(i, i + batchSize);
+        for (let i = 0; i < validEntries.length; i += batchSize) {
+            const batchEntries = validEntries.slice(i, i + batchSize);
             const batch = await Promise.all(batchEntries.map(async ({ fileEntry, tilePath }) => {
                 const blob = await fileEntry.async('blob');
                 return {
@@ -1389,6 +1410,8 @@ async function handleZipImport(file) {
                 };
                 transaction.onerror = () => reject(transaction.error);
             });
+
+            await new Promise((resolve) => setTimeout(resolve, 0));
         }
 
         statusMessage.textContent = `Importation de ${packName} terminée !`;
@@ -1411,6 +1434,7 @@ async function handleZipImport(file) {
         statusMessage.textContent = `Erreur: ${error.message}`;
         console.error("Erreur d'importation ZIP:", error);
     } finally {
+        isZipImportRunning = false;
         setTimeout(() => { progressSection.style.display = 'none'; }, 5000);
     }
 }
