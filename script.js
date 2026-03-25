@@ -29,6 +29,8 @@ let gaarLayer = null;
 let db; // Variable pour la connexion à la base de données IndexedDB
 const OFFLINE_TILES_ENABLED_KEY = 'offlineTilesEnabled';
 const DEFAULT_OFFLINE_TILES_ENABLED = true;
+const MAP_SOURCE_MODE_KEY = 'mapSourceMode';
+const DEFAULT_MAP_SOURCE_MODE = 'online';
 const OFFLINE_ONLINE_FALLBACK_KEY = 'offlineOnlineFallback';
 const DEFAULT_OFFLINE_ONLINE_FALLBACK = true;
 const OFFLINE_TILES_MAX_ZOOM_KEY = 'offlineTilesMaxZoom';
@@ -39,6 +41,7 @@ const OFFLINE_FALLBACK_NATIVE_ZOOM = 14;
 const GLOBAL_MAX_ZOOM = 18;
 let baseTileMaxNativeZoom = ONLINE_MAX_NATIVE_ZOOM;
 let offlineTilesMode = DEFAULT_OFFLINE_TILES_ENABLED;
+let mapSourceMode = DEFAULT_MAP_SOURCE_MODE;
 let offlineOnlineFallbackMode = DEFAULT_OFFLINE_ONLINE_FALLBACK;
 let activeOfflinePacks = [];
 const CHAT_STORAGE_KEY = 'teamChatConfig';
@@ -134,14 +137,17 @@ async function initializeApp() {
         await initDB();
         activeOfflinePacks = JSON.parse(localStorage.getItem(OFFLINE_ACTIVE_PACKS_KEY) || '[]');
         if (!Array.isArray(activeOfflinePacks)) activeOfflinePacks = [];
+        const savedMapSourceMode = localStorage.getItem(MAP_SOURCE_MODE_KEY);
+        mapSourceMode = savedMapSourceMode === 'offline' ? 'offline' : DEFAULT_MAP_SOURCE_MODE;
         offlineOnlineFallbackMode = localStorage.getItem(OFFLINE_ONLINE_FALLBACK_KEY) === null
             ? DEFAULT_OFFLINE_ONLINE_FALLBACK
             : localStorage.getItem(OFFLINE_ONLINE_FALLBACK_KEY) === 'true';
         await initializeOfflineTilePreference();
-        await updateBaseTileNativeZoomFromAvailability();
+        await updateBaseTileNativeZoomFromAvailability({ forceScan: mapSourceMode === 'offline' });
         displayInstalledMaps();
     } catch (startupError) {
         console.error('Initialisation offline incomplète:', startupError);
+        mapSourceMode = DEFAULT_MAP_SOURCE_MODE;
         offlineOnlineFallbackMode = DEFAULT_OFFLINE_ONLINE_FALLBACK;
         activeOfflinePacks = [];
         displayInstalledMaps();
@@ -279,8 +285,9 @@ function setupEventListeners() {
     const offlineMapModal = document.getElementById('offline-map-modal');
     const closeOfflineMapButton = document.getElementById('close-offline-map-btn');
     const zipImporterInput = document.getElementById('zip-importer-input');
-    const offlineTilesEnabledToggle = document.getElementById('offline-tiles-enabled-toggle');
-    const offlineOnlineFallbackToggle = document.getElementById('offline-online-fallback-toggle');
+    const mapSourceOnlineBtn = document.getElementById('map-source-online-btn');
+    const mapSourceOfflineBtn = document.getElementById('map-source-offline-btn');
+    const purgeInactivePacksBtn = document.getElementById('purge-inactive-packs-btn');
     
     if (mainActionButtons) {
         const versionDisplay = document.createElement('div');
@@ -455,12 +462,25 @@ function setupEventListeners() {
         event.target.value = '';
     });
 
-    if (offlineTilesEnabledToggle) {
-        offlineTilesEnabledToggle.addEventListener('change', async (event) => {
-            const enabled = event.target.checked;
-            await setOfflineTilesEnabled(enabled);
-            await updateBaseTileNativeZoomFromAvailability();
-            updateOfflineStatus();
+    if (mapSourceOnlineBtn) {
+        mapSourceOnlineBtn.addEventListener('click', () => {
+            setMapSourceMode('online');
+        });
+    }
+
+    if (mapSourceOfflineBtn) {
+        mapSourceOfflineBtn.addEventListener('click', () => {
+            if (!activeOfflinePacks.length) {
+                alert('Aucun pack offline actif. Activez (ou importez) un pack avant de passer en mode offline.');
+                return;
+            }
+            setMapSourceMode('offline');
+        });
+    }
+
+    if (purgeInactivePacksBtn) {
+        purgeInactivePacksBtn.addEventListener('click', async () => {
+            await purgeInactivePacksCache();
         });
     }
 
@@ -1168,39 +1188,89 @@ function setOfflineOnlineFallbackMode(enabled) {
     notifyServiceWorkerOfflineOnlineFallback(offlineOnlineFallbackMode);
 }
 
+function updateMapSourceButtons() {
+    const onlineBtn = document.getElementById('map-source-online-btn');
+    const offlineBtn = document.getElementById('map-source-offline-btn');
+    if (!onlineBtn || !offlineBtn) return;
+    onlineBtn.classList.toggle('active', mapSourceMode !== 'offline');
+    offlineBtn.classList.toggle('active', mapSourceMode === 'offline');
+}
+
+async function setMapSourceMode(mode) {
+    mapSourceMode = mode === 'offline' ? 'offline' : 'online';
+    localStorage.setItem(MAP_SOURCE_MODE_KEY, mapSourceMode);
+    await setOfflineTilesEnabled(mapSourceMode === 'offline');
+    setOfflineOnlineFallbackMode(false);
+    await updateBaseTileNativeZoomFromAvailability({ forceScan: mapSourceMode === 'offline' });
+    updateMapSourceButtons();
+    updateOfflineStatus();
+}
+
 function updateOfflineStatus() {
     const status = document.getElementById('offline-status');
-    const toggle = document.getElementById('offline-tiles-enabled-toggle');
-    if (!status || !toggle) return;
-
-    if (!toggle.checked) {
-        status.textContent = 'Cartes téléchargées désactivées (utilisation de la carte en ligne).';
+    if (!status) return;
+    if (mapSourceMode !== 'offline') {
+        status.textContent = 'Mode ONLINE actif : seules les tuiles en ligne sont affichées.';
         return;
     }
 
     const selectedLabel = activeOfflinePacks.length
         ? `Packs actifs : ${activeOfflinePacks.join(', ')}.`
         : 'Aucun pack actif.';
-    const fallbackLabel = offlineOnlineFallbackMode
-        ? 'Secours online actif si tuile absente.'
-        : 'Secours online désactivé (offline strict).';
-    status.textContent = `Cartes téléchargées activées. ${selectedLabel} ${fallbackLabel}`;
+    status.textContent = `Mode OFFLINE strict actif. ${selectedLabel}`;
 }
 
 async function initializeOfflineTilePreference() {
-    const toggle = document.getElementById('offline-tiles-enabled-toggle');
-    const fallbackToggle = document.getElementById('offline-online-fallback-toggle');
-    if (!toggle) return;
-
-    const enabled = await getOfflineTilesEnabled();
-    toggle.checked = enabled;
-    if (fallbackToggle) {
-        fallbackToggle.checked = offlineOnlineFallbackMode;
-    }
+    const enabled = mapSourceMode === 'offline';
+    await setOfflineTilesEnabled(enabled);
+    setOfflineOnlineFallbackMode(false);
     notifyServiceWorkerOfflineTilesPreference(enabled);
-    notifyServiceWorkerOfflineOnlineFallback(offlineOnlineFallbackMode);
+    notifyServiceWorkerOfflineOnlineFallback(false);
     notifyServiceWorkerActivePacks(activeOfflinePacks);
+    updateMapSourceButtons();
     updateOfflineStatus();
+}
+
+async function purgeInactivePacksCache() {
+    if (!db) {
+        alert('Base offline indisponible.');
+        return;
+    }
+    const installedPacks = JSON.parse(localStorage.getItem('installedMapPacks') || '[]');
+    const inactiveNames = installedPacks.map((p) => p.name).filter((name) => !activeOfflinePacks.includes(name));
+    if (!inactiveNames.length) {
+        alert('Aucun pack désélectionné à purger.');
+        return;
+    }
+    if (!confirm(`Supprimer définitivement le cache de ${inactiveNames.length} pack(s) désélectionné(s) ?`)) {
+        return;
+    }
+
+    const inactiveSet = new Set(inactiveNames);
+    let deletedCount = 0;
+    await new Promise((resolve, reject) => {
+        const tx = db.transaction('tiles', 'readwrite');
+        const store = tx.objectStore('tiles');
+        const request = store.openCursor();
+        request.onsuccess = (event) => {
+            const cursor = event.target.result;
+            if (!cursor) return;
+            if (inactiveSet.has(cursor.value?.packName || '')) {
+                cursor.delete();
+                deletedCount += 1;
+            }
+            cursor.continue();
+        };
+        request.onerror = () => reject(request.error || new Error('Erreur purge cache offline'));
+        tx.oncomplete = () => resolve();
+        tx.onerror = () => reject(tx.error || new Error('Erreur transaction purge offline'));
+    });
+
+    const updatedInstalled = installedPacks.filter((pack) => !inactiveSet.has(pack.name));
+    localStorage.setItem('installedMapPacks', JSON.stringify(updatedInstalled));
+    await updateBaseTileNativeZoomFromAvailability({ forceScan: mapSourceMode === 'offline' });
+    displayInstalledMaps();
+    alert(`Purge terminée: ${deletedCount} tuiles supprimées (${inactiveNames.length} pack(s)).`);
 }
 
 async function handleZipImport(file) {
