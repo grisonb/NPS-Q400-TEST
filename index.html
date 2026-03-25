@@ -11,7 +11,7 @@
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <script>
-        const APP_VERSION = 'v8.69';
+        const APP_VERSION = 'v8.70';
 
         if ('serviceWorker' in navigator) {
             window.addEventListener('load', async () => {
@@ -287,8 +287,8 @@
                     <div class="offline-toggle-row">
                         <span>Type de carte :</span>
                         <div class="map-source-buttons">
-                            <button type="button" id="map-source-online-btn" class="map-source-btn active">Online</button>
-                            <button type="button" id="map-source-offline-btn" class="map-source-btn">Offline</button>
+                            <button type="button" id="map-source-online-btn" class="map-source-btn map-source-btn-online active">Online</button>
+                            <button type="button" id="map-source-offline-btn" class="map-source-btn map-source-btn-offline">Offline</button>
                         </div>
                     </div>
                     <button type="button" id="purge-inactive-packs-btn" class="danger-inline-btn">Vider le cache des packs désélectionnés</button>

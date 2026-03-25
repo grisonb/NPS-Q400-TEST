@@ -161,8 +161,12 @@ async function initializeApp() {
         statusMessage.style.display = 'none';
         searchSection.style.display = 'block';
         initMap();
-        setupEventListeners();
         initializeTeamChat();
+        try {
+            setupEventListeners();
+        } catch (uiError) {
+            console.error('Erreur setupEventListeners:', uiError);
+        }
         setTimeout(() => {
             updateBaseTileNativeZoomFromAvailability({ forceScan: true }).catch(() => {});
         }, 0);
@@ -481,13 +485,6 @@ function setupEventListeners() {
     if (purgeInactivePacksBtn) {
         purgeInactivePacksBtn.addEventListener('click', async () => {
             await purgeInactivePacksCache();
-        });
-    }
-
-    if (offlineOnlineFallbackToggle) {
-        offlineOnlineFallbackToggle.addEventListener('change', () => {
-            setOfflineOnlineFallbackMode(offlineOnlineFallbackToggle.checked);
-            updateOfflineStatus();
         });
     }
 
@@ -1130,6 +1127,7 @@ function setOfflineTilesEnabled(enabled) {
         const store = transaction.objectStore('settings');
         store.put({ key: OFFLINE_TILES_ENABLED_KEY, value: enabled });
         transaction.oncomplete = () => {
+            offlineTilesMode = !!enabled;
             notifyServiceWorkerOfflineTilesPreference(enabled);
             resolve();
         };
@@ -1201,7 +1199,9 @@ async function setMapSourceMode(mode) {
     localStorage.setItem(MAP_SOURCE_MODE_KEY, mapSourceMode);
     await setOfflineTilesEnabled(mapSourceMode === 'offline');
     setOfflineOnlineFallbackMode(false);
+    notifyServiceWorkerActivePacks(activeOfflinePacks);
     await updateBaseTileNativeZoomFromAvailability({ forceScan: mapSourceMode === 'offline' });
+    if (map && baseTileLayer) setupBaseTileLayer();
     updateMapSourceButtons();
     updateOfflineStatus();
 }
@@ -1300,27 +1300,29 @@ async function handleZipImport(file) {
 
     try {
         const zip = await JSZip.loadAsync(file);
-        const allFiles = Object.values(zip.files).filter(f => !f.dir);
-        const tileCandidates = allFiles.map(fileEntry => {
+        const tileCandidates = [];
+        const zipEntries = Object.values(zip.files);
+        for (let i = 0; i < zipEntries.length; i += 1) {
+            const fileEntry = zipEntries[i];
+            if (fileEntry.dir) continue;
             const normalizedName = fileEntry.name.replace(/\\/g, '/');
             const xyzMatch = normalizedName.match(/(?:^|\/)(\d+)\/(\d+)\/(\d+)\.(png|jpg|jpeg)$/i);
-            if (xyzMatch) {
-                return {
-                    fileEntry,
-                    tilePath: `${xyzMatch[1]}/${xyzMatch[2]}/${xyzMatch[3]}.${xyzMatch[4].toLowerCase()}`
-                };
-            }
+            const flatMatch = xyzMatch ? null : normalizedName.match(/(?:^|\/)(\d+)[-_](\d+)[-_](\d+)\.(png|jpg|jpeg)$/i);
+            const parts = xyzMatch || flatMatch;
+            if (!parts) continue;
 
-            const flatMatch = normalizedName.match(/(?:^|\/)(\d+)[-_](\d+)[-_](\d+)\.(png|jpg|jpeg)$/i);
-            if (flatMatch) {
-                return {
-                    fileEntry,
-                    tilePath: `${flatMatch[1]}/${flatMatch[2]}/${flatMatch[3]}.${flatMatch[4].toLowerCase()}`
-                };
-            }
+            // Canonicalise la clé en .png pour éviter les ratés d'affichage
+            // quand le pack contient des .jpg mais Leaflet demande des .png.
+            tileCandidates.push({
+                fileEntry,
+                tilePath: `${parts[1]}/${parts[2]}/${parts[3]}.png`
+            });
 
-            return null;
-        }).filter(Boolean);
+            if (i % 3000 === 0) {
+                statusMessage.textContent = `Préparation des tuiles... ${i} / ${zipEntries.length}`;
+                await new Promise((resolve) => setTimeout(resolve, 0));
+            }
+        }
 
         const totalFiles = tileCandidates.length;
         const importedMaxZoom = tileCandidates.reduce((max, entry) => {
@@ -1332,7 +1334,7 @@ async function handleZipImport(file) {
             throw new Error("Aucune tuile valide trouvée dans le ZIP. Formats acceptés : z/x/y.png (avec sous-dossiers possibles) ou z_x_y.png (z-y-x aussi accepté).");
         }
 
-        statusMessage.textContent = `Préparation de ${totalFiles} tuiles pour l'importation...`;
+        statusMessage.textContent = `Préparation terminée. Importation de ${totalFiles} tuiles...`;
 
         const batchSize = 100;
         let processedFiles = 0;

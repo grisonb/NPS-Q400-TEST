@@ -651,24 +651,48 @@ html, body {
     cursor: pointer;
 }
 
-.offline-pack-select-row {
+.map-source-buttons {
     display: flex;
-    align-items: center;
-    gap: 10px;
-    margin: 0 0 12px;
+    gap: 8px;
 }
 
-.offline-pack-select-row label {
-    font-weight: 600;
-    color: var(--primary-color);
-}
-
-#offline-pack-select {
-    flex: 1;
+.map-source-btn {
     border: 1px solid var(--border-color);
+    background: #fff;
+    color: var(--primary-color);
     border-radius: 8px;
-    padding: 8px 10px;
-    font-size: 14px;
+    min-width: 108px;
+    min-height: 42px;
+    padding: 8px 14px;
+    font-size: 16px;
+    font-weight: 700;
+    cursor: pointer;
+}
+
+.map-source-btn.active {
+    background: var(--primary-color);
+    color: #fff;
+    border-color: transparent;
+}
+
+.map-source-btn-online.active {
+    background: #117a37;
+}
+
+.map-source-btn-offline.active {
+    background: #bf5d00;
+}
+
+.danger-inline-btn {
+    width: 100%;
+    margin: 0 0 10px 0;
+    border: none;
+    border-radius: 8px;
+    background: var(--secondary-color);
+    color: #fff;
+    padding: 9px 10px;
+    font-weight: 700;
+    cursor: pointer;
 }
 
 #offline-status {
