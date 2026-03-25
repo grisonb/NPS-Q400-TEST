@@ -651,36 +651,24 @@ html, body {
     cursor: pointer;
 }
 
-.map-source-buttons {
+.offline-pack-select-row {
     display: flex;
-    gap: 8px;
+    align-items: center;
+    gap: 10px;
+    margin: 0 0 12px;
 }
 
-.map-source-btn {
-    border: 1px solid var(--border-color);
-    background: #fff;
+.offline-pack-select-row label {
+    font-weight: 600;
     color: var(--primary-color);
-    border-radius: 8px;
-    padding: 6px 10px;
-    font-weight: 700;
-    cursor: pointer;
 }
 
-.map-source-btn.active {
-    background: var(--primary-color);
-    color: #fff;
-}
-
-.danger-inline-btn {
-    width: 100%;
-    margin: 0 0 10px 0;
-    border: none;
+#offline-pack-select {
+    flex: 1;
+    border: 1px solid var(--border-color);
     border-radius: 8px;
-    background: var(--secondary-color);
-    color: #fff;
-    padding: 9px 10px;
-    font-weight: 700;
-    cursor: pointer;
+    padding: 8px 10px;
+    font-size: 14px;
 }
 
 #offline-status {
