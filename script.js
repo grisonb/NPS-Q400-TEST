@@ -468,18 +468,28 @@ function setupEventListeners() {
     });
 
     if (mapSourceOnlineBtn) {
-        mapSourceOnlineBtn.addEventListener('click', () => {
-            setMapSourceMode('online');
+        mapSourceOnlineBtn.addEventListener('click', async () => {
+            try {
+                await setMapSourceMode('online');
+            } catch (error) {
+                console.error('Erreur activation mode online:', error);
+                alert(`Impossible d'activer le mode online: ${error.message || error}`);
+            }
         });
     }
 
     if (mapSourceOfflineBtn) {
-        mapSourceOfflineBtn.addEventListener('click', () => {
+        mapSourceOfflineBtn.addEventListener('click', async () => {
             if (!activeOfflinePacks.length) {
                 alert('Aucun pack offline actif. Activez (ou importez) un pack avant de passer en mode offline.');
                 return;
             }
-            setMapSourceMode('offline');
+            try {
+                await setMapSourceMode('offline');
+            } catch (error) {
+                console.error('Erreur activation mode offline:', error);
+                alert(`Impossible d'activer le mode offline: ${error.message || error}`);
+            }
         });
     }
 
@@ -1124,11 +1134,19 @@ function getOfflineTilesEnabled() {
 
 function setOfflineTilesEnabled(enabled) {
     return new Promise((resolve, reject) => {
+        if (!db) {
+            offlineTilesMode = !!enabled;
+            localStorage.setItem(OFFLINE_TILES_ENABLED_KEY, String(offlineTilesMode));
+            notifyServiceWorkerOfflineTilesPreference(enabled);
+            resolve();
+            return;
+        }
         const transaction = db.transaction('settings', 'readwrite');
         const store = transaction.objectStore('settings');
         store.put({ key: OFFLINE_TILES_ENABLED_KEY, value: enabled });
         transaction.oncomplete = () => {
             offlineTilesMode = !!enabled;
+            localStorage.setItem(OFFLINE_TILES_ENABLED_KEY, String(offlineTilesMode));
             notifyServiceWorkerOfflineTilesPreference(enabled);
             resolve();
         };
@@ -1193,18 +1211,23 @@ function updateMapSourceButtons() {
     if (!onlineBtn || !offlineBtn) return;
     onlineBtn.classList.toggle('active', mapSourceMode !== 'offline');
     offlineBtn.classList.toggle('active', mapSourceMode === 'offline');
+    onlineBtn.setAttribute('aria-pressed', String(mapSourceMode !== 'offline'));
+    offlineBtn.setAttribute('aria-pressed', String(mapSourceMode === 'offline'));
 }
 
 async function setMapSourceMode(mode) {
     mapSourceMode = mode === 'offline' ? 'offline' : 'online';
     localStorage.setItem(MAP_SOURCE_MODE_KEY, mapSourceMode);
-    await setOfflineTilesEnabled(mapSourceMode === 'offline');
-    setOfflineOnlineFallbackMode(false);
-    notifyServiceWorkerActivePacks(activeOfflinePacks);
-    await updateBaseTileNativeZoomFromAvailability({ forceScan: mapSourceMode === 'offline' });
-    if (map && baseTileLayer) setupBaseTileLayer();
-    updateMapSourceButtons();
-    updateOfflineStatus();
+    try {
+        await setOfflineTilesEnabled(mapSourceMode === 'offline');
+        setOfflineOnlineFallbackMode(false);
+        notifyServiceWorkerActivePacks(activeOfflinePacks);
+        await updateBaseTileNativeZoomFromAvailability({ forceScan: mapSourceMode === 'offline' });
+        if (map && baseTileLayer) setupBaseTileLayer();
+    } finally {
+        updateMapSourceButtons();
+        updateOfflineStatus();
+    }
 }
 
 function updateOfflineStatus() {

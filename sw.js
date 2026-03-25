@@ -1,6 +1,6 @@
-const APP_CACHE_NAME = 'test-communes-app-cache-v871'; 
-const DATA_CACHE_NAME = 'test-communes-data-cache-v871';
-const TILE_CACHE_NAME = 'test-communes-tile-cache-v871';
+const APP_CACHE_NAME = 'test-communes-app-cache-v872'; 
+const DATA_CACHE_NAME = 'test-communes-data-cache-v872';
+const TILE_CACHE_NAME = 'test-communes-tile-cache-v872';
 
 const APP_SHELL_URLS = [
     './',
@@ -183,9 +183,36 @@ function getTileFromDb(url) {
             const transaction = db.transaction('tiles', 'readonly');
             const store = transaction.objectStore('tiles');
 
-            const candidates = [url];
             const normalizedUrl = normalizeTileUrl(url);
-            if (normalizedUrl !== url) candidates.push(normalizedUrl);
+            const candidates = [];
+            const pushCandidate = (candidateUrl) => {
+                if (!candidateUrl) return;
+                if (!candidates.includes(candidateUrl)) candidates.push(candidateUrl);
+            };
+
+            pushCandidate(url);
+            pushCandidate(normalizedUrl);
+
+            const extensionMatch = normalizedUrl.match(/\.(png|jpg|jpeg)(\?.*)?$/i);
+            if (extensionMatch) {
+                const query = extensionMatch[2] || '';
+                const withoutExt = normalizedUrl.replace(/\.(png|jpg|jpeg)(\?.*)?$/i, '');
+                ['png', 'jpg', 'jpeg'].forEach((ext) => {
+                    pushCandidate(`${withoutExt}.${ext}${query}`);
+                });
+            }
+
+            // Compatibilité avec anciens imports potentiellement stockés sous b./c. host.
+            try {
+                const parsed = new URL(normalizedUrl);
+                if (parsed.hostname.match(/^[abc]\.tile\.openstreetmap\.org$/i)) {
+                    ['a', 'b', 'c'].forEach((subdomain) => {
+                        const variant = new URL(parsed.toString());
+                        variant.hostname = `${subdomain}.tile.openstreetmap.org`;
+                        pushCandidate(variant.toString());
+                    });
+                }
+            } catch (e) {}
 
             const tryNext = () => {
                 if (!candidates.length) {
