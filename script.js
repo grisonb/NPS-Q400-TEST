@@ -143,7 +143,8 @@ async function initializeApp() {
             ? DEFAULT_OFFLINE_ONLINE_FALLBACK
             : localStorage.getItem(OFFLINE_ONLINE_FALLBACK_KEY) === 'true';
         await initializeOfflineTilePreference();
-        await updateBaseTileNativeZoomFromAvailability({ forceScan: mapSourceMode === 'offline' });
+        // Évite de bloquer le démarrage sur un scan potentiellement long de la DB offline.
+        await updateBaseTileNativeZoomFromAvailability({ forceScan: false });
         displayInstalledMaps();
     } catch (startupError) {
         console.error('Initialisation offline incomplète:', startupError);
