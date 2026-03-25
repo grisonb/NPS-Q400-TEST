@@ -1232,15 +1232,10 @@ async function setMapSourceMode(mode) {
         notifyServiceWorkerActivePacks(activeOfflinePacks);
         await updateBaseTileNativeZoomFromAvailability({ forceScan: false });
         if (map && baseTileLayer) setupBaseTileLayer();
-        if (mapSourceMode === 'offline') {
-            setTimeout(() => {
-                updateBaseTileNativeZoomFromAvailability({ forceScan: true }).catch(() => {});
-            }, 0);
-        }
     } finally {
+        isMapSourceSwitching = false;
         updateMapSourceButtons();
         updateOfflineStatus();
-        isMapSourceSwitching = false;
     }
 }
 
@@ -1427,7 +1422,7 @@ async function handleZipImport(file) {
         const currentOfflineMax = Number.parseInt(localStorage.getItem(OFFLINE_TILES_MAX_ZOOM_KEY) || '', 10);
         const nextOfflineMax = Number.isFinite(currentOfflineMax) ? Math.max(currentOfflineMax, importedMaxZoom) : importedMaxZoom;
         localStorage.setItem(OFFLINE_TILES_MAX_ZOOM_KEY, String(nextOfflineMax));
-        await updateBaseTileNativeZoomFromAvailability({ forceScan: true });
+        await updateBaseTileNativeZoomFromAvailability({ forceScan: false });
         displayInstalledMaps();
 
     } catch (error) {
@@ -1486,7 +1481,7 @@ function displayInstalledMaps() {
             const toggles = Array.from(list.querySelectorAll('.offline-pack-active-toggle'));
             const nextActive = toggles.filter((el) => el.checked).map((el) => el.dataset.packName).filter(Boolean);
             await setOfflineActivePacks(nextActive);
-            await updateBaseTileNativeZoomFromAvailability({ forceScan: true });
+            await updateBaseTileNativeZoomFromAvailability({ forceScan: false });
             setupBaseTileLayer();
             updateOfflineStatus();
         });
