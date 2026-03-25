@@ -1393,6 +1393,7 @@ async function handleZipImport(file) {
 
 function displayInstalledMaps() {
     const list = document.getElementById('installed-maps-list');
+    const select = document.getElementById('offline-pack-select');
     const installedPacks = JSON.parse(localStorage.getItem('installedMapPacks') || '[]');
     const installedPackNames = installedPacks.map((pack) => pack.name);
     const previousActive = new Set(activeOfflinePacks);
