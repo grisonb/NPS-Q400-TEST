@@ -11,11 +11,37 @@
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <script>
-        const APP_VERSION = 'v8.79';
+        const APP_VERSION = 'v8.80';
+        const APP_VERSION_STORAGE_KEY = 'appVersion';
 
         if ('serviceWorker' in navigator) {
             window.addEventListener('load', async () => {
                 let isRefreshing = false;
+
+                try {
+                    const previousVersion = localStorage.getItem(APP_VERSION_STORAGE_KEY);
+                    if (previousVersion !== APP_VERSION) {
+                        localStorage.setItem(APP_VERSION_STORAGE_KEY, APP_VERSION);
+                        localStorage.setItem('appVersionReloadPending', '1');
+
+                        const registrations = await navigator.serviceWorker.getRegistrations();
+                        await Promise.all(registrations.map((reg) => reg.unregister()));
+
+                        if ('caches' in window) {
+                            const cacheKeys = await caches.keys();
+                            await Promise.all(cacheKeys.map((key) => caches.delete(key)));
+                        }
+
+                        window.location.reload();
+                        return;
+                    }
+
+                    if (localStorage.getItem('appVersionReloadPending') === '1') {
+                        localStorage.removeItem('appVersionReloadPending');
+                    }
+                } catch (e) {
+                    console.log('Version refresh warning:', e);
+                }
 
                 navigator.serviceWorker.addEventListener('controllerchange', () => {
                     if (isRefreshing) return;
