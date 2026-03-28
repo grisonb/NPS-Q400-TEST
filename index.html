@@ -11,8 +11,9 @@
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <script>
-        const APP_VERSION = 'v8.80';
+        const APP_VERSION = 'v8.81';
         const APP_VERSION_STORAGE_KEY = 'appVersion';
+        const APP_VERSION_SESSION_KEY = 'appVersionRefreshDone';
 
         if ('serviceWorker' in navigator) {
             window.addEventListener('load', async () => {
@@ -20,9 +21,11 @@
 
                 try {
                     const previousVersion = localStorage.getItem(APP_VERSION_STORAGE_KEY);
-                    if (previousVersion !== APP_VERSION) {
+                    const alreadyRefreshed = sessionStorage.getItem(APP_VERSION_SESSION_KEY) === APP_VERSION;
+                    if (previousVersion !== APP_VERSION && !alreadyRefreshed) {
                         localStorage.setItem(APP_VERSION_STORAGE_KEY, APP_VERSION);
                         localStorage.setItem('appVersionReloadPending', '1');
+                        sessionStorage.setItem(APP_VERSION_SESSION_KEY, APP_VERSION);
 
                         const registrations = await navigator.serviceWorker.getRegistrations();
                         await Promise.all(registrations.map((reg) => reg.unregister()));

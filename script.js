@@ -156,33 +156,88 @@ async function initializeApp() {
         activeOfflinePacks = [];
         displayInstalledMaps();
     }
+    let communesLoadError = null;
     try {
         const data = await loadCommunesData();
         allCommunes = data.data.map(c => ({ ...c, normalized_name: simplifyString(c.nom_standard), search_parts: simplifyString(c.nom_standard).split(' ').filter(Boolean), soundex_parts: simplifyString(c.nom_standard).split(' ').filter(Boolean).map(part => soundex(part)) }));
-        statusMessage.style.display = 'none';
-        searchSection.style.display = 'block';
-        initMap();
-        initializeTeamChat();
-        try {
-            setupEventListeners();
-        } catch (uiError) {
-            console.error('Erreur setupEventListeners:', uiError);
-        }
-        setTimeout(() => {
-            updateBaseTileNativeZoomFromAvailability({ forceScan: true }).catch(() => {});
-        }, 0);
-        if (localStorage.getItem('liveGpsActive') === 'true') {
-            toggleLiveGps();
-        } else {
-            navigator.geolocation.getCurrentPosition(updateUserPosition, () => {}, { enableHighAccuracy: true });
-        }
-        const savedCommuneJSON = localStorage.getItem('currentCommune');
-        if (savedCommuneJSON) {
-            currentCommune = JSON.parse(savedCommuneJSON);
-            displayCommuneDetails(currentCommune, true);
-        }
     } catch (error) {
-        statusMessage.textContent = `❌ Erreur: ${error.message}`;
+        communesLoadError = error;
+        allCommunes = [];
+        console.error('Chargement communes indisponible:', error);
+    }
+
+    statusMessage.style.display = 'none';
+    searchSection.style.display = 'block';
+    initMap();
+    initializeTeamChat();
+    try {
+        setupEventListeners();
+    } catch (uiError) {
+        console.error('Erreur setupEventListeners:', uiError);
+    }
+    setTimeout(() => {
+        updateBaseTileNativeZoomFromAvailability({ forceScan: true }).catch(() => {});
+    }, 0);
+    if (localStorage.getItem('liveGpsActive') === 'true') {
+        toggleLiveGps();
+    } else {
+        navigator.geolocation.getCurrentPosition(updateUserPosition, () => {}, { enableHighAccuracy: true });
+    }
+    const savedCommuneJSON = localStorage.getItem('currentCommune');
+    if (savedCommuneJSON) {
+        currentCommune = JSON.parse(savedCommuneJSON);
+        displayCommuneDetails(currentCommune, true);
+    }
+    if (communesLoadError) {
+        setTimeout(() => {
+            alert("Mode dégradé: base communes indisponible au démarrage. La carte reste utilisable, réessayez avec réseau pour la recherche commune.");
+        }, 400);
+    }
+}
+
+async function loadCommunesData() {
+    const fetchWithTimeout = async (url, options = {}, timeoutMs = 8000) => {
+        const controller = new AbortController();
+        const timer = setTimeout(() => controller.abort(), timeoutMs);
+        try {
+            return await fetch(url, { ...options, signal: controller.signal });
+        } finally {
+            clearTimeout(timer);
+        }
+    };
+
+    const parseAndStore = async (response) => {
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        const payload = await response.json();
+        if (!payload || !Array.isArray(payload.data)) {
+            throw new Error("Format JSON invalide.");
+        }
+        try {
+            localStorage.setItem(COMMUNES_CACHE_KEY, JSON.stringify(payload));
+        } catch (_) {}
+        return payload;
+    };
+
+    try {
+        const networkResponse = await fetchWithTimeout('./communes.json', { cache: 'no-cache' }, 8000);
+        return await parseAndStore(networkResponse);
+    } catch (_) {
+        try {
+            const cachedData = localStorage.getItem(COMMUNES_CACHE_KEY);
+            if (cachedData) {
+                const parsed = JSON.parse(cachedData);
+                if (parsed && Array.isArray(parsed.data)) {
+                    return parsed;
+                }
+            }
+        } catch (_) {}
+
+        try {
+            const fallbackResponse = await fetchWithTimeout('./communes.json', { cache: 'force-cache' }, 4000);
+            return await parseAndStore(fallbackResponse);
+        } catch (_) {
+            throw new Error("Impossible de charger les données communes (réseau indisponible et cache local absent).");
+        }
     }
 }
 
