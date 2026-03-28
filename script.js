@@ -35,6 +35,7 @@ const OFFLINE_ONLINE_FALLBACK_KEY = 'offlineOnlineFallback';
 const DEFAULT_OFFLINE_ONLINE_FALLBACK = true;
 const OFFLINE_TILES_MAX_ZOOM_KEY = 'offlineTilesMaxZoom';
 const OFFLINE_ACTIVE_PACKS_KEY = 'offlineActivePacks';
+const COMMUNES_CACHE_KEY = 'communesDataCacheV1';
 const SHOW_DEPARTMENTS_LAYER_KEY = 'showDepartmentsLayer';
 const ONLINE_MAX_NATIVE_ZOOM = 18;
 const OFFLINE_FALLBACK_NATIVE_ZOOM = 14;
@@ -156,10 +157,7 @@ async function initializeApp() {
         displayInstalledMaps();
     }
     try {
-        const response = await fetch('./communes.json');
-        if (!response.ok) throw new Error(`HTTP ${response.status}`);
-        const data = await response.json();
-        if (!data || !data.data) throw new Error("Format JSON invalide.");
+        const data = await loadCommunesData();
         allCommunes = data.data.map(c => ({ ...c, normalized_name: simplifyString(c.nom_standard), search_parts: simplifyString(c.nom_standard).split(' ').filter(Boolean), soundex_parts: simplifyString(c.nom_standard).split(' ').filter(Boolean).map(part => soundex(part)) }));
         statusMessage.style.display = 'none';
         searchSection.style.display = 'block';
@@ -185,6 +183,38 @@ async function initializeApp() {
         }
     } catch (error) {
         statusMessage.textContent = `❌ Erreur: ${error.message}`;
+    }
+}
+
+async function loadCommunesData() {
+    const parseAndStore = async (response) => {
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        const payload = await response.json();
+        if (!payload || !Array.isArray(payload.data)) {
+            throw new Error("Format JSON invalide.");
+        }
+        try {
+            localStorage.setItem(COMMUNES_CACHE_KEY, JSON.stringify(payload));
+        } catch (_) {}
+        return payload;
+    };
+
+    try {
+        const networkResponse = await fetch('./communes.json', { cache: 'no-cache' });
+        return await parseAndStore(networkResponse);
+    } catch (networkError) {
+        try {
+            const cachedData = localStorage.getItem(COMMUNES_CACHE_KEY);
+            if (cachedData) {
+                const parsed = JSON.parse(cachedData);
+                if (parsed && Array.isArray(parsed.data)) {
+                    return parsed;
+                }
+            }
+        } catch (_) {}
+
+        const fallbackResponse = await fetch('./communes.json', { cache: 'force-cache' });
+        return await parseAndStore(fallbackResponse);
     }
 }
 
