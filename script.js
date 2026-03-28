@@ -187,6 +187,16 @@ async function initializeApp() {
 }
 
 async function loadCommunesData() {
+    const fetchWithTimeout = async (url, options = {}, timeoutMs = 8000) => {
+        const controller = new AbortController();
+        const timer = setTimeout(() => controller.abort(), timeoutMs);
+        try {
+            return await fetch(url, { ...options, signal: controller.signal });
+        } finally {
+            clearTimeout(timer);
+        }
+    };
+
     const parseAndStore = async (response) => {
         if (!response.ok) throw new Error(`HTTP ${response.status}`);
         const payload = await response.json();
@@ -200,9 +210,9 @@ async function loadCommunesData() {
     };
 
     try {
-        const networkResponse = await fetch('./communes.json', { cache: 'no-cache' });
+        const networkResponse = await fetchWithTimeout('./communes.json', { cache: 'no-cache' }, 8000);
         return await parseAndStore(networkResponse);
-    } catch (networkError) {
+    } catch (_) {
         try {
             const cachedData = localStorage.getItem(COMMUNES_CACHE_KEY);
             if (cachedData) {
@@ -213,8 +223,12 @@ async function loadCommunesData() {
             }
         } catch (_) {}
 
-        const fallbackResponse = await fetch('./communes.json', { cache: 'force-cache' });
-        return await parseAndStore(fallbackResponse);
+        try {
+            const fallbackResponse = await fetchWithTimeout('./communes.json', { cache: 'force-cache' }, 4000);
+            return await parseAndStore(fallbackResponse);
+        } catch (_) {
+            throw new Error("Impossible de charger les données communes (réseau indisponible et cache local absent).");
+        }
     }
 }
 
