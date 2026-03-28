@@ -241,6 +241,52 @@ async function loadCommunesData() {
     }
 }
 
+async function loadCommunesData() {
+    const fetchWithTimeout = async (url, options = {}, timeoutMs = 8000) => {
+        const controller = new AbortController();
+        const timer = setTimeout(() => controller.abort(), timeoutMs);
+        try {
+            return await fetch(url, { ...options, signal: controller.signal });
+        } finally {
+            clearTimeout(timer);
+        }
+    };
+
+    const parseAndStore = async (response) => {
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        const payload = await response.json();
+        if (!payload || !Array.isArray(payload.data)) {
+            throw new Error("Format JSON invalide.");
+        }
+        try {
+            localStorage.setItem(COMMUNES_CACHE_KEY, JSON.stringify(payload));
+        } catch (_) {}
+        return payload;
+    };
+
+    try {
+        const networkResponse = await fetchWithTimeout('./communes.json', { cache: 'no-cache' }, 8000);
+        return await parseAndStore(networkResponse);
+    } catch (_) {
+        try {
+            const cachedData = localStorage.getItem(COMMUNES_CACHE_KEY);
+            if (cachedData) {
+                const parsed = JSON.parse(cachedData);
+                if (parsed && Array.isArray(parsed.data)) {
+                    return parsed;
+                }
+            }
+        } catch (_) {}
+
+        try {
+            const fallbackResponse = await fetchWithTimeout('./communes.json', { cache: 'force-cache' }, 4000);
+            return await parseAndStore(fallbackResponse);
+        } catch (_) {
+            throw new Error("Impossible de charger les données communes (réseau indisponible et cache local absent).");
+        }
+    }
+}
+
 function initMap() {
     if (map) return;
     map = L.map('map', {
@@ -521,6 +567,20 @@ function setupEventListeners() {
         handleZipImport(file);
         event.target.value = '';
     });
+    if (folderImporterInput) {
+        folderImporterInput.addEventListener('change', (event) => {
+            const files = Array.from(event.target.files || []);
+            handleFolderImport(files);
+            event.target.value = '';
+        });
+    }
+    if (tilesImporterInput) {
+        tilesImporterInput.addEventListener('change', (event) => {
+            const files = Array.from(event.target.files || []);
+            handleFolderImport(files, { fromDirectoryPicker: false });
+            event.target.value = '';
+        });
+    }
 
     if (mapSourceOnlineBtn) {
         mapSourceOnlineBtn.addEventListener('click', async () => {
@@ -1428,7 +1488,7 @@ async function handleZipImport(file) {
             const batchEntries = validEntries.slice(i, i + batchSize);
             const batch = await Promise.all(batchEntries.map(async ({ fileEntry, tilePath }) => {
                 const blob = await fileEntry.async('blob');
-                return {
+                store.put({
                     url: `https://a.tile.openstreetmap.org/${tilePath}`,
                     tile: blob,
                     packName: packName
@@ -1492,6 +1552,7 @@ function parseTilePathFromName(name) {
 
 function displayInstalledMaps() {
     const list = document.getElementById('installed-maps-list');
+    const select = document.getElementById('offline-pack-select');
     const installedPacks = JSON.parse(localStorage.getItem('installedMapPacks') || '[]');
     const installedPackNames = installedPacks.map((pack) => pack.name);
     const previousActive = new Set(activeOfflinePacks);
