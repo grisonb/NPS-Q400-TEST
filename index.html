@@ -11,11 +11,37 @@
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <script>
-        const APP_VERSION = 'v8.44';
+        const APP_VERSION = 'v8.80';
+        const APP_VERSION_STORAGE_KEY = 'appVersion';
 
         if ('serviceWorker' in navigator) {
             window.addEventListener('load', async () => {
                 let isRefreshing = false;
+
+                try {
+                    const previousVersion = localStorage.getItem(APP_VERSION_STORAGE_KEY);
+                    if (previousVersion !== APP_VERSION) {
+                        localStorage.setItem(APP_VERSION_STORAGE_KEY, APP_VERSION);
+                        localStorage.setItem('appVersionReloadPending', '1');
+
+                        const registrations = await navigator.serviceWorker.getRegistrations();
+                        await Promise.all(registrations.map((reg) => reg.unregister()));
+
+                        if ('caches' in window) {
+                            const cacheKeys = await caches.keys();
+                            await Promise.all(cacheKeys.map((key) => caches.delete(key)));
+                        }
+
+                        window.location.reload();
+                        return;
+                    }
+
+                    if (localStorage.getItem('appVersionReloadPending') === '1') {
+                        localStorage.removeItem('appVersionReloadPending');
+                    }
+                } catch (e) {
+                    console.log('Version refresh warning:', e);
+                }
 
                 navigator.serviceWorker.addEventListener('controllerchange', () => {
                     if (isRefreshing) return;
@@ -24,7 +50,10 @@
                 });
 
                 try {
-                    const reg = await navigator.serviceWorker.register(`./sw.js?version=${APP_VERSION}`, { updateViaCache: 'none' });
+                    // Important: keep a stable URL for the SW script.
+                    // Some environments fail SW updates with a "script load failed"
+                    // error when cache-busting query params are used on sw.js.
+                    const reg = await navigator.serviceWorker.register('./sw.js', { updateViaCache: 'none' });
                     console.log('Service Worker enregistré:', reg);
 
                     const requestSkipWaiting = (registration) => {
@@ -87,6 +116,18 @@
             <button id="chat-send-button">Envoyer</button>
         </div>
     </div>
+
+    <div id="chat-clear-modal" class="chat-clear-modal" style="display: none;">
+        <div class="chat-clear-modal-content">
+            <h3>Suppression des messages</h3>
+            <p>Choisissez l’action à effectuer :</p>
+            <div class="chat-clear-modal-actions">
+                <button id="chat-clear-local-button" class="chat-clear-option">Supprimer localement</button>
+                <button id="chat-clear-channel-button" class="chat-clear-option chat-clear-option-danger">Local + canal</button>
+                <button id="chat-clear-cancel-button" class="chat-clear-option">Annuler</button>
+            </div>
+        </div>
+    </div>
     <div id="ui-overlay">
         <div id="status-message">Chargement des données...</div>
         <div id="search-section" style="display: none;">
@@ -107,7 +148,7 @@
                 <button id="lftw-route-button" class="toggle-button active" title="Afficher/Masquer la route vers la base">Route BASE (LFTW)</button>
                 <button id="gaar-mode-button" class="toggle-button" title="Afficher/Masquer les circuits GAAR">Circuits GAAR</button>
                 <button id="departments-layer-button" class="toggle-button" title="Afficher/Masquer les contours de départements">Départements</button>
-                <button id="offline-maps-button" class="toggle-button" title="Gérer les cartes hors-ligne">Cartes offline</button>
+                <button id="offline-maps-button" class="toggle-button" title="Gérer les cartes hors-ligne">Cartes</button>
             </div>
 
   
@@ -270,11 +311,13 @@
                 <div class="installed-maps-section">
                     <h3>Packs installés</h3>
                     <div class="offline-toggle-row">
-                        <label>
-                            <input type="checkbox" id="offline-tiles-enabled-toggle" checked>
-                            Utiliser les cartes téléchargées (hors-ligne prioritaire)
-                        </label>
+                        <span>Type de carte :</span>
+                        <div class="map-source-buttons">
+                            <button type="button" id="map-source-online-btn" class="map-source-btn map-source-btn-online active">Online</button>
+                            <button type="button" id="map-source-offline-btn" class="map-source-btn map-source-btn-offline">Offline</button>
+                        </div>
                     </div>
+                    <button type="button" id="purge-inactive-packs-btn" class="danger-inline-btn">Vider le cache des packs désélectionnés</button>
                     <ul id="installed-maps-list">
                         <!-- Les packs installés seront listés ici par le JavaScript -->
                         <li class="no-maps-placeholder">Aucun pack de cartes installé.</li>
