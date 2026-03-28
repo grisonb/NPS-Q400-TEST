@@ -322,6 +322,7 @@ function setupEventListeners() {
     const offlineMapModal = document.getElementById('offline-map-modal');
     const closeOfflineMapButton = document.getElementById('close-offline-map-btn');
     const zipImporterInput = document.getElementById('zip-importer-input');
+    const folderImporterInput = document.getElementById('folder-importer-input');
     const mapSourceOnlineBtn = document.getElementById('map-source-online-btn');
     const mapSourceOfflineBtn = document.getElementById('map-source-offline-btn');
     const purgeInactivePacksBtn = document.getElementById('purge-inactive-packs-btn');
@@ -498,6 +499,13 @@ function setupEventListeners() {
         handleZipImport(file);
         event.target.value = '';
     });
+    if (folderImporterInput) {
+        folderImporterInput.addEventListener('change', (event) => {
+            const files = Array.from(event.target.files || []);
+            handleFolderImport(files);
+            event.target.value = '';
+        });
+    }
 
     if (mapSourceOnlineBtn) {
         mapSourceOnlineBtn.addEventListener('click', async () => {
@@ -1367,6 +1375,10 @@ async function handleZipImport(file) {
     isZipImportRunning = true;
 
     try {
+        if (file.size > 300 * 1024 * 1024) {
+            statusMessage.textContent = `Fichier volumineux (${Math.round(file.size / (1024 * 1024))} Mo) : import optimisé mémoire...`;
+            await new Promise((resolve) => setTimeout(resolve, 0));
+        }
         const zip = await JSZip.loadAsync(file);
         const zipEntries = Object.values(zip.files);
         const validEntries = [];
@@ -1375,22 +1387,10 @@ async function handleZipImport(file) {
         for (let i = 0; i < zipEntries.length; i += 1) {
             const fileEntry = zipEntries[i];
             if (fileEntry.dir) continue;
-            const normalizedName = fileEntry.name.replace(/\\/g, '/');
-            const xyzMatch = normalizedName.match(/(?:^|\/)(\d+)\/(\d+)\/(\d+)\.(png|jpg|jpeg)$/i);
-            const flatMatch = xyzMatch ? null : normalizedName.match(/(?:^|\/)(\d+)[-_](\d+)[-_](\d+)\.(png|jpg|jpeg)$/i);
-            const parts = xyzMatch || flatMatch;
-            if (!parts) continue;
-
-            // Canonicalise la clé en .png pour éviter les ratés d'affichage
-            // quand le pack contient des .jpg mais Leaflet demande des .png.
-            validEntries.push({
-                fileEntry,
-                tilePath: `${parts[1]}/${parts[2]}/${parts[3]}.png`
-            });
-            const zoom = Number.parseInt(parts[1], 10);
-            if (Number.isFinite(zoom)) {
-                importedMaxZoom = Math.max(importedMaxZoom, zoom);
-            }
+            const parsedTile = parseTilePathFromName(fileEntry.name);
+            if (!parsedTile) continue;
+            validEntries.push({ fileEntry, tilePath: parsedTile.tilePath });
+            importedMaxZoom = Math.max(importedMaxZoom, parsedTile.zoom);
 
             if (i % 1000 === 0) {
                 statusMessage.textContent = `Préparation des tuiles... ${i} / ${zipEntries.length}`;
@@ -1406,29 +1406,25 @@ async function handleZipImport(file) {
 
         statusMessage.textContent = `Préparation terminée. Importation de ${totalFiles} tuiles...`;
 
-        const batchSize = 40;
+        const batchSize = file.size > 300 * 1024 * 1024 ? 8 : 24;
         let processedFiles = 0;
 
         for (let i = 0; i < validEntries.length; i += batchSize) {
             const batchEntries = validEntries.slice(i, i + batchSize);
-            const batch = await Promise.all(batchEntries.map(async ({ fileEntry, tilePath }) => {
+            const transaction = db.transaction('tiles', 'readwrite');
+            const store = transaction.objectStore('tiles');
+            for (const { fileEntry, tilePath } of batchEntries) {
                 const blob = await fileEntry.async('blob');
-                return {
+                store.put({
                     url: `https://a.tile.openstreetmap.org/${tilePath}`,
                     tile: blob,
                     packName: packName
-                };
-            }));
-            const transaction = db.transaction('tiles', 'readwrite');
-            const store = transaction.objectStore('tiles');
-
-            batch.forEach(tileData => {
-                store.put(tileData);
-            });
+                });
+            }
 
             await new Promise((resolve, reject) => {
                 transaction.oncomplete = () => {
-                    processedFiles += batch.length;
+                    processedFiles += batchEntries.length;
                     statusMessage.textContent = `Importation... ${processedFiles} / ${totalFiles} tuiles`;
                     progressBar.style.width = `${(processedFiles / totalFiles) * 100}%`;
                     resolve();
@@ -1458,6 +1454,113 @@ async function handleZipImport(file) {
     } catch (error) {
         statusMessage.textContent = `Erreur: ${error.message}`;
         console.error("Erreur d'importation ZIP:", error);
+    } finally {
+        isZipImportRunning = false;
+        setTimeout(() => { progressSection.style.display = 'none'; }, 5000);
+    }
+}
+
+function parseTilePathFromName(name) {
+    const normalizedName = String(name || '').replace(/\\/g, '/');
+    const xyzMatch = normalizedName.match(/(?:^|\/)(\d+)\/(\d+)\/(\d+)\.(png|jpg|jpeg)$/i);
+    const flatMatch = xyzMatch ? null : normalizedName.match(/(?:^|\/)(\d+)[-_](\d+)[-_](\d+)\.(png|jpg|jpeg)$/i);
+    const parts = xyzMatch || flatMatch;
+    if (!parts) return null;
+    const zoom = Number.parseInt(parts[1], 10);
+    if (!Number.isFinite(zoom)) return null;
+    return {
+        tilePath: `${parts[1]}/${parts[2]}/${parts[3]}.png`,
+        zoom
+    };
+}
+
+async function handleFolderImport(files) {
+    if (!Array.isArray(files) || files.length === 0) return;
+    if (isZipImportRunning) {
+        alert("Un import est déjà en cours. Veuillez attendre la fin.");
+        return;
+    }
+    if (!db) {
+        try {
+            await initDB();
+        } catch (error) {
+            alert(`ERREUR : Impossible d'ouvrir la base locale (${error.message || error}).`);
+            return;
+        }
+    }
+
+    const progressSection = document.getElementById('import-progress-section');
+    const statusMessage = document.getElementById('import-status-message');
+    const progressBar = document.getElementById('import-progress-bar');
+    const firstPath = files[0]?.webkitRelativePath || files[0]?.name || 'pack';
+    const packName = (firstPath.split('/')[0] || 'pack').trim() || 'pack';
+
+    isZipImportRunning = true;
+    progressSection.style.display = 'block';
+    progressBar.style.width = '0%';
+    statusMessage.textContent = `Analyse du dossier ${packName}...`;
+
+    try {
+        const validFiles = [];
+        let importedMaxZoom = 0;
+        for (let i = 0; i < files.length; i += 1) {
+            const file = files[i];
+            const parsedTile = parseTilePathFromName(file.webkitRelativePath || file.name);
+            if (!parsedTile) continue;
+            validFiles.push({ file, tilePath: parsedTile.tilePath });
+            importedMaxZoom = Math.max(importedMaxZoom, parsedTile.zoom);
+            if (i % 1000 === 0) {
+                statusMessage.textContent = `Préparation des tuiles... ${i} / ${files.length}`;
+                await new Promise((resolve) => setTimeout(resolve, 0));
+            }
+        }
+
+        if (!validFiles.length) {
+            throw new Error("Aucune tuile valide trouvée dans le dossier.");
+        }
+
+        const batchSize = 40;
+        let processedFiles = 0;
+        for (let i = 0; i < validFiles.length; i += batchSize) {
+            const batchEntries = validFiles.slice(i, i + batchSize);
+            const transaction = db.transaction('tiles', 'readwrite');
+            const store = transaction.objectStore('tiles');
+            for (const { file, tilePath } of batchEntries) {
+                store.put({
+                    url: `https://a.tile.openstreetmap.org/${tilePath}`,
+                    tile: file,
+                    packName
+                });
+            }
+            await new Promise((resolve, reject) => {
+                transaction.oncomplete = () => {
+                    processedFiles += batchEntries.length;
+                    statusMessage.textContent = `Importation dossier... ${processedFiles} / ${validFiles.length} tuiles`;
+                    progressBar.style.width = `${(processedFiles / validFiles.length) * 100}%`;
+                    resolve();
+                };
+                transaction.onerror = () => reject(transaction.error);
+            });
+            await new Promise((resolve) => setTimeout(resolve, 0));
+        }
+
+        const installedPacks = JSON.parse(localStorage.getItem('installedMapPacks') || '[]');
+        if (!installedPacks.find(p => p.name === packName)) {
+            installedPacks.push({ name: packName, date: new Date().toLocaleDateString() });
+            localStorage.setItem('installedMapPacks', JSON.stringify(installedPacks));
+        }
+        if (!activeOfflinePacks.includes(packName)) {
+            await setOfflineActivePacks([...activeOfflinePacks, packName]);
+        }
+        const currentOfflineMax = Number.parseInt(localStorage.getItem(OFFLINE_TILES_MAX_ZOOM_KEY) || '', 10);
+        const nextOfflineMax = Number.isFinite(currentOfflineMax) ? Math.max(currentOfflineMax, importedMaxZoom) : importedMaxZoom;
+        localStorage.setItem(OFFLINE_TILES_MAX_ZOOM_KEY, String(nextOfflineMax));
+        await updateBaseTileNativeZoomFromAvailability({ forceScan: false });
+        displayInstalledMaps();
+        statusMessage.textContent = `Importation du dossier ${packName} terminée !`;
+    } catch (error) {
+        statusMessage.textContent = `Erreur: ${error.message}`;
+        console.error("Erreur import dossier:", error);
     } finally {
         isZipImportRunning = false;
         setTimeout(() => { progressSection.style.display = 'none'; }, 5000);

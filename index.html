@@ -11,7 +11,7 @@
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <script>
-        const APP_VERSION = 'v8.75';
+        const APP_VERSION = 'v8.76';
 
         if ('serviceWorker' in navigator) {
             window.addEventListener('load', async () => {
@@ -273,6 +273,8 @@
                     <p>Importez un pack de tuiles au format .zip (formats reconnus : z/x/y.png, z_x_y.png ou z-x-y.png) pour l'utiliser hors-ligne.</p>
                     <label for="zip-importer-input" class="import-button">Importer un pack de tuiles (.zip)</label>
                     <input type="file" id="zip-importer-input" accept=".zip" style="display: none;">
+                    <label for="folder-importer-input" class="import-button import-button-secondary">Importer un dossier de tuiles</label>
+                    <input type="file" id="folder-importer-input" webkitdirectory directory multiple style="display: none;">
                 </div>
 
                 <div id="import-progress-section" style="display: none;">
