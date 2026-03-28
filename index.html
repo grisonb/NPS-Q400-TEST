@@ -17,6 +17,33 @@
             window.addEventListener('load', async () => {
                 let isRefreshing = false;
 
+                try {
+                    const previousVersion = localStorage.getItem(APP_VERSION_STORAGE_KEY);
+                    const alreadyRefreshed = sessionStorage.getItem(APP_VERSION_SESSION_KEY) === APP_VERSION;
+                    if (previousVersion !== APP_VERSION && !alreadyRefreshed) {
+                        localStorage.setItem(APP_VERSION_STORAGE_KEY, APP_VERSION);
+                        localStorage.setItem('appVersionReloadPending', '1');
+                        sessionStorage.setItem(APP_VERSION_SESSION_KEY, APP_VERSION);
+
+                        const registrations = await navigator.serviceWorker.getRegistrations();
+                        await Promise.all(registrations.map((reg) => reg.unregister()));
+
+                        if ('caches' in window) {
+                            const cacheKeys = await caches.keys();
+                            await Promise.all(cacheKeys.map((key) => caches.delete(key)));
+                        }
+
+                        window.location.reload();
+                        return;
+                    }
+
+                    if (localStorage.getItem('appVersionReloadPending') === '1') {
+                        localStorage.removeItem('appVersionReloadPending');
+                    }
+                } catch (e) {
+                    console.log('Version refresh warning:', e);
+                }
+
                 navigator.serviceWorker.addEventListener('controllerchange', () => {
                     if (isRefreshing) return;
                     isRefreshing = true;
@@ -273,6 +300,10 @@
                     <p>Importez un pack de tuiles au format .zip (formats reconnus : z/x/y.png, z_x_y.png ou z-x-y.png) pour l'utiliser hors-ligne.</p>
                     <label for="zip-importer-input" class="import-button">Importer un pack de tuiles (.zip)</label>
                     <input type="file" id="zip-importer-input" accept=".zip" style="display: none;">
+                    <label for="folder-importer-input" class="import-button import-button-secondary">Importer un dossier de tuiles</label>
+                    <input type="file" id="folder-importer-input" webkitdirectory directory multiple style="display: none;">
+                    <label for="tiles-importer-input" class="import-button import-button-secondary">Importer des fichiers tuiles (multi-sélection)</label>
+                    <input type="file" id="tiles-importer-input" accept=".png,.jpg,.jpeg,image/png,image/jpeg" multiple style="display: none;">
                 </div>
 
                 <div id="import-progress-section" style="display: none;">

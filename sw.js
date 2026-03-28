@@ -67,6 +67,7 @@ self.addEventListener('message', event => {
 
 let db;
 const OFFLINE_TILES_ENABLED_KEY = 'offlineTilesEnabled';
+const OFFLINE_SELECTED_PACK_KEY = 'offlineSelectedPack';
 const DEFAULT_OFFLINE_TILES_ENABLED = true;
 let offlineTilesEnabledCache = DEFAULT_OFFLINE_TILES_ENABLED;
 let offlineTilesEnabledLoaded = false;
