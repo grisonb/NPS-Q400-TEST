@@ -323,6 +323,7 @@ function setupEventListeners() {
     const closeOfflineMapButton = document.getElementById('close-offline-map-btn');
     const zipImporterInput = document.getElementById('zip-importer-input');
     const folderImporterInput = document.getElementById('folder-importer-input');
+    const tilesImporterInput = document.getElementById('tiles-importer-input');
     const mapSourceOnlineBtn = document.getElementById('map-source-online-btn');
     const mapSourceOfflineBtn = document.getElementById('map-source-offline-btn');
     const purgeInactivePacksBtn = document.getElementById('purge-inactive-packs-btn');
@@ -503,6 +504,13 @@ function setupEventListeners() {
         folderImporterInput.addEventListener('change', (event) => {
             const files = Array.from(event.target.files || []);
             handleFolderImport(files);
+            event.target.value = '';
+        });
+    }
+    if (tilesImporterInput) {
+        tilesImporterInput.addEventListener('change', (event) => {
+            const files = Array.from(event.target.files || []);
+            handleFolderImport(files, { fromDirectoryPicker: false });
             event.target.value = '';
         });
     }
@@ -1474,7 +1482,7 @@ function parseTilePathFromName(name) {
     };
 }
 
-async function handleFolderImport(files) {
+async function handleFolderImport(files, { fromDirectoryPicker = true } = {}) {
     if (!Array.isArray(files) || files.length === 0) return;
     if (isZipImportRunning) {
         alert("Un import est déjà en cours. Veuillez attendre la fin.");
@@ -1493,7 +1501,17 @@ async function handleFolderImport(files) {
     const statusMessage = document.getElementById('import-status-message');
     const progressBar = document.getElementById('import-progress-bar');
     const firstPath = files[0]?.webkitRelativePath || files[0]?.name || 'pack';
-    const packName = (firstPath.split('/')[0] || 'pack').trim() || 'pack';
+    const hasDirectoryContext = firstPath.includes('/');
+    let packName = (firstPath.split('/')[0] || 'pack').trim() || 'pack';
+    if (!hasDirectoryContext && !fromDirectoryPicker) {
+        const suggested = `pack-${new Date().toISOString().slice(0, 10)}`;
+        const userName = prompt("Nom du pack à importer :", suggested);
+        if (!userName) {
+            isZipImportRunning = false;
+            return;
+        }
+        packName = userName.trim() || suggested;
+    }
 
     isZipImportRunning = true;
     progressSection.style.display = 'block';
