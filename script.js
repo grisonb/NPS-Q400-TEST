@@ -498,6 +498,20 @@ function setupEventListeners() {
         handleZipImport(file);
         event.target.value = '';
     });
+    if (folderImporterInput) {
+        folderImporterInput.addEventListener('change', (event) => {
+            const files = Array.from(event.target.files || []);
+            handleFolderImport(files);
+            event.target.value = '';
+        });
+    }
+    if (tilesImporterInput) {
+        tilesImporterInput.addEventListener('change', (event) => {
+            const files = Array.from(event.target.files || []);
+            handleFolderImport(files, { fromDirectoryPicker: false });
+            event.target.value = '';
+        });
+    }
 
     if (mapSourceOnlineBtn) {
         mapSourceOnlineBtn.addEventListener('click', async () => {
@@ -1405,7 +1419,7 @@ async function handleZipImport(file) {
             const batchEntries = validEntries.slice(i, i + batchSize);
             const batch = await Promise.all(batchEntries.map(async ({ fileEntry, tilePath }) => {
                 const blob = await fileEntry.async('blob');
-                return {
+                store.put({
                     url: `https://a.tile.openstreetmap.org/${tilePath}`,
                     tile: blob,
                     packName: packName
@@ -1469,6 +1483,7 @@ function parseTilePathFromName(name) {
 
 function displayInstalledMaps() {
     const list = document.getElementById('installed-maps-list');
+    const select = document.getElementById('offline-pack-select');
     const installedPacks = JSON.parse(localStorage.getItem('installedMapPacks') || '[]');
     const installedPackNames = installedPacks.map((pack) => pack.name);
     const previousActive = new Set(activeOfflinePacks);
