@@ -128,16 +128,33 @@ function computeConvexHull(latLngPoints) {
 async function initializeApp() {
     const statusMessage = document.getElementById('status-message');
     const searchSection = document.getElementById('search-section');
-    loadState();
+    try {
+        loadState();
+    } catch (stateError) {
+        console.error('État local invalide, réinitialisation.', stateError);
+        localStorage.removeItem('disabled_airports');
+        localStorage.removeItem('water_airports');
+        localStorage.removeItem('selected_base_oaci');
+    }
     const savedLftwState = localStorage.getItem('showLftwRoute');
     showLftwRoute = savedLftwState === null ? true : (savedLftwState === 'true');
     localStorage.setItem(SHOW_DEPARTMENTS_LAYER_KEY, 'false');
     const savedGaarJSON = localStorage.getItem('gaarCircuits');
     if (savedGaarJSON) {
-        gaarCircuits = JSON.parse(savedGaarJSON);
+        try {
+            const parsedGaar = JSON.parse(savedGaarJSON);
+            gaarCircuits = Array.isArray(parsedGaar) ? parsedGaar : [];
+        } catch (gaarError) {
+            console.error('Données GAAR invalides, réinitialisation.', gaarError);
+            gaarCircuits = [];
+            localStorage.removeItem('gaarCircuits');
+        }
     }
     try {
-        await initDB();
+        await Promise.race([
+            initDB(),
+            new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout ouverture IndexedDB')), 4000))
+        ]);
         activeOfflinePacks = JSON.parse(localStorage.getItem(OFFLINE_ACTIVE_PACKS_KEY) || '[]');
         if (!Array.isArray(activeOfflinePacks)) activeOfflinePacks = [];
         const savedMapSourceMode = localStorage.getItem(MAP_SOURCE_MODE_KEY);
@@ -1149,6 +1166,10 @@ function soundex(s) { if (!s) return ""; const a = s.toLowerCase().split(""), f 
 // =========================================================================
 function initDB() {
     return new Promise((resolve, reject) => {
+        if (typeof indexedDB === 'undefined') {
+            reject(new Error('IndexedDB indisponible'));
+            return;
+        }
         const request = indexedDB.open('OfflineTilesDB', 2);
         request.onupgradeneeded = event => {
             const dbInstance = event.target.result;
@@ -1169,12 +1190,18 @@ function initDB() {
         };
         request.onsuccess = event => {
             db = event.target.result;
+            db.onversionchange = () => {
+                try { db.close(); } catch (_) {}
+            };
             console.log("[DB] Connexion réussie.");
             resolve(db);
         };
         request.onerror = event => {
             console.error("[DB] Erreur de connexion:", event.target.error);
             reject(event.target.error);
+        };
+        request.onblocked = () => {
+            reject(new Error("IndexedDB bloquée par une autre instance de l'application"));
         };
     });
 }
@@ -1442,7 +1469,7 @@ async function handleZipImport(file) {
             const batchEntries = validEntries.slice(i, i + batchSize);
             const batch = await Promise.all(batchEntries.map(async ({ fileEntry, tilePath }) => {
                 const blob = await fileEntry.async('blob');
-                store.put({
+                return {
                     url: `https://a.tile.openstreetmap.org/${tilePath}`,
                     tile: blob,
                     packName: packName
