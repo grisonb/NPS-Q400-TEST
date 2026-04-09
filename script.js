@@ -34,13 +34,16 @@ const DEFAULT_MAP_SOURCE_MODE = 'online';
 const OFFLINE_ONLINE_FALLBACK_KEY = 'offlineOnlineFallback';
 const DEFAULT_OFFLINE_ONLINE_FALLBACK = true;
 const OFFLINE_TILES_MAX_ZOOM_KEY = 'offlineTilesMaxZoom';
+const OFFLINE_TILES_MIN_ZOOM_KEY = 'offlineTilesMinZoom';
 const OFFLINE_ACTIVE_PACKS_KEY = 'offlineActivePacks';
 const COMMUNES_CACHE_KEY = 'communesDataCacheV1';
 const SHOW_DEPARTMENTS_LAYER_KEY = 'showDepartmentsLayer';
 const ONLINE_MAX_NATIVE_ZOOM = 18;
 const OFFLINE_FALLBACK_NATIVE_ZOOM = 14;
 const GLOBAL_MAX_ZOOM = 18;
+const GLOBAL_MIN_ZOOM = 0;
 let baseTileMaxNativeZoom = ONLINE_MAX_NATIVE_ZOOM;
+let baseTileMinNativeZoom = GLOBAL_MIN_ZOOM;
 let offlineTilesMode = DEFAULT_OFFLINE_TILES_ENABLED;
 let mapSourceMode = DEFAULT_MAP_SOURCE_MODE;
 let offlineOnlineFallbackMode = DEFAULT_OFFLINE_ONLINE_FALLBACK;
@@ -164,7 +167,7 @@ async function initializeApp() {
             : localStorage.getItem(OFFLINE_ONLINE_FALLBACK_KEY) === 'true';
         await initializeOfflineTilePreference();
         // Évite de bloquer le démarrage sur un scan potentiellement long de la DB offline.
-        await updateBaseTileNativeZoomFromAvailability({ forceScan: false });
+        await updateBaseTileNativeZoomFromAvailability({ forceScan: true });
         displayInstalledMaps();
     } catch (startupError) {
         console.error('Initialisation offline incomplète:', startupError);
@@ -309,10 +312,14 @@ function setupBaseTileLayer() {
         map.removeLayer(baseTileLayer);
     }
     const overzoomDelta = offlineTilesMode ? 0 : 2;
+    const effectiveMinZoom = offlineTilesMode ? Math.max(GLOBAL_MIN_ZOOM, baseTileMinNativeZoom) : GLOBAL_MIN_ZOOM;
     const effectiveMaxZoom = Math.min(GLOBAL_MAX_ZOOM, baseTileMaxNativeZoom + overzoomDelta);
+    map.setMinZoom(effectiveMinZoom);
     map.setMaxZoom(effectiveMaxZoom);
     baseTileLayer = L.tileLayer('https://a.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        minNativeZoom: effectiveMinZoom,
         maxNativeZoom: baseTileMaxNativeZoom,
+        minZoom: effectiveMinZoom,
         maxZoom: effectiveMaxZoom,
         attribution: '© OpenStreetMap',
         keepBuffer: 8,
@@ -362,6 +369,8 @@ function setupEventListeners() {
     const offlineMapModal = document.getElementById('offline-map-modal');
     const closeOfflineMapButton = document.getElementById('close-offline-map-btn');
     const zipImporterInput = document.getElementById('zip-importer-input');
+    const folderImporterInput = document.getElementById('folder-importer-input');
+    const tilesImporterInput = document.getElementById('tiles-importer-input');
     const mapSourceOnlineBtn = document.getElementById('map-source-online-btn');
     const mapSourceOfflineBtn = document.getElementById('map-source-offline-btn');
     const purgeInactivePacksBtn = document.getElementById('purge-inactive-packs-btn');
@@ -610,19 +619,19 @@ function displayResults(results) {
     }
 }
 
-async function findMaxOfflineTileZoom() {
+async function findOfflineTileZoomRange() {
     if (!db) return null;
     const targetPacks = new Set(activeOfflinePacks);
     return new Promise((resolve) => {
         const tx = db.transaction('tiles', 'readonly');
         const store = tx.objectStore('tiles');
         const request = store.openCursor();
+        let minZoom = null;
         let maxZoom = null;
 
         request.onsuccess = (event) => {
             const cursor = event.target.result;
             if (!cursor) {
-                resolve(maxZoom);
                 return;
             }
             if (targetPacks.size && !targetPacks.has(cursor.value?.packName || '')) {
@@ -631,10 +640,11 @@ async function findMaxOfflineTileZoom() {
             }
             const url = cursor.value?.url;
             if (typeof url === 'string') {
-                const match = url.match(/\/(\d+)\/\d+\/\d+\.(png|jpg|jpeg)$/i);
+                const match = url.match(/\/(\d+)\/\d+\/\d+\.(png|jpg|jpeg)(?:\?.*)?$/i);
                 if (match) {
                     const zoom = Number.parseInt(match[1], 10);
                     if (Number.isFinite(zoom)) {
+                        minZoom = minZoom === null ? zoom : Math.min(minZoom, zoom);
                         maxZoom = maxZoom === null ? zoom : Math.max(maxZoom, zoom);
                     }
                 }
@@ -643,6 +653,13 @@ async function findMaxOfflineTileZoom() {
         };
 
         request.onerror = () => resolve(null);
+        tx.oncomplete = () => {
+            if (minZoom === null || maxZoom === null) {
+                resolve(null);
+                return;
+            }
+            resolve({ minZoom, maxZoom });
+        };
     });
 }
 
@@ -650,23 +667,34 @@ async function updateBaseTileNativeZoomFromAvailability({ forceScan = false } = 
     const offlineEnabled = await getOfflineTilesEnabled();
     const shouldForceScan = forceScan;
     if (!offlineEnabled) {
+        baseTileMinNativeZoom = GLOBAL_MIN_ZOOM;
         baseTileMaxNativeZoom = ONLINE_MAX_NATIVE_ZOOM;
     } else {
+        const storedOfflineMinZoom = Number.parseInt(localStorage.getItem(OFFLINE_TILES_MIN_ZOOM_KEY) || '', 10);
         const storedOfflineMaxZoom = Number.parseInt(localStorage.getItem(OFFLINE_TILES_MAX_ZOOM_KEY) || '', 10);
+        let offlineMinZoom = Number.isFinite(storedOfflineMinZoom) ? storedOfflineMinZoom : null;
         let offlineMaxZoom = Number.isFinite(storedOfflineMaxZoom) ? storedOfflineMaxZoom : null;
 
         if (shouldForceScan) {
-            offlineMaxZoom = await findMaxOfflineTileZoom();
-            if (offlineMaxZoom === null) {
+            const zoomRange = await findOfflineTileZoomRange();
+            if (!zoomRange) {
+                offlineMinZoom = null;
+                offlineMaxZoom = null;
+                localStorage.removeItem(OFFLINE_TILES_MIN_ZOOM_KEY);
                 localStorage.removeItem(OFFLINE_TILES_MAX_ZOOM_KEY);
             } else {
+                offlineMinZoom = zoomRange.minZoom;
+                offlineMaxZoom = zoomRange.maxZoom;
+                localStorage.setItem(OFFLINE_TILES_MIN_ZOOM_KEY, String(offlineMinZoom));
                 localStorage.setItem(OFFLINE_TILES_MAX_ZOOM_KEY, String(offlineMaxZoom));
             }
         }
 
-        if (offlineMaxZoom === null) {
+        if (offlineMinZoom === null || offlineMaxZoom === null) {
+            baseTileMinNativeZoom = GLOBAL_MIN_ZOOM;
             baseTileMaxNativeZoom = ONLINE_MAX_NATIVE_ZOOM;
         } else {
+            baseTileMinNativeZoom = Math.max(GLOBAL_MIN_ZOOM, Math.min(GLOBAL_MAX_ZOOM, offlineMinZoom));
             baseTileMaxNativeZoom = Math.max(0, Math.min(ONLINE_MAX_NATIVE_ZOOM, offlineMaxZoom));
         }
     }
@@ -1324,7 +1352,7 @@ async function setMapSourceMode(mode) {
         await setOfflineTilesEnabled(mapSourceMode === 'offline');
         setOfflineOnlineFallbackMode(false);
         notifyServiceWorkerActivePacks(activeOfflinePacks);
-        await updateBaseTileNativeZoomFromAvailability({ forceScan: false });
+        await updateBaseTileNativeZoomFromAvailability({ forceScan: true });
         if (map && baseTileLayer) setupBaseTileLayer();
     } finally {
         isMapSourceSwitching = false;
@@ -1439,6 +1467,7 @@ async function handleZipImport(file) {
         const zipEntries = Object.values(zip.files);
         const validEntries = [];
         let importedMaxZoom = 0;
+        let importedMinZoom = Number.POSITIVE_INFINITY;
 
         for (let i = 0; i < zipEntries.length; i += 1) {
             const fileEntry = zipEntries[i];
@@ -1447,6 +1476,7 @@ async function handleZipImport(file) {
             if (!parsedTile) continue;
             validEntries.push({ fileEntry, tilePath: parsedTile.tilePath });
             importedMaxZoom = Math.max(importedMaxZoom, parsedTile.zoom);
+            importedMinZoom = Math.min(importedMinZoom, parsedTile.zoom);
 
             if (i % 1000 === 0) {
                 statusMessage.textContent = `Préparation des tuiles... ${i} / ${zipEntries.length}`;
@@ -1503,9 +1533,12 @@ async function handleZipImport(file) {
             await setOfflineActivePacks([...activeOfflinePacks, packName]);
         }
         const currentOfflineMax = Number.parseInt(localStorage.getItem(OFFLINE_TILES_MAX_ZOOM_KEY) || '', 10);
+        const currentOfflineMin = Number.parseInt(localStorage.getItem(OFFLINE_TILES_MIN_ZOOM_KEY) || '', 10);
+        const nextOfflineMin = Number.isFinite(currentOfflineMin) ? Math.min(currentOfflineMin, importedMinZoom) : importedMinZoom;
         const nextOfflineMax = Number.isFinite(currentOfflineMax) ? Math.max(currentOfflineMax, importedMaxZoom) : importedMaxZoom;
+        localStorage.setItem(OFFLINE_TILES_MIN_ZOOM_KEY, String(nextOfflineMin));
         localStorage.setItem(OFFLINE_TILES_MAX_ZOOM_KEY, String(nextOfflineMax));
-        await updateBaseTileNativeZoomFromAvailability({ forceScan: false });
+        await updateBaseTileNativeZoomFromAvailability({ forceScan: true });
         displayInstalledMaps();
 
     } catch (error) {
@@ -1578,7 +1611,7 @@ function displayInstalledMaps() {
             const toggles = Array.from(list.querySelectorAll('.offline-pack-active-toggle'));
             const nextActive = toggles.filter((el) => el.checked).map((el) => el.dataset.packName).filter(Boolean);
             await setOfflineActivePacks(nextActive);
-            await updateBaseTileNativeZoomFromAvailability({ forceScan: false });
+            await updateBaseTileNativeZoomFromAvailability({ forceScan: true });
             setupBaseTileLayer();
             updateOfflineStatus();
         });
