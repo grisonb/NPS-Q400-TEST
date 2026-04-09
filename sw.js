@@ -1,6 +1,6 @@
-const APP_CACHE_NAME = 'test-communes-app-cache-v882'; 
-const DATA_CACHE_NAME = 'test-communes-data-cache-v882';
-const TILE_CACHE_NAME = 'test-communes-tile-cache-v882';
+const APP_CACHE_NAME = 'test-communes-app-cache-v886'; 
+const DATA_CACHE_NAME = 'test-communes-data-cache-v886';
+const TILE_CACHE_NAME = 'test-communes-tile-cache-v886';
 
 const APP_SHELL_URLS = [
     './',
@@ -290,7 +290,16 @@ function getTileFromCacheOnly(request) {
     });
 }
 
+function createOfflineFallbackResponse() {
+    return new Response('Mode hors-ligne indisponible pour cette ressource.', {
+        status: 503,
+        statusText: 'Service Unavailable',
+        headers: { 'Content-Type': 'text/plain; charset=utf-8' }
+    });
+}
+
 self.addEventListener('fetch', event => {
+    if (event.request.method !== 'GET') return;
     const requestUrl = new URL(event.request.url);
 
     // Stratégie pour les tuiles de carte
@@ -304,10 +313,12 @@ self.addEventListener('fetch', event => {
                 return getTileFromDb(event.request.url).then(dbTile => {
                     if (dbTile) return dbTile;
                     if (!onlineFallbackEnabled) {
-                        return getTileFromCacheOnly(event.request);
+                        return getTileFromCacheOnly(event.request).then(cachedTile => cachedTile || createOfflineFallbackResponse());
                     }
-                    return getTileFromNetworkOrCache(event.request).catch(() => getTileFromCacheOnly(event.request));
-                });
+                    return getTileFromNetworkOrCache(event.request)
+                        .catch(() => getTileFromCacheOnly(event.request))
+                        .then(tileResponse => tileResponse || createOfflineFallbackResponse());
+                }).then(tileResponse => tileResponse || createOfflineFallbackResponse());
             })
         );
         return;
@@ -338,8 +349,9 @@ self.addEventListener('fetch', event => {
                         return cachedResponse;
                     }
                     if (event.request.mode === 'navigate') {
-                        return caches.match('./index.html');
+                        return caches.match('./index.html').then(indexResponse => indexResponse || createOfflineFallbackResponse());
                     }
+                    return createOfflineFallbackResponse();
                 });
             })
     );
