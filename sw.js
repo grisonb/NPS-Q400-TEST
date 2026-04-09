@@ -1,6 +1,6 @@
-const APP_CACHE_NAME = 'test-communes-app-cache-v887'; 
-const DATA_CACHE_NAME = 'test-communes-data-cache-v887';
-const TILE_CACHE_NAME = 'test-communes-tile-cache-v887';
+const APP_CACHE_NAME = 'test-communes-app-cache-v888'; 
+const DATA_CACHE_NAME = 'test-communes-data-cache-v888';
+const TILE_CACHE_NAME = 'test-communes-tile-cache-v888';
 
 const APP_SHELL_URLS = [
     './',
@@ -308,7 +308,8 @@ self.addEventListener('fetch', event => {
         event.respondWith(
             Promise.all([isOfflineTilesEnabled(), isOfflineOnlineFallbackEnabled()]).then(([enabled, onlineFallbackEnabled]) => {
                 if (!enabled) {
-                    return getTileFromNetworkOrCache(event.request);
+                    return getTileFromNetworkOrCache(event.request)
+                        .then(tileResponse => tileResponse || createOfflineFallbackResponse());
                 }
 
                 return getTileFromDb(event.request.url).then(dbTile => {
