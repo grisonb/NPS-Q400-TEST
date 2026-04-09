@@ -658,6 +658,13 @@ async function findOfflineTileZoomRange() {
         };
 
         request.onerror = () => resolve(null);
+        tx.oncomplete = () => {
+            if (minZoom === null || maxZoom === null) {
+                resolve(null);
+                return;
+            }
+            resolve({ minZoom, maxZoom });
+        };
     });
 }
 
