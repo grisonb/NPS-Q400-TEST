@@ -632,6 +632,11 @@ async function findOfflineTileZoomRange() {
         request.onsuccess = (event) => {
             const cursor = event.target.result;
             if (!cursor) {
+                if (minZoom === null || maxZoom === null) {
+                    resolve(null);
+                } else {
+                    resolve({ minZoom, maxZoom });
+                }
                 return;
             }
             if (targetPacks.size && !targetPacks.has(cursor.value?.packName || '')) {
