@@ -1,6 +1,6 @@
-const APP_CACHE_NAME = 'test-communes-app-cache-v886'; 
-const DATA_CACHE_NAME = 'test-communes-data-cache-v886';
-const TILE_CACHE_NAME = 'test-communes-tile-cache-v886';
+const APP_CACHE_NAME = 'test-communes-app-cache-v887'; 
+const DATA_CACHE_NAME = 'test-communes-data-cache-v887';
+const TILE_CACHE_NAME = 'test-communes-tile-cache-v887';
 
 const APP_SHELL_URLS = [
     './',
@@ -105,7 +105,7 @@ function getDb() {
             resolve(db);
         };
         request.onerror = event => {
-            reject('Erreur ouverture DB dans SW:', event.target.error);
+            reject(event.target.error || new Error('Erreur ouverture DB dans SW'));
         };
     });
 }
@@ -135,9 +135,10 @@ function isOfflineTilesEnabled() {
             };
         });
     }).catch(() => {
-        offlineTilesEnabledCache = DEFAULT_OFFLINE_TILES_ENABLED;
+        // Fallback robuste iOS/Safari: si IndexedDB SW est indisponible, on repasse en mode réseau/cache.
+        offlineTilesEnabledCache = false;
         offlineTilesEnabledLoaded = true;
-        return DEFAULT_OFFLINE_TILES_ENABLED;
+        return false;
     });
 }
 
@@ -241,7 +242,7 @@ function getTileFromDb(url) {
 
             tryNext();
         });
-    });
+    }).catch(() => null);
 }
 
 function getTileFromNetworkOrCache(request) {
