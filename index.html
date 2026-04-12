@@ -11,7 +11,7 @@
     <meta name="apple-mobile-web-app-capable" content="no">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <script>
-        const APP_VERSION = 'v8.98';
+        const APP_VERSION = 'v8.99';
         const APP_VERSION_STORAGE_KEY = 'appVersion';
         const APP_VERSION_SESSION_KEY = 'appVersionSession';
         window.APP_VERSION = APP_VERSION;
@@ -20,6 +20,24 @@
         const isIOSDevice = /iPad|iPhone|iPod/i.test(userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
         const shouldDisableServiceWorker = isSafariBrowser || isIOSDevice;
         window.SW_DISABLED_FOR_PLATFORM = shouldDisableServiceWorker;
+        window.forceRecoveryReload = async () => {
+            try {
+                if ('serviceWorker' in navigator) {
+                    const registrations = await navigator.serviceWorker.getRegistrations();
+                    await Promise.all(registrations.map((reg) => reg.unregister()));
+                }
+                if ('caches' in window) {
+                    const cacheKeys = await caches.keys();
+                    await Promise.all(cacheKeys.map((key) => caches.delete(key)));
+                }
+            } catch (_) {}
+
+            const refreshUrl = new URL(window.location.href);
+            refreshUrl.searchParams.set('appv', APP_VERSION);
+            refreshUrl.searchParams.set('force_display', '1');
+            refreshUrl.searchParams.set('ts', Date.now().toString());
+            window.location.replace(refreshUrl.toString());
+        };
         if (shouldDisableServiceWorker) {
             try {
                 const startupUrl = new URL(window.location.href);
@@ -107,6 +125,17 @@
                 }
             });
         }
+
+        document.addEventListener('DOMContentLoaded', () => {
+            const earlyForceButton = document.getElementById('boot-force-update-button');
+            if (!earlyForceButton) return;
+            earlyForceButton.style.display = 'inline-flex';
+            earlyForceButton.addEventListener('click', () => {
+                earlyForceButton.disabled = true;
+                earlyForceButton.textContent = '⏳ Forçage...';
+                window.forceRecoveryReload();
+            });
+        });
     </script>
 </head>
 <body>
@@ -158,6 +187,7 @@
     </div>
     <div id="ui-overlay">
         <div id="status-message">Chargement des données...</div>
+        <button id="boot-force-update-button" type="button" style="display:none;">🔄 Forcer MAJ</button>
         <div id="search-section" style="display: none;">
             <div class="controls-container">
                 <div class="search-wrapper">

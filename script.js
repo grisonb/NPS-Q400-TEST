@@ -419,12 +419,9 @@ function setupEventListeners() {
             try {
                 const swDisabled = Boolean(window.SW_DISABLED_FOR_PLATFORM);
                 if (swDisabled) {
-                    const refreshUrl = new URL(window.location.href);
-                    const appVersion = (typeof APP_VERSION !== 'undefined' && APP_VERSION) ? APP_VERSION : 'unknown';
-                    refreshUrl.searchParams.set('appv', appVersion);
-                    refreshUrl.searchParams.set('force_display', '1');
-                    refreshUrl.searchParams.set('ts', Date.now().toString());
-                    window.location.replace(refreshUrl.toString());
+                    if (typeof window.forceRecoveryReload === 'function') {
+                        await window.forceRecoveryReload();
+                    }
                     return;
                 }
 
@@ -446,10 +443,9 @@ function setupEventListeners() {
                     await Promise.all(cacheKeys.map((key) => caches.delete(key)));
                 }
 
-                const refreshUrl = new URL(window.location.href);
-                refreshUrl.searchParams.set('force_display', '1');
-                refreshUrl.searchParams.set('ts', Date.now().toString());
-                window.location.replace(refreshUrl.toString());
+                if (typeof window.forceRecoveryReload === 'function') {
+                    await window.forceRecoveryReload();
+                }
             } catch (error) {
                 alert(`Mise à jour impossible: ${error.message}`);
             } finally {
