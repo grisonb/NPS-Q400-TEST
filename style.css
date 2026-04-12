@@ -33,6 +33,22 @@ html, body {
 }
 
 #status-message { color: var(--light-text-color); font-style: italic; text-align: center; }
+#boot-force-update-button {
+    margin: 12px auto 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 100%;
+    max-width: 240px;
+    height: 42px;
+    border: 1px solid #c9d3e1;
+    border-radius: 10px;
+    background: #ffffff;
+    color: #0d4f8b;
+    font-weight: 600;
+    cursor: pointer;
+}
+#boot-force-update-button:disabled { opacity: 0.65; cursor: default; }
 .controls-container { display: flex; align-items: center; gap: 10px; }
 .search-wrapper { position: relative; flex-grow: 1; }
 .search-wrapper::before { content: '🔍'; position: absolute; left: 18px; top: 50%; transform: translateY(-50%); font-size: 1.2em; opacity: 0.5; pointer-events: none; }
