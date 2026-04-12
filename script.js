@@ -37,6 +37,7 @@ const OFFLINE_TILES_MAX_ZOOM_KEY = 'offlineTilesMaxZoom';
 const OFFLINE_TILES_MIN_ZOOM_KEY = 'offlineTilesMinZoom';
 const OFFLINE_ACTIVE_PACKS_KEY = 'offlineActivePacks';
 const COMMUNES_CACHE_KEY = 'communesDataCacheV1';
+const FORCE_DISPLAY_MODE = new URLSearchParams(window.location.search).get('force_display') === '1';
 const SHOW_DEPARTMENTS_LAYER_KEY = 'showDepartmentsLayer';
 const ONLINE_MAX_NATIVE_ZOOM = 18;
 const OFFLINE_FALLBACK_NATIVE_ZOOM = 14;
@@ -58,6 +59,8 @@ let chatHistoryTopic = null;
 let chatPresenceTopic = null;
 let chatConnected = false;
 const CHAT_BROKER_URL = 'wss://broker.emqx.io:8084/mqtt';
+const MQTT_SCRIPT_URL = 'https://unpkg.com/mqtt/dist/mqtt.min.js';
+let mqttLoaderPromise = null;
 
 const pelicanAirports = [
     { oaci: "LFLU", name: "Valence-Chabeuil", lat: 44.920, lon: 4.968 }, { oaci: "LFMU", name: "Béziers-Vias", lat: 43.323, lon: 3.354 }, { oaci: "LFJR", name: "Angers-Marcé", lat: 47.560, lon: -0.312 }, { oaci: "LFHO", name: "Aubenas-Ardèche Méridionale", lat: 44.545, lon: 4.385 }, { oaci: "LFLX", name: "Châteauroux-Déols", lat: 46.861, lon: 1.720 }, { oaci: "LFBM", name: "Mont-de-Marsan", lat: 43.894, lon: -0.509 }, { oaci: "LFBL", name: "Limoges-Bellegarde", lat: 45.862, lon: 1.180 }, { oaci: "LFAQ", name: "Albert-Bray", lat: 49.972, lon: 2.698 }, { oaci: "LFBP", name: "Pau-Pyrénées", lat: 43.380, lon: -0.418 }, { oaci: "LFTH", name: "Toulon-Hyères", lat: 43.097, lon: 6.146 }, { oaci: "LFSG", name: "Épinal-Mirecourt", lat: 48.325, lon: 6.068 }, { oaci: "LFKC", name: "Calvi-Sainte-Catherine", lat: 42.530, lon: 8.793 }, { oaci: "LFMD", name: "Cannes-Mandelieu", lat: 43.542, lon: 6.956 }, { oaci: "LFKB", name: "Bastia-Poretta", lat: 42.552, lon: 9.483 }, { oaci: "LFMH", name: "Saint-Étienne-Bouthéon", lat: 45.541, lon: 4.296 }, { oaci: "LFKF", name: "Figari-Sud-Corse", lat: 41.500, lon: 9.097 }, { oaci: "LFCC", name: "Cahors-Lalbenque", lat: 44.351, lon: 1.475 }, { oaci: "LFML", name: "Marseille-Provence", lat: 43.436, lon: 5.215 }, { oaci: "LFKJ", name: "Ajaccio-Napoléon-Bonaparte", lat: 41.923, lon: 8.802 }, { oaci: "LFMK", name: "Carcassonne-Salvaza", lat: 43.215, lon: 2.306 }, { oaci: "LFRV", name: "Vannes-Meucon", lat: 47.720, lon: -2.721 }, { oaci: "LFTW", name: "Nîmes-Garons", lat: 43.757, lon: 4.416 }, { oaci: "LFMP", name: "Perpignan-Rivesaltes", lat: 42.740, lon: 2.870 }, { oaci: "LFBD", name: "Bordeaux-Mérignac", lat: 44.828, lon: -0.691 }
@@ -76,6 +79,13 @@ const calculateDistanceInNm = (lat1, lon1, lat2, lon2) => { const R = 6371, dLat
 const calculateBearing = (lat1, lon1, lat2, lon2) => { const lat1Rad = toRad(lat1), lon1Rad = toRad(lon1), lat2Rad = toRad(lat2), lon2Rad = toRad(lon2), dLon = lon2Rad - lon1Rad, y = Math.sin(dLon) * Math.cos(lat2Rad), x = Math.cos(lat1Rad) * Math.sin(lat2Rad) - Math.sin(lat1Rad) * Math.cos(lat2Rad) * Math.cos(dLon); let bearingRad = Math.atan2(y, x), bearingDeg = toDeg(bearingRad); return (bearingDeg + 360) % 360; };
 const convertToDMM = (deg, type) => { if (deg === null || isNaN(deg)) return 'N/A'; const absDeg = Math.abs(deg), degrees = Math.floor(absDeg), minutesTotal = (absDeg - degrees) * 60, minutesFormatted = minutesTotal.toFixed(2).padStart(5, '0'); let direction = type === 'lat' ? (deg >= 0 ? 'N' : 'S') : (deg >= 0 ? 'E' : 'W'); return `${degrees}° ${minutesFormatted}' ${direction}`; };
 const levenshteinDistance = (a, b) => { const matrix = Array(b.length + 1).fill(null).map(() => Array(a.length + 1).fill(null)); for (let i = 0; i <= a.length; i += 1) matrix[0][i] = i; for (let j = 0; j <= b.length; j += 1) matrix[j][0] = j; for (let j = 1; j <= b.length; j += 1) for (let i = 1; i <= a.length; i += 1) { const indicator = a[i - 1] === b[j - 1] ? 0 : 1; matrix[j][i] = Math.min(matrix[j][i - 1] + 1, matrix[j - 1][i] + 1, matrix[j - 1][i - 1] + indicator); } return matrix[b.length][a.length]; };
+const withTimeout = (promise, timeoutMs, timeoutMessage) => new Promise((resolve, reject) => {
+    const timerId = setTimeout(() => reject(new Error(timeoutMessage)), timeoutMs);
+    promise.then(
+        (value) => { clearTimeout(timerId); resolve(value); },
+        (error) => { clearTimeout(timerId); reject(error); }
+    );
+});
 const calculateDestinationPoint = (lat, lon, bearing, distanceNm) => {
     const R = 3440.065; // Rayon de la Terre en milles nautiques
     const latRad = toRad(lat);
@@ -153,32 +163,60 @@ async function initializeApp() {
             localStorage.removeItem('gaarCircuits');
         }
     }
-    try {
-        await Promise.race([
-            initDB(),
-            new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout ouverture IndexedDB')), 4000))
-        ]);
-        activeOfflinePacks = JSON.parse(localStorage.getItem(OFFLINE_ACTIVE_PACKS_KEY) || '[]');
-        if (!Array.isArray(activeOfflinePacks)) activeOfflinePacks = [];
-        const savedMapSourceMode = localStorage.getItem(MAP_SOURCE_MODE_KEY);
-        mapSourceMode = savedMapSourceMode === 'offline' ? 'offline' : DEFAULT_MAP_SOURCE_MODE;
-        offlineOnlineFallbackMode = localStorage.getItem(OFFLINE_ONLINE_FALLBACK_KEY) === null
-            ? DEFAULT_OFFLINE_ONLINE_FALLBACK
-            : localStorage.getItem(OFFLINE_ONLINE_FALLBACK_KEY) === 'true';
-        await initializeOfflineTilePreference();
-        // Évite de bloquer le démarrage sur un scan potentiellement long de la DB offline.
-        await updateBaseTileNativeZoomFromAvailability({ forceScan: true });
-        displayInstalledMaps();
-    } catch (startupError) {
-        console.error('Initialisation offline incomplète:', startupError);
+    if (!FORCE_DISPLAY_MODE) {
+        try {
+            await Promise.race([
+                initDB(),
+                new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout ouverture IndexedDB')), 4000))
+            ]);
+            activeOfflinePacks = JSON.parse(localStorage.getItem(OFFLINE_ACTIVE_PACKS_KEY) || '[]');
+            if (!Array.isArray(activeOfflinePacks)) activeOfflinePacks = [];
+            const savedMapSourceMode = localStorage.getItem(MAP_SOURCE_MODE_KEY);
+            mapSourceMode = savedMapSourceMode === 'offline' ? 'offline' : DEFAULT_MAP_SOURCE_MODE;
+            offlineOnlineFallbackMode = localStorage.getItem(OFFLINE_ONLINE_FALLBACK_KEY) === null
+                ? DEFAULT_OFFLINE_ONLINE_FALLBACK
+                : localStorage.getItem(OFFLINE_ONLINE_FALLBACK_KEY) === 'true';
+            await initializeOfflineTilePreference();
+            // Évite de bloquer le démarrage sur un scan potentiellement long de la DB offline.
+            await updateBaseTileNativeZoomFromAvailability({ forceScan: true });
+            displayInstalledMaps();
+        } catch (startupError) {
+            console.error('Initialisation offline incomplète:', startupError);
+            mapSourceMode = DEFAULT_MAP_SOURCE_MODE;
+            offlineOnlineFallbackMode = DEFAULT_OFFLINE_ONLINE_FALLBACK;
+            activeOfflinePacks = [];
+            displayInstalledMaps();
+        }
+    } else {
         mapSourceMode = DEFAULT_MAP_SOURCE_MODE;
         offlineOnlineFallbackMode = DEFAULT_OFFLINE_ONLINE_FALLBACK;
         activeOfflinePacks = [];
         displayInstalledMaps();
+        setTimeout(() => {
+            initDB()
+                .then(() => displayInstalledMaps())
+                .catch(() => {});
+        }, 0);
+        try {
+            const cleanedUrl = new URL(window.location.href);
+            cleanedUrl.searchParams.delete('force_display');
+            cleanedUrl.searchParams.delete('ts');
+            window.history.replaceState({}, '', cleanedUrl.toString());
+        } catch (_) {}
     }
     let communesLoadError = null;
     try {
-        const data = await loadCommunesData();
+        let data = null;
+        if (FORCE_DISPLAY_MODE) {
+            const cachedData = localStorage.getItem(COMMUNES_CACHE_KEY);
+            if (cachedData) {
+                try {
+                    const parsed = JSON.parse(cachedData);
+                    if (parsed && Array.isArray(parsed.data)) data = parsed;
+                } catch (_) {}
+            }
+        }
+        if (!data) data = await loadCommunesData();
         allCommunes = data.data.map(c => ({ ...c, normalized_name: simplifyString(c.nom_standard), search_parts: simplifyString(c.nom_standard).split(' ').filter(Boolean), soundex_parts: simplifyString(c.nom_standard).split(' ').filter(Boolean).map(part => soundex(part)) }));
     } catch (error) {
         communesLoadError = error;
@@ -376,47 +414,31 @@ function setupEventListeners() {
     const purgeInactivePacksBtn = document.getElementById('purge-inactive-packs-btn');
     
     if (mainActionButtons) {
-        const versionDisplay = document.createElement('div');
-        versionDisplay.className = 'version-display';
-        versionDisplay.innerText = (typeof APP_VERSION !== 'undefined' && APP_VERSION) ? APP_VERSION : 'version inconnue';
-        mainActionButtons.appendChild(versionDisplay);
+        const versionDisplay = document.getElementById('app-version-display');
+        if (versionDisplay) {
+            versionDisplay.innerText = (typeof APP_VERSION !== 'undefined' && APP_VERSION) ? APP_VERSION : 'version inconnue';
+        }
 
-        const forceUpdateButton = document.createElement('button');
-        forceUpdateButton.className = 'force-update-button';
-        forceUpdateButton.type = 'button';
-        forceUpdateButton.title = 'Forcer la recherche de mise à jour';
-        forceUpdateButton.textContent = '🔄 MAJ';
-        forceUpdateButton.addEventListener('click', async () => {
-            forceUpdateButton.disabled = true;
-            forceUpdateButton.textContent = '⏳ MAJ...';
-            try {
-                if (!('serviceWorker' in navigator)) {
-                    alert('Service Worker indisponible sur cet appareil.');
-                    return;
-                }
-
-                const registration = await navigator.serviceWorker.getRegistration();
-                if (registration) {
-                    await registration.update();
-                    if (registration.waiting) {
-                        registration.waiting.postMessage({ type: 'SKIP_WAITING' });
+        const forceUpdateButton = document.getElementById('force-update-button');
+        if (forceUpdateButton && forceUpdateButton.dataset.bound !== '1') {
+            forceUpdateButton.dataset.bound = '1';
+            forceUpdateButton.addEventListener('click', async () => {
+                forceUpdateButton.disabled = true;
+                forceUpdateButton.textContent = '⏳ MAJ...';
+                try {
+                    if (typeof window.forceRecoveryReload === 'function') {
+                        await window.forceRecoveryReload();
+                    } else {
+                        window.location.reload();
                     }
+                } catch (error) {
+                    alert(`Mise à jour impossible: ${error.message}`);
+                } finally {
+                    forceUpdateButton.disabled = false;
+                    forceUpdateButton.textContent = '🔄 MAJ';
                 }
-
-                if ('caches' in window) {
-                    const cacheKeys = await caches.keys();
-                    await Promise.all(cacheKeys.map((key) => caches.delete(key)));
-                }
-
-                window.location.reload();
-            } catch (error) {
-                alert(`Mise à jour impossible: ${error.message}`);
-            } finally {
-                forceUpdateButton.disabled = false;
-                forceUpdateButton.textContent = '🔄 MAJ';
-            }
-        });
-        mainActionButtons.appendChild(forceUpdateButton);
+            });
+        }
     }
 
     if (departmentsLayerButton) {
@@ -1348,17 +1370,43 @@ function updateMapSourceButtons() {
 
 async function setMapSourceMode(mode) {
     if (isMapSourceSwitching) return;
+    const previousMode = mapSourceMode;
+    const nextMode = mode === 'offline' ? 'offline' : 'online';
+    if (previousMode === nextMode) {
+        updateMapSourceButtons();
+        updateOfflineStatus();
+        return;
+    }
     isMapSourceSwitching = true;
-    mapSourceMode = mode === 'offline' ? 'offline' : 'online';
+    mapSourceMode = nextMode;
     localStorage.setItem(MAP_SOURCE_MODE_KEY, mapSourceMode);
     updateMapSourceButtons();
     updateOfflineStatus();
     try {
-        await setOfflineTilesEnabled(mapSourceMode === 'offline');
+        await withTimeout(
+            setOfflineTilesEnabled(mapSourceMode === 'offline'),
+            4000,
+            "Changement de mode trop long (IndexedDB)."
+        );
         setOfflineOnlineFallbackMode(false);
         notifyServiceWorkerActivePacks(activeOfflinePacks);
-        await updateBaseTileNativeZoomFromAvailability({ forceScan: true });
+        try {
+            await withTimeout(
+                updateBaseTileNativeZoomFromAvailability({ forceScan: true }),
+                5000,
+                'Analyse des tuiles trop longue.'
+            );
+        } catch (zoomError) {
+            console.warn('Analyse zoom offline interrompue:', zoomError);
+        }
         if (map && baseTileLayer) setupBaseTileLayer();
+    } catch (error) {
+        mapSourceMode = previousMode;
+        localStorage.setItem(MAP_SOURCE_MODE_KEY, mapSourceMode);
+        try {
+            await setOfflineTilesEnabled(mapSourceMode === 'offline');
+        } catch (_) {}
+        throw error;
     } finally {
         isMapSourceSwitching = false;
         updateMapSourceButtons();
@@ -1393,8 +1441,12 @@ async function initializeOfflineTilePreference() {
 
 async function purgeInactivePacksCache() {
     if (!db) {
-        alert('Base offline indisponible.');
-        return;
+        try {
+            await initDB();
+        } catch (_) {
+            alert('Base offline indisponible.');
+            return;
+        }
     }
     const installedPacks = JSON.parse(localStorage.getItem('installedMapPacks') || '[]');
     const inactiveNames = installedPacks.map((p) => p.name).filter((name) => !activeOfflinePacks.includes(name));
@@ -2161,6 +2213,37 @@ function updateDeroutementTab() {
     );
 }
 
+function ensureMqttClientLoaded() {
+    if (typeof mqtt !== 'undefined') return Promise.resolve();
+    if (mqttLoaderPromise) return mqttLoaderPromise;
+
+    mqttLoaderPromise = new Promise((resolve, reject) => {
+        const script = document.createElement('script');
+        script.src = MQTT_SCRIPT_URL;
+        script.async = true;
+        script.crossOrigin = 'anonymous';
+        const timeoutId = setTimeout(() => {
+            reject(new Error('Chargement MQTT trop long'));
+        }, 8000);
+        script.onload = () => {
+            clearTimeout(timeoutId);
+            if (typeof mqtt === 'undefined') {
+                reject(new Error('Librairie MQTT indisponible après chargement'));
+                return;
+            }
+            resolve();
+        };
+        script.onerror = () => {
+            clearTimeout(timeoutId);
+            reject(new Error('Échec de chargement du client MQTT'));
+        };
+        document.head.appendChild(script);
+    }).finally(() => {
+        if (typeof mqtt === 'undefined') mqttLoaderPromise = null;
+    });
+
+    return mqttLoaderPromise;
+}
 
 function initializeTeamChat() {
     const panel = document.getElementById('team-chat-panel');
@@ -2369,14 +2452,19 @@ function initializeTeamChat() {
         connectToChat();
     };
 
-    function connectToChat() {
+    async function connectToChat() {
         if (isChatConnecting) return;
         isChatConnecting = true;
 
         if (typeof mqtt === 'undefined') {
-            isChatConnecting = false;
-            appendChatMessage('Système', 'Client MQTT introuvable (connexion impossible).', new Date().toISOString(), true);
-            return;
+            try {
+                appendChatMessage('Système', 'Chargement du module chat…', new Date().toISOString(), true);
+                await ensureMqttClientLoaded();
+            } catch (mqttError) {
+                isChatConnecting = false;
+                appendChatMessage('Système', `Client MQTT introuvable (${mqttError.message || mqttError}).`, new Date().toISOString(), true);
+                return;
+            }
         }
         const roomName = (roomInput.value || '').trim().replace(/[^a-zA-Z0-9-_]/g, '');
         const userName = (userInput.value || '').trim();

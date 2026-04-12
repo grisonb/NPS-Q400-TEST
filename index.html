@@ -8,21 +8,61 @@
     <link rel="stylesheet" href="leaflet.css">
     <link rel="stylesheet" href="style.css">
     <link rel="manifest" href="manifest.json">
-    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-capable" content="no">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <script>
-        const APP_VERSION = 'v8.88';
+        const APP_VERSION = 'v9.00';
         const APP_VERSION_STORAGE_KEY = 'appVersion';
         const APP_VERSION_SESSION_KEY = 'appVersionSession';
         window.APP_VERSION = APP_VERSION;
-        const APP_VERSION = 'v8.87';
->>>>>>> main
+        const userAgent = navigator.userAgent || '';
+        const isSafariBrowser = /Safari/i.test(userAgent) && !/Chrome|CriOS|EdgiOS|FxiOS|OPiOS|DuckDuckGo/i.test(userAgent);
+        const isIOSDevice = /iPad|iPhone|iPod/i.test(userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+        const shouldDisableServiceWorker = isSafariBrowser || isIOSDevice;
+        window.SW_DISABLED_FOR_PLATFORM = shouldDisableServiceWorker;
+        window.forceRecoveryReload = async () => {
+            try {
+                if ('serviceWorker' in navigator) {
+                    const registrations = await navigator.serviceWorker.getRegistrations();
+                    await Promise.all(registrations.map((reg) => reg.unregister()));
+                }
+                if ('caches' in window) {
+                    const cacheKeys = await caches.keys();
+                    await Promise.all(cacheKeys.map((key) => caches.delete(key)));
+                }
+            } catch (_) {}
+
+            const refreshUrl = new URL(window.location.href);
+            refreshUrl.searchParams.set('appv', APP_VERSION);
+            refreshUrl.searchParams.set('force_display', '1');
+            refreshUrl.searchParams.set('ts', Date.now().toString());
+            window.location.replace(refreshUrl.toString());
+        };
+        if (shouldDisableServiceWorker) {
+            try {
+                const startupUrl = new URL(window.location.href);
+                if (startupUrl.searchParams.get('appv') !== APP_VERSION) {
+                    startupUrl.searchParams.set('appv', APP_VERSION);
+                    window.location.replace(startupUrl.toString());
+                }
+            } catch (_) {}
+        }
 
         if ('serviceWorker' in navigator) {
             window.addEventListener('load', async () => {
                 let isRefreshing = false;
 
                 try {
+                    if (shouldDisableServiceWorker) {
+                        const safariRegistrations = await navigator.serviceWorker.getRegistrations();
+                        await Promise.all(safariRegistrations.map((reg) => reg.unregister()));
+                        if ('caches' in window) {
+                            const cacheKeys = await caches.keys();
+                            await Promise.all(cacheKeys.map((key) => caches.delete(key)));
+                        }
+                        return;
+                    }
+
                     const previousVersion = localStorage.getItem(APP_VERSION_STORAGE_KEY);
                     const alreadyRefreshed = sessionStorage.getItem(APP_VERSION_SESSION_KEY) === APP_VERSION;
                     if (previousVersion !== APP_VERSION && !alreadyRefreshed) {
@@ -85,6 +125,22 @@
                 }
             });
         }
+
+        document.addEventListener('DOMContentLoaded', () => {
+            const mainVersionDisplay = document.getElementById('app-version-display');
+            if (mainVersionDisplay) {
+                mainVersionDisplay.textContent = APP_VERSION;
+            }
+
+            const earlyForceButton = document.getElementById('force-update-button');
+            if (earlyForceButton) {
+                earlyForceButton.addEventListener('click', () => {
+                    earlyForceButton.disabled = true;
+                    earlyForceButton.textContent = '⏳ MAJ...';
+                    window.forceRecoveryReload();
+                });
+            }
+        });
     </script>
 </head>
 <body>
@@ -94,6 +150,8 @@
         <button id="calculator-button" title="Ouvrir le calculateur de mission">✈️</button>
         <button id="gps-feu-button" title="Créer un feu à ma position">🎯</button>
         <button id="chat-toggle-button" title="Ouvrir/Fermer le chat équipe">💬<span id="chat-alert-badge" style="display:none;">0</span><span id="chat-offline-badge" aria-hidden="true">✕</span></button>
+        <div id="app-version-display" class="version-display">--</div>
+        <button id="force-update-button" class="force-update-button" type="button" title="Forcer la recherche de mise à jour">🔄 MAJ</button>
     </div>
       <div id="bingo-map-display" style="display: none;">
         <span id="map-bingo-lftw"></span>
@@ -171,7 +229,6 @@
     <script src="leaflet.min.js"></script>
     <script src="suncalc.js"></script>
     <script src="jszip.min.js"></script>
-    <script src="https://unpkg.com/mqtt/dist/mqtt.min.js"></script>
     <script src="script.js"></script>
     
     <div id="calculator-modal" style="display: none;">
