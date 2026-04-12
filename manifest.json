@@ -1,8 +1,9 @@
 {
     "name": "Communes et Aéroports",
     "short_name": "3_Pelic",
-    "start_url": "./index.html",
-    "display": "standalone",
+    "start_url": "./index.html?v=8.96",
+    "scope": "./",
+    "display": "browser",
     "background_color": "#ffffff",
     "theme_color": "#0056b3",
     "description": "Carte des communes de France et calcul des distances vers les pélicandromes.",

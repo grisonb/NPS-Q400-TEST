@@ -76,6 +76,13 @@ const calculateDistanceInNm = (lat1, lon1, lat2, lon2) => { const R = 6371, dLat
 const calculateBearing = (lat1, lon1, lat2, lon2) => { const lat1Rad = toRad(lat1), lon1Rad = toRad(lon1), lat2Rad = toRad(lat2), lon2Rad = toRad(lon2), dLon = lon2Rad - lon1Rad, y = Math.sin(dLon) * Math.cos(lat2Rad), x = Math.cos(lat1Rad) * Math.sin(lat2Rad) - Math.sin(lat1Rad) * Math.cos(lat2Rad) * Math.cos(dLon); let bearingRad = Math.atan2(y, x), bearingDeg = toDeg(bearingRad); return (bearingDeg + 360) % 360; };
 const convertToDMM = (deg, type) => { if (deg === null || isNaN(deg)) return 'N/A'; const absDeg = Math.abs(deg), degrees = Math.floor(absDeg), minutesTotal = (absDeg - degrees) * 60, minutesFormatted = minutesTotal.toFixed(2).padStart(5, '0'); let direction = type === 'lat' ? (deg >= 0 ? 'N' : 'S') : (deg >= 0 ? 'E' : 'W'); return `${degrees}° ${minutesFormatted}' ${direction}`; };
 const levenshteinDistance = (a, b) => { const matrix = Array(b.length + 1).fill(null).map(() => Array(a.length + 1).fill(null)); for (let i = 0; i <= a.length; i += 1) matrix[0][i] = i; for (let j = 0; j <= b.length; j += 1) matrix[j][0] = j; for (let j = 1; j <= b.length; j += 1) for (let i = 1; i <= a.length; i += 1) { const indicator = a[i - 1] === b[j - 1] ? 0 : 1; matrix[j][i] = Math.min(matrix[j][i - 1] + 1, matrix[j - 1][i] + 1, matrix[j - 1][i - 1] + indicator); } return matrix[b.length][a.length]; };
+const withTimeout = (promise, timeoutMs, timeoutMessage) => new Promise((resolve, reject) => {
+    const timerId = setTimeout(() => reject(new Error(timeoutMessage)), timeoutMs);
+    promise.then(
+        (value) => { clearTimeout(timerId); resolve(value); },
+        (error) => { clearTimeout(timerId); reject(error); }
+    );
+});
 const calculateDestinationPoint = (lat, lon, bearing, distanceNm) => {
     const R = 3440.065; // Rayon de la Terre en milles nautiques
     const latRad = toRad(lat);
@@ -390,6 +397,16 @@ function setupEventListeners() {
             forceUpdateButton.disabled = true;
             forceUpdateButton.textContent = '⏳ MAJ...';
             try {
+                const swDisabled = Boolean(window.SW_DISABLED_FOR_PLATFORM);
+                if (swDisabled) {
+                    const refreshUrl = new URL(window.location.href);
+                    const appVersion = (typeof APP_VERSION !== 'undefined' && APP_VERSION) ? APP_VERSION : 'unknown';
+                    refreshUrl.searchParams.set('appv', appVersion);
+                    refreshUrl.searchParams.set('ts', Date.now().toString());
+                    window.location.replace(refreshUrl.toString());
+                    return;
+                }
+
                 if (!('serviceWorker' in navigator)) {
                     alert('Service Worker indisponible sur cet appareil.');
                     return;
@@ -1348,17 +1365,43 @@ function updateMapSourceButtons() {
 
 async function setMapSourceMode(mode) {
     if (isMapSourceSwitching) return;
+    const previousMode = mapSourceMode;
+    const nextMode = mode === 'offline' ? 'offline' : 'online';
+    if (previousMode === nextMode) {
+        updateMapSourceButtons();
+        updateOfflineStatus();
+        return;
+    }
     isMapSourceSwitching = true;
-    mapSourceMode = mode === 'offline' ? 'offline' : 'online';
+    mapSourceMode = nextMode;
     localStorage.setItem(MAP_SOURCE_MODE_KEY, mapSourceMode);
     updateMapSourceButtons();
     updateOfflineStatus();
     try {
-        await setOfflineTilesEnabled(mapSourceMode === 'offline');
+        await withTimeout(
+            setOfflineTilesEnabled(mapSourceMode === 'offline'),
+            4000,
+            "Changement de mode trop long (IndexedDB)."
+        );
         setOfflineOnlineFallbackMode(false);
         notifyServiceWorkerActivePacks(activeOfflinePacks);
-        await updateBaseTileNativeZoomFromAvailability({ forceScan: true });
+        try {
+            await withTimeout(
+                updateBaseTileNativeZoomFromAvailability({ forceScan: true }),
+                5000,
+                'Analyse des tuiles trop longue.'
+            );
+        } catch (zoomError) {
+            console.warn('Analyse zoom offline interrompue:', zoomError);
+        }
         if (map && baseTileLayer) setupBaseTileLayer();
+    } catch (error) {
+        mapSourceMode = previousMode;
+        localStorage.setItem(MAP_SOURCE_MODE_KEY, mapSourceMode);
+        try {
+            await setOfflineTilesEnabled(mapSourceMode === 'offline');
+        } catch (_) {}
+        throw error;
     } finally {
         isMapSourceSwitching = false;
         updateMapSourceButtons();
