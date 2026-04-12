@@ -1,7 +1,7 @@
 {
     "name": "Communes et Aéroports",
     "short_name": "3_Pelic",
-    "start_url": "./index.html?v=8.94",
+    "start_url": "./index.html?v=8.95",
     "scope": "./",
     "display": "standalone",
     "background_color": "#ffffff",

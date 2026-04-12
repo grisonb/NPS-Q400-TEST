@@ -397,6 +397,16 @@ function setupEventListeners() {
             forceUpdateButton.disabled = true;
             forceUpdateButton.textContent = '⏳ MAJ...';
             try {
+                const swDisabled = Boolean(window.SW_DISABLED_FOR_PLATFORM);
+                if (swDisabled) {
+                    const refreshUrl = new URL(window.location.href);
+                    const appVersion = (typeof APP_VERSION !== 'undefined' && APP_VERSION) ? APP_VERSION : 'unknown';
+                    refreshUrl.searchParams.set('appv', appVersion);
+                    refreshUrl.searchParams.set('ts', Date.now().toString());
+                    window.location.replace(refreshUrl.toString());
+                    return;
+                }
+
                 if (!('serviceWorker' in navigator)) {
                     alert('Service Worker indisponible sur cet appareil.');
                     return;
