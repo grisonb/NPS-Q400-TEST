@@ -1,8 +1,9 @@
-const APP_CACHE_NAME = 'test-communes-app-cache-v892'; 
-const DATA_CACHE_NAME = 'test-communes-data-cache-v892';
-const TILE_CACHE_NAME = 'test-communes-tile-cache-v892';
+const APP_CACHE_NAME = 'test-communes-app-cache-v893'; 
+const DATA_CACHE_NAME = 'test-communes-data-cache-v893';
+const TILE_CACHE_NAME = 'test-communes-tile-cache-v893';
 const SW_USER_AGENT = (self.navigator && self.navigator.userAgent) ? self.navigator.userAgent : '';
 const IS_SAFARI_SW = /Safari/i.test(SW_USER_AGENT) && !/Chrome|CriOS|EdgiOS|FxiOS|OPiOS|DuckDuckGo/i.test(SW_USER_AGENT);
+const IS_IOS_SW = /iPad|iPhone|iPod/i.test(SW_USER_AGENT);
 
 const APP_SHELL_URLS = [
     './',
@@ -302,8 +303,8 @@ function createOfflineFallbackResponse() {
 }
 
 self.addEventListener('fetch', event => {
-    if (IS_SAFARI_SW) {
-        // Fallback robuste Safari: laisser le navigateur gérer le réseau directement.
+    if (IS_SAFARI_SW || IS_IOS_SW) {
+        // Fallback robuste Safari/iOS: laisser le navigateur gérer le réseau directement.
         return;
     }
 

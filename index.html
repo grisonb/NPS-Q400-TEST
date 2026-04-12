@@ -11,21 +11,27 @@
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <script>
-        const APP_VERSION = 'v8.92';
+        const APP_VERSION = 'v8.93';
         const APP_VERSION_STORAGE_KEY = 'appVersion';
         const APP_VERSION_SESSION_KEY = 'appVersionSession';
         window.APP_VERSION = APP_VERSION;
         const userAgent = navigator.userAgent || '';
         const isSafariBrowser = /Safari/i.test(userAgent) && !/Chrome|CriOS|EdgiOS|FxiOS|OPiOS|DuckDuckGo/i.test(userAgent);
+        const isIOSDevice = /iPad|iPhone|iPod/i.test(userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+        const shouldDisableServiceWorker = isSafariBrowser || isIOSDevice;
 
         if ('serviceWorker' in navigator) {
             window.addEventListener('load', async () => {
                 let isRefreshing = false;
 
                 try {
-                    if (isSafariBrowser) {
+                    if (shouldDisableServiceWorker) {
                         const safariRegistrations = await navigator.serviceWorker.getRegistrations();
                         await Promise.all(safariRegistrations.map((reg) => reg.unregister()));
+                        if ('caches' in window) {
+                            const cacheKeys = await caches.keys();
+                            await Promise.all(cacheKeys.map((key) => caches.delete(key)));
+                        }
                         return;
                     }
 
