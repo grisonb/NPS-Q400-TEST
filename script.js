@@ -1284,25 +1284,25 @@ function getOfflineTilesEnabled() {
 }
 
 function setOfflineTilesEnabled(enabled) {
-    return new Promise((resolve, reject) => {
-        if (!db) {
-            offlineTilesMode = !!enabled;
-            localStorage.setItem(OFFLINE_TILES_ENABLED_KEY, String(offlineTilesMode));
-            notifyServiceWorkerOfflineTilesPreference(enabled);
-            resolve();
-            return;
-        }
+    offlineTilesMode = !!enabled;
+    localStorage.setItem(OFFLINE_TILES_ENABLED_KEY, String(offlineTilesMode));
+    notifyServiceWorkerOfflineTilesPreference(offlineTilesMode);
+
+    if (!db) {
+        return Promise.resolve();
+    }
+
+    try {
         const transaction = db.transaction('settings', 'readwrite');
         const store = transaction.objectStore('settings');
-        store.put({ key: OFFLINE_TILES_ENABLED_KEY, value: enabled });
-        transaction.oncomplete = () => {
-            offlineTilesMode = !!enabled;
-            localStorage.setItem(OFFLINE_TILES_ENABLED_KEY, String(offlineTilesMode));
-            notifyServiceWorkerOfflineTilesPreference(enabled);
-            resolve();
-        };
-        transaction.onerror = () => reject(transaction.error);
-    });
+        store.put({ key: OFFLINE_TILES_ENABLED_KEY, value: offlineTilesMode });
+        transaction.onerror = () => console.warn('[Offline] Impossible de persister la préférence offline:', transaction.error);
+        transaction.onabort = () => console.warn('[Offline] Transaction annulée lors de la persistance offline:', transaction.error);
+    } catch (error) {
+        console.warn('[Offline] IndexedDB indisponible, préférence conservée en localStorage uniquement:', error);
+    }
+
+    return Promise.resolve();
 }
 
 function notifyServiceWorkerOfflineTilesPreference(enabled) {
@@ -1383,11 +1383,7 @@ async function setMapSourceMode(mode) {
     updateMapSourceButtons();
     updateOfflineStatus();
     try {
-        await withTimeout(
-            setOfflineTilesEnabled(mapSourceMode === 'offline'),
-            4000,
-            "Changement de mode trop long (IndexedDB)."
-        );
+        await setOfflineTilesEnabled(mapSourceMode === 'offline');
         setOfflineOnlineFallbackMode(false);
         notifyServiceWorkerActivePacks(activeOfflinePacks);
         try {
