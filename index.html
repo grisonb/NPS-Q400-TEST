@@ -13,7 +13,7 @@
     <script>
         const APP_VERSION = 'v9.10';
         const APP_VERSION_STORAGE_KEY = 'appVersion';
-        const APP_VERSION_SESSION_KEY = 'appVersionSession';
+        const SW_CONTROLLER_RELOAD_GUARD_KEY = 'swControllerReloadGuard';
         window.APP_VERSION = APP_VERSION;
         const shouldDisableServiceWorker = false;
         window.SW_DISABLED_FOR_PLATFORM = shouldDisableServiceWorker;
@@ -41,26 +41,9 @@
 
                 try {
                     const previousVersion = localStorage.getItem(APP_VERSION_STORAGE_KEY);
-                    const alreadyRefreshed = sessionStorage.getItem(APP_VERSION_SESSION_KEY) === APP_VERSION;
-                    if (previousVersion !== APP_VERSION && !alreadyRefreshed) {
+                    if (previousVersion !== APP_VERSION) {
                         localStorage.setItem(APP_VERSION_STORAGE_KEY, APP_VERSION);
-                        localStorage.setItem('appVersionReloadPending', '1');
-                        sessionStorage.setItem(APP_VERSION_SESSION_KEY, APP_VERSION);
-
-                        const registrations = await navigator.serviceWorker.getRegistrations();
-                        await Promise.all(registrations.map((reg) => reg.unregister()));
-
-                        if ('caches' in window) {
-                            const cacheKeys = await caches.keys();
-                            await Promise.all(cacheKeys.map((key) => caches.delete(key)));
-                        }
-
-                        window.location.reload();
-                        return;
-                    }
-
-                    if (localStorage.getItem('appVersionReloadPending') === '1') {
-                        localStorage.removeItem('appVersionReloadPending');
+                        sessionStorage.removeItem(SW_CONTROLLER_RELOAD_GUARD_KEY);
                     }
                 } catch (e) {
                     console.log('Version refresh warning:', e);
@@ -68,7 +51,9 @@
 
                 navigator.serviceWorker.addEventListener('controllerchange', () => {
                     if (isRefreshing) return;
+                    if (sessionStorage.getItem(SW_CONTROLLER_RELOAD_GUARD_KEY) === APP_VERSION) return;
                     isRefreshing = true;
+                    sessionStorage.setItem(SW_CONTROLLER_RELOAD_GUARD_KEY, APP_VERSION);
                     window.location.reload();
                 });
 
