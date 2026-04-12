@@ -11,18 +11,30 @@
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <script>
-        const APP_VERSION = 'v8.88';
+        const APP_VERSION = 'v8.94';
         const APP_VERSION_STORAGE_KEY = 'appVersion';
         const APP_VERSION_SESSION_KEY = 'appVersionSession';
         window.APP_VERSION = APP_VERSION;
-        const APP_VERSION = 'v8.87';
->>>>>>> main
+        const userAgent = navigator.userAgent || '';
+        const isSafariBrowser = /Safari/i.test(userAgent) && !/Chrome|CriOS|EdgiOS|FxiOS|OPiOS|DuckDuckGo/i.test(userAgent);
+        const isIOSDevice = /iPad|iPhone|iPod/i.test(userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+        const shouldDisableServiceWorker = isSafariBrowser || isIOSDevice;
 
         if ('serviceWorker' in navigator) {
             window.addEventListener('load', async () => {
                 let isRefreshing = false;
 
                 try {
+                    if (shouldDisableServiceWorker) {
+                        const safariRegistrations = await navigator.serviceWorker.getRegistrations();
+                        await Promise.all(safariRegistrations.map((reg) => reg.unregister()));
+                        if ('caches' in window) {
+                            const cacheKeys = await caches.keys();
+                            await Promise.all(cacheKeys.map((key) => caches.delete(key)));
+                        }
+                        return;
+                    }
+
                     const previousVersion = localStorage.getItem(APP_VERSION_STORAGE_KEY);
                     const alreadyRefreshed = sessionStorage.getItem(APP_VERSION_SESSION_KEY) === APP_VERSION;
                     if (previousVersion !== APP_VERSION && !alreadyRefreshed) {
