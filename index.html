@@ -11,7 +11,7 @@
     <meta name="apple-mobile-web-app-capable" content="no">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <script>
-        const APP_VERSION = 'v9.30';
+        const APP_VERSION = 'v9.40';
         const APP_VERSION_STORAGE_KEY = 'appVersion';
         const SW_CONTROLLER_RELOAD_GUARD_KEY = 'swControllerReloadGuard';
         window.APP_VERSION = APP_VERSION;
@@ -20,25 +20,23 @@
         window.forceRecoveryReload = async () => {
             try {
                 if ('serviceWorker' in navigator) {
-                    const registrations = await navigator.serviceWorker.getRegistrations();
-                    await Promise.all(registrations.map((reg) => reg.unregister()));
-                }
-                if ('caches' in window) {
-                    const cacheKeys = await caches.keys();
-                    await Promise.all(cacheKeys.map((key) => caches.delete(key)));
+                    const registration = await navigator.serviceWorker.getRegistration();
+                    if (registration) {
+                        await registration.update();
+                        if (registration.waiting) {
+                            registration.waiting.postMessage({ type: 'SKIP_WAITING' });
+                        }
+                    }
                 }
             } catch (_) {}
 
             const refreshUrl = new URL(window.location.href);
             refreshUrl.searchParams.set('appv', APP_VERSION);
-            refreshUrl.searchParams.set('force_display', '1');
             refreshUrl.searchParams.set('ts', Date.now().toString());
             window.location.replace(refreshUrl.toString());
         };
         if ('serviceWorker' in navigator) {
             window.addEventListener('load', async () => {
-                let isRefreshing = false;
-
                 try {
                     const previousVersion = localStorage.getItem(APP_VERSION_STORAGE_KEY);
                     if (previousVersion !== APP_VERSION) {
@@ -49,39 +47,9 @@
                     console.log('Version refresh warning:', e);
                 }
 
-                navigator.serviceWorker.addEventListener('controllerchange', () => {
-                    if (isRefreshing) return;
-                    if (sessionStorage.getItem(SW_CONTROLLER_RELOAD_GUARD_KEY) === APP_VERSION) return;
-                    isRefreshing = true;
-                    sessionStorage.setItem(SW_CONTROLLER_RELOAD_GUARD_KEY, APP_VERSION);
-                    window.location.reload();
-                });
-
                 try {
-                    // Important: keep a stable URL for the SW script.
-                    // Some environments fail SW updates with a "script load failed"
-                    // error when cache-busting query params are used on sw.js.
                     const reg = await navigator.serviceWorker.register('./sw.js', { updateViaCache: 'none' });
                     console.log('Service Worker enregistré:', reg);
-
-                    const requestSkipWaiting = (registration) => {
-                        if (registration && registration.waiting) {
-                            registration.waiting.postMessage({ type: 'SKIP_WAITING' });
-                        }
-                    };
-
-                    requestSkipWaiting(reg);
-                    reg.addEventListener('updatefound', () => {
-                        const newWorker = reg.installing;
-                        if (!newWorker) return;
-                        newWorker.addEventListener('statechange', () => {
-                            if (newWorker.state === 'installed') {
-                                requestSkipWaiting(reg);
-                            }
-                        });
-                    });
-
-                    reg.update();
                 } catch (err) {
                     console.log('Erreur enregistrement Service Worker:', err);
                 }
