@@ -58,6 +58,8 @@ let chatHistoryTopic = null;
 let chatPresenceTopic = null;
 let chatConnected = false;
 const CHAT_BROKER_URL = 'wss://broker.emqx.io:8084/mqtt';
+const MQTT_SCRIPT_URL = 'https://unpkg.com/mqtt/dist/mqtt.min.js';
+let mqttLoaderPromise = null;
 
 const pelicanAirports = [
     { oaci: "LFLU", name: "Valence-Chabeuil", lat: 44.920, lon: 4.968 }, { oaci: "LFMU", name: "Béziers-Vias", lat: 43.323, lon: 3.354 }, { oaci: "LFJR", name: "Angers-Marcé", lat: 47.560, lon: -0.312 }, { oaci: "LFHO", name: "Aubenas-Ardèche Méridionale", lat: 44.545, lon: 4.385 }, { oaci: "LFLX", name: "Châteauroux-Déols", lat: 46.861, lon: 1.720 }, { oaci: "LFBM", name: "Mont-de-Marsan", lat: 43.894, lon: -0.509 }, { oaci: "LFBL", name: "Limoges-Bellegarde", lat: 45.862, lon: 1.180 }, { oaci: "LFAQ", name: "Albert-Bray", lat: 49.972, lon: 2.698 }, { oaci: "LFBP", name: "Pau-Pyrénées", lat: 43.380, lon: -0.418 }, { oaci: "LFTH", name: "Toulon-Hyères", lat: 43.097, lon: 6.146 }, { oaci: "LFSG", name: "Épinal-Mirecourt", lat: 48.325, lon: 6.068 }, { oaci: "LFKC", name: "Calvi-Sainte-Catherine", lat: 42.530, lon: 8.793 }, { oaci: "LFMD", name: "Cannes-Mandelieu", lat: 43.542, lon: 6.956 }, { oaci: "LFKB", name: "Bastia-Poretta", lat: 42.552, lon: 9.483 }, { oaci: "LFMH", name: "Saint-Étienne-Bouthéon", lat: 45.541, lon: 4.296 }, { oaci: "LFKF", name: "Figari-Sud-Corse", lat: 41.500, lon: 9.097 }, { oaci: "LFCC", name: "Cahors-Lalbenque", lat: 44.351, lon: 1.475 }, { oaci: "LFML", name: "Marseille-Provence", lat: 43.436, lon: 5.215 }, { oaci: "LFKJ", name: "Ajaccio-Napoléon-Bonaparte", lat: 41.923, lon: 8.802 }, { oaci: "LFMK", name: "Carcassonne-Salvaza", lat: 43.215, lon: 2.306 }, { oaci: "LFRV", name: "Vannes-Meucon", lat: 47.720, lon: -2.721 }, { oaci: "LFTW", name: "Nîmes-Garons", lat: 43.757, lon: 4.416 }, { oaci: "LFMP", name: "Perpignan-Rivesaltes", lat: 42.740, lon: 2.870 }, { oaci: "LFBD", name: "Bordeaux-Mérignac", lat: 44.828, lon: -0.691 }
@@ -2204,6 +2206,37 @@ function updateDeroutementTab() {
     );
 }
 
+function ensureMqttClientLoaded() {
+    if (typeof mqtt !== 'undefined') return Promise.resolve();
+    if (mqttLoaderPromise) return mqttLoaderPromise;
+
+    mqttLoaderPromise = new Promise((resolve, reject) => {
+        const script = document.createElement('script');
+        script.src = MQTT_SCRIPT_URL;
+        script.async = true;
+        script.crossOrigin = 'anonymous';
+        const timeoutId = setTimeout(() => {
+            reject(new Error('Chargement MQTT trop long'));
+        }, 8000);
+        script.onload = () => {
+            clearTimeout(timeoutId);
+            if (typeof mqtt === 'undefined') {
+                reject(new Error('Librairie MQTT indisponible après chargement'));
+                return;
+            }
+            resolve();
+        };
+        script.onerror = () => {
+            clearTimeout(timeoutId);
+            reject(new Error('Échec de chargement du client MQTT'));
+        };
+        document.head.appendChild(script);
+    }).finally(() => {
+        if (typeof mqtt === 'undefined') mqttLoaderPromise = null;
+    });
+
+    return mqttLoaderPromise;
+}
 
 function initializeTeamChat() {
     const panel = document.getElementById('team-chat-panel');
@@ -2412,14 +2445,19 @@ function initializeTeamChat() {
         connectToChat();
     };
 
-    function connectToChat() {
+    async function connectToChat() {
         if (isChatConnecting) return;
         isChatConnecting = true;
 
         if (typeof mqtt === 'undefined') {
-            isChatConnecting = false;
-            appendChatMessage('Système', 'Client MQTT introuvable (connexion impossible).', new Date().toISOString(), true);
-            return;
+            try {
+                appendChatMessage('Système', 'Chargement du module chat…', new Date().toISOString(), true);
+                await ensureMqttClientLoaded();
+            } catch (mqttError) {
+                isChatConnecting = false;
+                appendChatMessage('Système', `Client MQTT introuvable (${mqttError.message || mqttError}).`, new Date().toISOString(), true);
+                return;
+            }
         }
         const roomName = (roomInput.value || '').trim().replace(/[^a-zA-Z0-9-_]/g, '');
         const userName = (userInput.value || '').trim();
