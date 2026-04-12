@@ -37,6 +37,7 @@ const OFFLINE_TILES_MAX_ZOOM_KEY = 'offlineTilesMaxZoom';
 const OFFLINE_TILES_MIN_ZOOM_KEY = 'offlineTilesMinZoom';
 const OFFLINE_ACTIVE_PACKS_KEY = 'offlineActivePacks';
 const COMMUNES_CACHE_KEY = 'communesDataCacheV1';
+const FORCE_DISPLAY_MODE = new URLSearchParams(window.location.search).get('force_display') === '1';
 const SHOW_DEPARTMENTS_LAYER_KEY = 'showDepartmentsLayer';
 const ONLINE_MAX_NATIVE_ZOOM = 18;
 const OFFLINE_FALLBACK_NATIVE_ZOOM = 14;
@@ -162,24 +163,31 @@ async function initializeApp() {
             localStorage.removeItem('gaarCircuits');
         }
     }
-    try {
-        await Promise.race([
-            initDB(),
-            new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout ouverture IndexedDB')), 4000))
-        ]);
-        activeOfflinePacks = JSON.parse(localStorage.getItem(OFFLINE_ACTIVE_PACKS_KEY) || '[]');
-        if (!Array.isArray(activeOfflinePacks)) activeOfflinePacks = [];
-        const savedMapSourceMode = localStorage.getItem(MAP_SOURCE_MODE_KEY);
-        mapSourceMode = savedMapSourceMode === 'offline' ? 'offline' : DEFAULT_MAP_SOURCE_MODE;
-        offlineOnlineFallbackMode = localStorage.getItem(OFFLINE_ONLINE_FALLBACK_KEY) === null
-            ? DEFAULT_OFFLINE_ONLINE_FALLBACK
-            : localStorage.getItem(OFFLINE_ONLINE_FALLBACK_KEY) === 'true';
-        await initializeOfflineTilePreference();
-        // Évite de bloquer le démarrage sur un scan potentiellement long de la DB offline.
-        await updateBaseTileNativeZoomFromAvailability({ forceScan: true });
-        displayInstalledMaps();
-    } catch (startupError) {
-        console.error('Initialisation offline incomplète:', startupError);
+    if (!FORCE_DISPLAY_MODE) {
+        try {
+            await Promise.race([
+                initDB(),
+                new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout ouverture IndexedDB')), 4000))
+            ]);
+            activeOfflinePacks = JSON.parse(localStorage.getItem(OFFLINE_ACTIVE_PACKS_KEY) || '[]');
+            if (!Array.isArray(activeOfflinePacks)) activeOfflinePacks = [];
+            const savedMapSourceMode = localStorage.getItem(MAP_SOURCE_MODE_KEY);
+            mapSourceMode = savedMapSourceMode === 'offline' ? 'offline' : DEFAULT_MAP_SOURCE_MODE;
+            offlineOnlineFallbackMode = localStorage.getItem(OFFLINE_ONLINE_FALLBACK_KEY) === null
+                ? DEFAULT_OFFLINE_ONLINE_FALLBACK
+                : localStorage.getItem(OFFLINE_ONLINE_FALLBACK_KEY) === 'true';
+            await initializeOfflineTilePreference();
+            // Évite de bloquer le démarrage sur un scan potentiellement long de la DB offline.
+            await updateBaseTileNativeZoomFromAvailability({ forceScan: true });
+            displayInstalledMaps();
+        } catch (startupError) {
+            console.error('Initialisation offline incomplète:', startupError);
+            mapSourceMode = DEFAULT_MAP_SOURCE_MODE;
+            offlineOnlineFallbackMode = DEFAULT_OFFLINE_ONLINE_FALLBACK;
+            activeOfflinePacks = [];
+            displayInstalledMaps();
+        }
+    } else {
         mapSourceMode = DEFAULT_MAP_SOURCE_MODE;
         offlineOnlineFallbackMode = DEFAULT_OFFLINE_ONLINE_FALLBACK;
         activeOfflinePacks = [];
@@ -187,7 +195,17 @@ async function initializeApp() {
     }
     let communesLoadError = null;
     try {
-        const data = await loadCommunesData();
+        let data = null;
+        if (FORCE_DISPLAY_MODE) {
+            const cachedData = localStorage.getItem(COMMUNES_CACHE_KEY);
+            if (cachedData) {
+                try {
+                    const parsed = JSON.parse(cachedData);
+                    if (parsed && Array.isArray(parsed.data)) data = parsed;
+                } catch (_) {}
+            }
+        }
+        if (!data) data = await loadCommunesData();
         allCommunes = data.data.map(c => ({ ...c, normalized_name: simplifyString(c.nom_standard), search_parts: simplifyString(c.nom_standard).split(' ').filter(Boolean), soundex_parts: simplifyString(c.nom_standard).split(' ').filter(Boolean).map(part => soundex(part)) }));
     } catch (error) {
         communesLoadError = error;
@@ -404,6 +422,7 @@ function setupEventListeners() {
                     const refreshUrl = new URL(window.location.href);
                     const appVersion = (typeof APP_VERSION !== 'undefined' && APP_VERSION) ? APP_VERSION : 'unknown';
                     refreshUrl.searchParams.set('appv', appVersion);
+                    refreshUrl.searchParams.set('force_display', '1');
                     refreshUrl.searchParams.set('ts', Date.now().toString());
                     window.location.replace(refreshUrl.toString());
                     return;
@@ -427,7 +446,10 @@ function setupEventListeners() {
                     await Promise.all(cacheKeys.map((key) => caches.delete(key)));
                 }
 
-                window.location.reload();
+                const refreshUrl = new URL(window.location.href);
+                refreshUrl.searchParams.set('force_display', '1');
+                refreshUrl.searchParams.set('ts', Date.now().toString());
+                window.location.replace(refreshUrl.toString());
             } catch (error) {
                 alert(`Mise à jour impossible: ${error.message}`);
             } finally {
