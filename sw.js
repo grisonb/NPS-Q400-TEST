@@ -1,6 +1,6 @@
-const APP_CACHE_NAME = 'test-communes-app-cache-v910'; 
-const DATA_CACHE_NAME = 'test-communes-data-cache-v910';
-const TILE_CACHE_NAME = 'test-communes-tile-cache-v910';
+const APP_CACHE_NAME = 'test-communes-app-cache-v920'; 
+const DATA_CACHE_NAME = 'test-communes-data-cache-v920';
+const TILE_CACHE_NAME = 'test-communes-tile-cache-v920';
 const SW_USER_AGENT = (self.navigator && self.navigator.userAgent) ? self.navigator.userAgent : '';
 const IS_SAFARI_SW = /Safari/i.test(SW_USER_AGENT) && !/Chrome|CriOS|EdgiOS|FxiOS|OPiOS|DuckDuckGo/i.test(SW_USER_AGENT);
 const IS_IOS_SW = /iPad|iPhone|iPod/i.test(SW_USER_AGENT);
