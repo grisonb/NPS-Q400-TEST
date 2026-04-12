@@ -11,11 +11,26 @@
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <script>
-        const APP_VERSION = 'v8.82';
+        const APP_VERSION = 'v8.89';
+        const APP_VERSION_STORAGE_KEY = 'appVersion';
+        const APP_VERSION_SESSION_KEY = 'appVersionSession';
+        window.APP_VERSION = APP_VERSION;
 
         if ('serviceWorker' in navigator) {
             window.addEventListener('load', async () => {
                 let isRefreshing = false;
+                const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent)
+                    || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+
+                if (isIOS) {
+                    try {
+                        const registrations = await navigator.serviceWorker.getRegistrations();
+                        await Promise.all(registrations.map((reg) => reg.unregister()));
+                    } catch (e) {
+                        console.log('iOS SW disable warning:', e);
+                    }
+                    return;
+                }
 
                 try {
                     const previousVersion = localStorage.getItem(APP_VERSION_STORAGE_KEY);
