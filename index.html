@@ -11,7 +11,7 @@
     <meta name="apple-mobile-web-app-capable" content="no">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <script>
-        const APP_VERSION = 'v8.99';
+        const APP_VERSION = 'v9.00';
         const APP_VERSION_STORAGE_KEY = 'appVersion';
         const APP_VERSION_SESSION_KEY = 'appVersionSession';
         window.APP_VERSION = APP_VERSION;
@@ -127,14 +127,19 @@
         }
 
         document.addEventListener('DOMContentLoaded', () => {
-            const earlyForceButton = document.getElementById('boot-force-update-button');
-            if (!earlyForceButton) return;
-            earlyForceButton.style.display = 'inline-flex';
-            earlyForceButton.addEventListener('click', () => {
-                earlyForceButton.disabled = true;
-                earlyForceButton.textContent = '⏳ Forçage...';
-                window.forceRecoveryReload();
-            });
+            const mainVersionDisplay = document.getElementById('app-version-display');
+            if (mainVersionDisplay) {
+                mainVersionDisplay.textContent = APP_VERSION;
+            }
+
+            const earlyForceButton = document.getElementById('force-update-button');
+            if (earlyForceButton) {
+                earlyForceButton.addEventListener('click', () => {
+                    earlyForceButton.disabled = true;
+                    earlyForceButton.textContent = '⏳ MAJ...';
+                    window.forceRecoveryReload();
+                });
+            }
         });
     </script>
 </head>
@@ -145,6 +150,8 @@
         <button id="calculator-button" title="Ouvrir le calculateur de mission">✈️</button>
         <button id="gps-feu-button" title="Créer un feu à ma position">🎯</button>
         <button id="chat-toggle-button" title="Ouvrir/Fermer le chat équipe">💬<span id="chat-alert-badge" style="display:none;">0</span><span id="chat-offline-badge" aria-hidden="true">✕</span></button>
+        <div id="app-version-display" class="version-display">--</div>
+        <button id="force-update-button" class="force-update-button" type="button" title="Forcer la recherche de mise à jour">🔄 MAJ</button>
     </div>
       <div id="bingo-map-display" style="display: none;">
         <span id="map-bingo-lftw"></span>

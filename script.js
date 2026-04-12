@@ -192,6 +192,17 @@ async function initializeApp() {
         offlineOnlineFallbackMode = DEFAULT_OFFLINE_ONLINE_FALLBACK;
         activeOfflinePacks = [];
         displayInstalledMaps();
+        setTimeout(() => {
+            initDB()
+                .then(() => displayInstalledMaps())
+                .catch(() => {});
+        }, 0);
+        try {
+            const cleanedUrl = new URL(window.location.href);
+            cleanedUrl.searchParams.delete('force_display');
+            cleanedUrl.searchParams.delete('ts');
+            window.history.replaceState({}, '', cleanedUrl.toString());
+        } catch (_) {}
     }
     let communesLoadError = null;
     try {
@@ -403,57 +414,31 @@ function setupEventListeners() {
     const purgeInactivePacksBtn = document.getElementById('purge-inactive-packs-btn');
     
     if (mainActionButtons) {
-        const versionDisplay = document.createElement('div');
-        versionDisplay.className = 'version-display';
-        versionDisplay.innerText = (typeof APP_VERSION !== 'undefined' && APP_VERSION) ? APP_VERSION : 'version inconnue';
-        mainActionButtons.appendChild(versionDisplay);
+        const versionDisplay = document.getElementById('app-version-display');
+        if (versionDisplay) {
+            versionDisplay.innerText = (typeof APP_VERSION !== 'undefined' && APP_VERSION) ? APP_VERSION : 'version inconnue';
+        }
 
-        const forceUpdateButton = document.createElement('button');
-        forceUpdateButton.className = 'force-update-button';
-        forceUpdateButton.type = 'button';
-        forceUpdateButton.title = 'Forcer la recherche de mise à jour';
-        forceUpdateButton.textContent = '🔄 MAJ';
-        forceUpdateButton.addEventListener('click', async () => {
-            forceUpdateButton.disabled = true;
-            forceUpdateButton.textContent = '⏳ MAJ...';
-            try {
-                const swDisabled = Boolean(window.SW_DISABLED_FOR_PLATFORM);
-                if (swDisabled) {
+        const forceUpdateButton = document.getElementById('force-update-button');
+        if (forceUpdateButton && forceUpdateButton.dataset.bound !== '1') {
+            forceUpdateButton.dataset.bound = '1';
+            forceUpdateButton.addEventListener('click', async () => {
+                forceUpdateButton.disabled = true;
+                forceUpdateButton.textContent = '⏳ MAJ...';
+                try {
                     if (typeof window.forceRecoveryReload === 'function') {
                         await window.forceRecoveryReload();
+                    } else {
+                        window.location.reload();
                     }
-                    return;
+                } catch (error) {
+                    alert(`Mise à jour impossible: ${error.message}`);
+                } finally {
+                    forceUpdateButton.disabled = false;
+                    forceUpdateButton.textContent = '🔄 MAJ';
                 }
-
-                if (!('serviceWorker' in navigator)) {
-                    alert('Service Worker indisponible sur cet appareil.');
-                    return;
-                }
-
-                const registration = await navigator.serviceWorker.getRegistration();
-                if (registration) {
-                    await registration.update();
-                    if (registration.waiting) {
-                        registration.waiting.postMessage({ type: 'SKIP_WAITING' });
-                    }
-                }
-
-                if ('caches' in window) {
-                    const cacheKeys = await caches.keys();
-                    await Promise.all(cacheKeys.map((key) => caches.delete(key)));
-                }
-
-                if (typeof window.forceRecoveryReload === 'function') {
-                    await window.forceRecoveryReload();
-                }
-            } catch (error) {
-                alert(`Mise à jour impossible: ${error.message}`);
-            } finally {
-                forceUpdateButton.disabled = false;
-                forceUpdateButton.textContent = '🔄 MAJ';
-            }
-        });
-        mainActionButtons.appendChild(forceUpdateButton);
+            });
+        }
     }
 
     if (departmentsLayerButton) {
@@ -1456,8 +1441,12 @@ async function initializeOfflineTilePreference() {
 
 async function purgeInactivePacksCache() {
     if (!db) {
-        alert('Base offline indisponible.');
-        return;
+        try {
+            await initDB();
+        } catch (_) {
+            alert('Base offline indisponible.');
+            return;
+        }
     }
     const installedPacks = JSON.parse(localStorage.getItem('installedMapPacks') || '[]');
     const inactiveNames = installedPacks.map((p) => p.name).filter((name) => !activeOfflinePacks.includes(name));
