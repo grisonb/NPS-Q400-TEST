@@ -8,21 +8,43 @@
     <link rel="stylesheet" href="leaflet.css">
     <link rel="stylesheet" href="style.css">
     <link rel="manifest" href="manifest.json">
-    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-capable" content="no">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <script>
-        const APP_VERSION = 'v8.88';
+        const APP_VERSION = 'v8.98';
         const APP_VERSION_STORAGE_KEY = 'appVersion';
         const APP_VERSION_SESSION_KEY = 'appVersionSession';
         window.APP_VERSION = APP_VERSION;
-        const APP_VERSION = 'v8.87';
->>>>>>> main
+        const userAgent = navigator.userAgent || '';
+        const isSafariBrowser = /Safari/i.test(userAgent) && !/Chrome|CriOS|EdgiOS|FxiOS|OPiOS|DuckDuckGo/i.test(userAgent);
+        const isIOSDevice = /iPad|iPhone|iPod/i.test(userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+        const shouldDisableServiceWorker = isSafariBrowser || isIOSDevice;
+        window.SW_DISABLED_FOR_PLATFORM = shouldDisableServiceWorker;
+        if (shouldDisableServiceWorker) {
+            try {
+                const startupUrl = new URL(window.location.href);
+                if (startupUrl.searchParams.get('appv') !== APP_VERSION) {
+                    startupUrl.searchParams.set('appv', APP_VERSION);
+                    window.location.replace(startupUrl.toString());
+                }
+            } catch (_) {}
+        }
 
         if ('serviceWorker' in navigator) {
             window.addEventListener('load', async () => {
                 let isRefreshing = false;
 
                 try {
+                    if (shouldDisableServiceWorker) {
+                        const safariRegistrations = await navigator.serviceWorker.getRegistrations();
+                        await Promise.all(safariRegistrations.map((reg) => reg.unregister()));
+                        if ('caches' in window) {
+                            const cacheKeys = await caches.keys();
+                            await Promise.all(cacheKeys.map((key) => caches.delete(key)));
+                        }
+                        return;
+                    }
+
                     const previousVersion = localStorage.getItem(APP_VERSION_STORAGE_KEY);
                     const alreadyRefreshed = sessionStorage.getItem(APP_VERSION_SESSION_KEY) === APP_VERSION;
                     if (previousVersion !== APP_VERSION && !alreadyRefreshed) {
@@ -171,7 +193,6 @@
     <script src="leaflet.min.js"></script>
     <script src="suncalc.js"></script>
     <script src="jszip.min.js"></script>
-    <script src="https://unpkg.com/mqtt/dist/mqtt.min.js"></script>
     <script src="script.js"></script>
     
     <div id="calculator-modal" style="display: none;">
