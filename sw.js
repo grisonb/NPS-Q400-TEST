@@ -1,6 +1,6 @@
-const APP_CACHE_NAME = 'test-communes-app-cache-v962'; 
-const DATA_CACHE_NAME = 'test-communes-data-cache-v962';
-const TILE_CACHE_NAME = 'test-communes-tile-cache-v962';
+const APP_CACHE_NAME = 'test-communes-app-cache-v963'; 
+const DATA_CACHE_NAME = 'test-communes-data-cache-v963';
+const TILE_CACHE_NAME = 'test-communes-tile-cache-v963';
 const APP_SHELL_URLS = [
     './',
     './index.html',
@@ -141,6 +141,16 @@ function isOfflineTilesEnabled() {
     });
 }
 
+function buildPackScopedTileKey(url, packName) {
+    const safeUrl = String(url || '');
+    const safePack = String(packName || '').trim();
+    return safePack ? `${safeUrl}::${safePack}` : safeUrl;
+}
+
+function normalizeStoredTileUrl(url) {
+    return String(url || '').split('::')[0];
+}
+
 function normalizeTileUrl(url) {
     try {
         const parsed = new URL(url);
@@ -190,6 +200,13 @@ function getTileFromDb(url) {
                 if (!candidates.includes(candidateUrl)) candidates.push(candidateUrl);
             };
 
+            const packsToCheck = activeSet.size ? Array.from(activeSet) : [''];
+
+            packsToCheck.forEach((packName) => {
+                pushCandidate(buildPackScopedTileKey(url, packName));
+                pushCandidate(buildPackScopedTileKey(normalizedUrl, packName));
+            });
+
             pushCandidate(url);
             pushCandidate(normalizedUrl);
 
@@ -198,7 +215,9 @@ function getTileFromDb(url) {
                 const query = extensionMatch[2] || '';
                 const withoutExt = normalizedUrl.replace(/\.(png|jpg|jpeg)(\?.*)?$/i, '');
                 ['png', 'jpg', 'jpeg'].forEach((ext) => {
-                    pushCandidate(`${withoutExt}.${ext}${query}`);
+                    const variantUrl = `${withoutExt}.${ext}${query}`;
+                    pushCandidate(variantUrl);
+                    packsToCheck.forEach((packName) => pushCandidate(buildPackScopedTileKey(variantUrl, packName)));
                 });
             }
 

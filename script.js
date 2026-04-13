@@ -89,6 +89,17 @@ const withTimeout = (promise, timeoutMs, timeoutMessage) => new Promise((resolve
 
 const TILE_CACHE_PREFIX = 'test-communes-tile-cache-';
 
+
+function buildStoredTileKey(tileUrl, packName) {
+    const safeUrl = String(tileUrl || '');
+    const safePack = String(packName || '').trim();
+    return safePack ? `${safeUrl}::${safePack}` : safeUrl;
+}
+
+function getTileUrlFromStoredKey(storedUrl) {
+    return String(storedUrl || '').split('::')[0];
+}
+
 function getPreferredTileCacheName(cacheKeys = []) {
     const tileCacheNames = cacheKeys.filter((name) => name.startsWith(TILE_CACHE_PREFIX)).sort();
     if (tileCacheNames.length) {
@@ -104,10 +115,11 @@ async function persistTilesBatchToCache(batch = []) {
         const cacheKeys = await caches.keys();
         const tileCacheName = getPreferredTileCacheName(cacheKeys);
         const cache = await caches.open(tileCacheName);
-        await Promise.all(batch.map(({ url, tile }) => {
-            if (!url || !tile) return Promise.resolve();
-            const contentType = tile.type || (url.endsWith('.jpg') || url.endsWith('.jpeg') ? 'image/jpeg' : 'image/png');
-            return cache.put(url, new Response(tile, { headers: { 'Content-Type': contentType } }));
+        await Promise.all(batch.map(({ url, tile, tileUrl }) => {
+            const targetUrl = tileUrl || getTileUrlFromStoredKey(url);
+            if (!targetUrl || !tile) return Promise.resolve();
+            const contentType = tile.type || (targetUrl.endsWith('.jpg') || targetUrl.endsWith('.jpeg') ? 'image/jpeg' : 'image/png');
+            return cache.put(targetUrl, new Response(tile, { headers: { 'Content-Type': contentType } }));
         }));
     } catch (error) {
         console.warn('Impossible de persister les tuiles dans Cache Storage:', error);
@@ -122,11 +134,6 @@ async function clearTileCaches() {
 }
 
 async function refreshOfflineTilesRendering() {
-    try {
-        await clearTileCaches();
-    } catch (error) {
-        console.warn('Rafraîchissement cache tuiles incomplet:', error);
-    }
     notifyServiceWorkerActivePacks(activeOfflinePacks);
     if (map && baseTileLayer) {
         setupBaseTileLayer();
@@ -735,7 +742,8 @@ async function findOfflineTileZoomRange() {
                 cursor.continue();
                 return;
             }
-            const url = cursor.value?.url;
+            const storedUrl = cursor.value?.url;
+            const url = getTileUrlFromStoredKey(storedUrl);
             if (typeof url === 'string') {
                 const match = url.match(/\/(\d+)\/\d+\/\d+\.(png|jpg|jpeg)(?:\?.*)?$/i);
                 if (match) {
@@ -1612,15 +1620,17 @@ async function handleZipImport(file) {
 
         statusMessage.textContent = `Préparation terminée. Importation de ${totalFiles} tuiles...`;
 
-        const batchSize = file.size > 300 * 1024 * 1024 ? 32 : 96;
+        const batchSize = file.size > 300 * 1024 * 1024 ? 16 : 48;
         let processedFiles = 0;
 
         for (let i = 0; i < validEntries.length; i += batchSize) {
             const batchEntries = validEntries.slice(i, i + batchSize);
             const batch = await Promise.all(batchEntries.map(async ({ fileEntry, tilePath }) => {
                 const blob = await fileEntry.async('blob');
+                const tileUrl = `https://a.tile.openstreetmap.org/${tilePath}`;
                 return {
-                    url: `https://a.tile.openstreetmap.org/${tilePath}`,
+                    url: buildStoredTileKey(tileUrl, packName),
+                    tileUrl,
                     tile: blob,
                     packName: packName
                 };
@@ -1639,13 +1649,17 @@ async function handleZipImport(file) {
                 transaction.onerror = () => reject(transaction.error);
             });
 
-            void withTimeout(
-                persistTilesBatchToCache(batch),
-                2500,
-                'Persistance cache trop longue'
-            ).catch((cacheError) => {
-                console.warn('Persistance Cache Storage non bloquante ignorée:', cacheError);
-            });
+            const batchIndex = Math.floor(i / batchSize);
+            const shouldPersistCacheBatch = (batchIndex % 6 === 0) || (i + batchSize >= validEntries.length);
+            if (shouldPersistCacheBatch) {
+                void withTimeout(
+                    persistTilesBatchToCache(batch),
+                    2500,
+                    'Persistance cache trop longue'
+                ).catch((cacheError) => {
+                    console.warn('Persistance Cache Storage non bloquante ignorée:', cacheError);
+                });
+            }
             await new Promise((resolve) => setTimeout(resolve, 0));
         }
 
