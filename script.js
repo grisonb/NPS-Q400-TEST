@@ -86,6 +86,33 @@ const withTimeout = (promise, timeoutMs, timeoutMessage) => new Promise((resolve
         (error) => { clearTimeout(timerId); reject(error); }
     );
 });
+
+const TILE_CACHE_PREFIX = 'test-communes-tile-cache-';
+
+function getPreferredTileCacheName(cacheKeys = []) {
+    const tileCacheNames = cacheKeys.filter((name) => name.startsWith(TILE_CACHE_PREFIX)).sort();
+    if (tileCacheNames.length) {
+        return tileCacheNames[tileCacheNames.length - 1];
+    }
+    const versionDigits = (typeof APP_VERSION !== 'undefined' ? String(APP_VERSION) : '').replace(/[^0-9]/g, '');
+    return `${TILE_CACHE_PREFIX}v${versionDigits || 'fallback'}`;
+}
+
+async function persistTilesBatchToCache(batch = []) {
+    if (!('caches' in window) || !Array.isArray(batch) || batch.length === 0) return;
+    try {
+        const cacheKeys = await caches.keys();
+        const tileCacheName = getPreferredTileCacheName(cacheKeys);
+        const cache = await caches.open(tileCacheName);
+        await Promise.all(batch.map(({ url, tile }) => {
+            if (!url || !tile) return Promise.resolve();
+            const contentType = tile.type || (url.endsWith('.jpg') || url.endsWith('.jpeg') ? 'image/jpeg' : 'image/png');
+            return cache.put(url, new Response(tile, { headers: { 'Content-Type': contentType } }));
+        }));
+    } catch (error) {
+        console.warn('Impossible de persister les tuiles dans Cache Storage:', error);
+    }
+}
 const calculateDestinationPoint = (lat, lon, bearing, distanceNm) => {
     const R = 3440.065; // Rayon de la Terre en milles nautiques
     const latRad = toRad(lat);
@@ -1578,6 +1605,7 @@ async function handleZipImport(file) {
                 transaction.onerror = () => reject(transaction.error);
             });
 
+            await persistTilesBatchToCache(batch);
             await new Promise((resolve) => setTimeout(resolve, 0));
         }
 
