@@ -164,29 +164,30 @@ async function initializeApp() {
         }
     }
     if (!FORCE_DISPLAY_MODE) {
+        activeOfflinePacks = JSON.parse(localStorage.getItem(OFFLINE_ACTIVE_PACKS_KEY) || '[]');
+        if (!Array.isArray(activeOfflinePacks)) activeOfflinePacks = [];
+        const savedMapSourceMode = localStorage.getItem(MAP_SOURCE_MODE_KEY);
+        mapSourceMode = savedMapSourceMode === 'offline' ? 'offline' : DEFAULT_MAP_SOURCE_MODE;
+        offlineOnlineFallbackMode = localStorage.getItem(OFFLINE_ONLINE_FALLBACK_KEY) === null
+            ? DEFAULT_OFFLINE_ONLINE_FALLBACK
+            : localStorage.getItem(OFFLINE_ONLINE_FALLBACK_KEY) === 'true';
+
         try {
-            await Promise.race([
-                initDB(),
-                new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout ouverture IndexedDB')), 4000))
-            ]);
-            activeOfflinePacks = JSON.parse(localStorage.getItem(OFFLINE_ACTIVE_PACKS_KEY) || '[]');
-            if (!Array.isArray(activeOfflinePacks)) activeOfflinePacks = [];
-            const savedMapSourceMode = localStorage.getItem(MAP_SOURCE_MODE_KEY);
-            mapSourceMode = savedMapSourceMode === 'offline' ? 'offline' : DEFAULT_MAP_SOURCE_MODE;
-            offlineOnlineFallbackMode = localStorage.getItem(OFFLINE_ONLINE_FALLBACK_KEY) === null
-                ? DEFAULT_OFFLINE_ONLINE_FALLBACK
-                : localStorage.getItem(OFFLINE_ONLINE_FALLBACK_KEY) === 'true';
-            await initializeOfflineTilePreference();
-            // Évite de bloquer le démarrage sur un scan potentiellement long de la DB offline.
-            await updateBaseTileNativeZoomFromAvailability({ forceScan: true });
-            displayInstalledMaps();
+            await withTimeout(initDB(), 12000, 'Timeout ouverture IndexedDB');
         } catch (startupError) {
-            console.error('Initialisation offline incomplète:', startupError);
-            mapSourceMode = DEFAULT_MAP_SOURCE_MODE;
-            offlineOnlineFallbackMode = DEFAULT_OFFLINE_ONLINE_FALLBACK;
-            activeOfflinePacks = [];
-            displayInstalledMaps();
+            console.warn('Initialisation IndexedDB lente/indisponible au démarrage:', startupError);
+            setTimeout(() => {
+                initDB().catch(() => {});
+            }, 0);
         }
+
+        await initializeOfflineTilePreference();
+        // Démarrage rapide: utilise d'abord les bornes de zoom déjà connues, puis lance un scan complet en arrière-plan.
+        await updateBaseTileNativeZoomFromAvailability({ forceScan: false });
+        setTimeout(() => {
+            updateBaseTileNativeZoomFromAvailability({ forceScan: true }).catch(() => {});
+        }, 0);
+        displayInstalledMaps();
     } else {
         mapSourceMode = DEFAULT_MAP_SOURCE_MODE;
         offlineOnlineFallbackMode = DEFAULT_OFFLINE_ONLINE_FALLBACK;
@@ -645,6 +646,19 @@ async function findOfflineTileZoomRange() {
     if (!db) return null;
     const targetPacks = new Set(activeOfflinePacks);
     return new Promise((resolve) => {
+        let settled = false;
+        const finalize = (value) => {
+            if (settled) return;
+            settled = true;
+            clearTimeout(safetyTimer);
+            resolve(value);
+        };
+
+        const safetyTimer = setTimeout(() => {
+            console.warn('Scan zoom offline interrompu (timeout sécurité).');
+            finalize(null);
+        }, 8000);
+
         const tx = db.transaction('tiles', 'readonly');
         const store = tx.objectStore('tiles');
         const request = store.openCursor();
@@ -654,11 +668,7 @@ async function findOfflineTileZoomRange() {
         request.onsuccess = (event) => {
             const cursor = event.target.result;
             if (!cursor) {
-                if (minZoom === null || maxZoom === null) {
-                    resolve(null);
-                } else {
-                    resolve({ minZoom, maxZoom });
-                }
+                finalize(minZoom === null || maxZoom === null ? null : { minZoom, maxZoom });
                 return;
             }
             if (targetPacks.size && !targetPacks.has(cursor.value?.packName || '')) {
@@ -679,14 +689,10 @@ async function findOfflineTileZoomRange() {
             cursor.continue();
         };
 
-        request.onerror = () => resolve(null);
-        tx.oncomplete = () => {
-            if (minZoom === null || maxZoom === null) {
-                resolve(null);
-                return;
-            }
-            resolve({ minZoom, maxZoom });
-        };
+        request.onerror = () => finalize(null);
+        tx.onerror = () => finalize(null);
+        tx.onabort = () => finalize(null);
+        tx.oncomplete = () => finalize(minZoom === null || maxZoom === null ? null : { minZoom, maxZoom });
     });
 }
 
@@ -1284,25 +1290,25 @@ function getOfflineTilesEnabled() {
 }
 
 function setOfflineTilesEnabled(enabled) {
-    return new Promise((resolve, reject) => {
-        if (!db) {
-            offlineTilesMode = !!enabled;
-            localStorage.setItem(OFFLINE_TILES_ENABLED_KEY, String(offlineTilesMode));
-            notifyServiceWorkerOfflineTilesPreference(enabled);
-            resolve();
-            return;
-        }
+    offlineTilesMode = !!enabled;
+    localStorage.setItem(OFFLINE_TILES_ENABLED_KEY, String(offlineTilesMode));
+    notifyServiceWorkerOfflineTilesPreference(offlineTilesMode);
+
+    if (!db) {
+        return Promise.resolve();
+    }
+
+    try {
         const transaction = db.transaction('settings', 'readwrite');
         const store = transaction.objectStore('settings');
-        store.put({ key: OFFLINE_TILES_ENABLED_KEY, value: enabled });
-        transaction.oncomplete = () => {
-            offlineTilesMode = !!enabled;
-            localStorage.setItem(OFFLINE_TILES_ENABLED_KEY, String(offlineTilesMode));
-            notifyServiceWorkerOfflineTilesPreference(enabled);
-            resolve();
-        };
-        transaction.onerror = () => reject(transaction.error);
-    });
+        store.put({ key: OFFLINE_TILES_ENABLED_KEY, value: offlineTilesMode });
+        transaction.onerror = () => console.warn('[Offline] Impossible de persister la préférence offline:', transaction.error);
+        transaction.onabort = () => console.warn('[Offline] Transaction annulée lors de la persistance offline:', transaction.error);
+    } catch (error) {
+        console.warn('[Offline] IndexedDB indisponible, préférence conservée en localStorage uniquement:', error);
+    }
+
+    return Promise.resolve();
 }
 
 function notifyServiceWorkerOfflineTilesPreference(enabled) {
@@ -1383,11 +1389,7 @@ async function setMapSourceMode(mode) {
     updateMapSourceButtons();
     updateOfflineStatus();
     try {
-        await withTimeout(
-            setOfflineTilesEnabled(mapSourceMode === 'offline'),
-            4000,
-            "Changement de mode trop long (IndexedDB)."
-        );
+        await setOfflineTilesEnabled(mapSourceMode === 'offline');
         setOfflineOnlineFallbackMode(false);
         notifyServiceWorkerActivePacks(activeOfflinePacks);
         try {
