@@ -164,32 +164,30 @@ async function initializeApp() {
         }
     }
     if (!FORCE_DISPLAY_MODE) {
+        activeOfflinePacks = JSON.parse(localStorage.getItem(OFFLINE_ACTIVE_PACKS_KEY) || '[]');
+        if (!Array.isArray(activeOfflinePacks)) activeOfflinePacks = [];
+        const savedMapSourceMode = localStorage.getItem(MAP_SOURCE_MODE_KEY);
+        mapSourceMode = savedMapSourceMode === 'offline' ? 'offline' : DEFAULT_MAP_SOURCE_MODE;
+        offlineOnlineFallbackMode = localStorage.getItem(OFFLINE_ONLINE_FALLBACK_KEY) === null
+            ? DEFAULT_OFFLINE_ONLINE_FALLBACK
+            : localStorage.getItem(OFFLINE_ONLINE_FALLBACK_KEY) === 'true';
+
         try {
-            await Promise.race([
-                initDB(),
-                new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout ouverture IndexedDB')), 4000))
-            ]);
-            activeOfflinePacks = JSON.parse(localStorage.getItem(OFFLINE_ACTIVE_PACKS_KEY) || '[]');
-            if (!Array.isArray(activeOfflinePacks)) activeOfflinePacks = [];
-            const savedMapSourceMode = localStorage.getItem(MAP_SOURCE_MODE_KEY);
-            mapSourceMode = savedMapSourceMode === 'offline' ? 'offline' : DEFAULT_MAP_SOURCE_MODE;
-            offlineOnlineFallbackMode = localStorage.getItem(OFFLINE_ONLINE_FALLBACK_KEY) === null
-                ? DEFAULT_OFFLINE_ONLINE_FALLBACK
-                : localStorage.getItem(OFFLINE_ONLINE_FALLBACK_KEY) === 'true';
-            await initializeOfflineTilePreference();
-            // Démarrage rapide: utilise d'abord les bornes de zoom déjà connues, puis lance un scan complet en arrière-plan.
-            await updateBaseTileNativeZoomFromAvailability({ forceScan: false });
-            setTimeout(() => {
-                updateBaseTileNativeZoomFromAvailability({ forceScan: true }).catch(() => {});
-            }, 0);
-            displayInstalledMaps();
+            await withTimeout(initDB(), 12000, 'Timeout ouverture IndexedDB');
         } catch (startupError) {
-            console.error('Initialisation offline incomplète:', startupError);
-            mapSourceMode = DEFAULT_MAP_SOURCE_MODE;
-            offlineOnlineFallbackMode = DEFAULT_OFFLINE_ONLINE_FALLBACK;
-            activeOfflinePacks = [];
-            displayInstalledMaps();
+            console.warn('Initialisation IndexedDB lente/indisponible au démarrage:', startupError);
+            setTimeout(() => {
+                initDB().catch(() => {});
+            }, 0);
         }
+
+        await initializeOfflineTilePreference();
+        // Démarrage rapide: utilise d'abord les bornes de zoom déjà connues, puis lance un scan complet en arrière-plan.
+        await updateBaseTileNativeZoomFromAvailability({ forceScan: false });
+        setTimeout(() => {
+            updateBaseTileNativeZoomFromAvailability({ forceScan: true }).catch(() => {});
+        }, 0);
+        displayInstalledMaps();
     } else {
         mapSourceMode = DEFAULT_MAP_SOURCE_MODE;
         offlineOnlineFallbackMode = DEFAULT_OFFLINE_ONLINE_FALLBACK;
