@@ -177,8 +177,11 @@ async function initializeApp() {
                 ? DEFAULT_OFFLINE_ONLINE_FALLBACK
                 : localStorage.getItem(OFFLINE_ONLINE_FALLBACK_KEY) === 'true';
             await initializeOfflineTilePreference();
-            // Évite de bloquer le démarrage sur un scan potentiellement long de la DB offline.
-            await updateBaseTileNativeZoomFromAvailability({ forceScan: true });
+            // Démarrage rapide: utilise d'abord les bornes de zoom déjà connues, puis lance un scan complet en arrière-plan.
+            await updateBaseTileNativeZoomFromAvailability({ forceScan: false });
+            setTimeout(() => {
+                updateBaseTileNativeZoomFromAvailability({ forceScan: true }).catch(() => {});
+            }, 0);
             displayInstalledMaps();
         } catch (startupError) {
             console.error('Initialisation offline incomplète:', startupError);
@@ -645,6 +648,19 @@ async function findOfflineTileZoomRange() {
     if (!db) return null;
     const targetPacks = new Set(activeOfflinePacks);
     return new Promise((resolve) => {
+        let settled = false;
+        const finalize = (value) => {
+            if (settled) return;
+            settled = true;
+            clearTimeout(safetyTimer);
+            resolve(value);
+        };
+
+        const safetyTimer = setTimeout(() => {
+            console.warn('Scan zoom offline interrompu (timeout sécurité).');
+            finalize(null);
+        }, 8000);
+
         const tx = db.transaction('tiles', 'readonly');
         const store = tx.objectStore('tiles');
         const request = store.openCursor();
@@ -654,11 +670,7 @@ async function findOfflineTileZoomRange() {
         request.onsuccess = (event) => {
             const cursor = event.target.result;
             if (!cursor) {
-                if (minZoom === null || maxZoom === null) {
-                    resolve(null);
-                } else {
-                    resolve({ minZoom, maxZoom });
-                }
+                finalize(minZoom === null || maxZoom === null ? null : { minZoom, maxZoom });
                 return;
             }
             if (targetPacks.size && !targetPacks.has(cursor.value?.packName || '')) {
@@ -679,14 +691,10 @@ async function findOfflineTileZoomRange() {
             cursor.continue();
         };
 
-        request.onerror = () => resolve(null);
-        tx.oncomplete = () => {
-            if (minZoom === null || maxZoom === null) {
-                resolve(null);
-                return;
-            }
-            resolve({ minZoom, maxZoom });
-        };
+        request.onerror = () => finalize(null);
+        tx.onerror = () => finalize(null);
+        tx.onabort = () => finalize(null);
+        tx.oncomplete = () => finalize(minZoom === null || maxZoom === null ? null : { minZoom, maxZoom });
     });
 }
 
