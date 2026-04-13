@@ -11,7 +11,7 @@
     <meta name="apple-mobile-web-app-capable" content="no">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <script>
-        const APP_VERSION = 'v9.61';
+        const APP_VERSION = 'v9.62';
         const APP_VERSION_STORAGE_KEY = 'appVersion';
         const SW_CONTROLLER_RELOAD_GUARD_KEY = 'swControllerReloadGuard';
         window.APP_VERSION = APP_VERSION;
@@ -312,6 +312,7 @@
                         </div>
                     </div>
                     <button type="button" id="purge-inactive-packs-btn" class="danger-inline-btn">Vider le cache des packs désélectionnés</button>
+                    <button type="button" id="refresh-offline-tiles-btn" class="neutral-inline-btn">Rafraîchir l'affichage des cartes offline</button>
                     <ul id="installed-maps-list">
                         <!-- Les packs installés seront listés ici par le JavaScript -->
                         <li class="no-maps-placeholder">Aucun pack de cartes installé.</li>

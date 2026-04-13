@@ -113,6 +113,25 @@ async function persistTilesBatchToCache(batch = []) {
         console.warn('Impossible de persister les tuiles dans Cache Storage:', error);
     }
 }
+
+async function clearTileCaches() {
+    if (!('caches' in window)) return;
+    const cacheNames = await caches.keys();
+    const targets = cacheNames.filter((name) => name.startsWith(TILE_CACHE_PREFIX));
+    await Promise.all(targets.map((name) => caches.delete(name)));
+}
+
+async function refreshOfflineTilesRendering() {
+    try {
+        await clearTileCaches();
+    } catch (error) {
+        console.warn('Rafraîchissement cache tuiles incomplet:', error);
+    }
+    notifyServiceWorkerActivePacks(activeOfflinePacks);
+    if (map && baseTileLayer) {
+        setupBaseTileLayer();
+    }
+}
 const calculateDestinationPoint = (lat, lon, bearing, distanceNm) => {
     const R = 3440.065; // Rayon de la Terre en milles nautiques
     const latRad = toRad(lat);
@@ -440,6 +459,7 @@ function setupEventListeners() {
     const mapSourceOnlineBtn = document.getElementById('map-source-online-btn');
     const mapSourceOfflineBtn = document.getElementById('map-source-offline-btn');
     const purgeInactivePacksBtn = document.getElementById('purge-inactive-packs-btn');
+    const refreshOfflineTilesBtn = document.getElementById('refresh-offline-tiles-btn');
     
     if (mainActionButtons) {
         const versionDisplay = document.getElementById('app-version-display');
@@ -641,6 +661,19 @@ function setupEventListeners() {
     if (purgeInactivePacksBtn) {
         purgeInactivePacksBtn.addEventListener('click', async () => {
             await purgeInactivePacksCache();
+        });
+    }
+
+    if (refreshOfflineTilesBtn) {
+        refreshOfflineTilesBtn.addEventListener('click', async () => {
+            refreshOfflineTilesBtn.disabled = true;
+            refreshOfflineTilesBtn.textContent = '⏳ Rafraîchissement...';
+            try {
+                await refreshOfflineTilesRendering();
+            } finally {
+                refreshOfflineTilesBtn.disabled = false;
+                refreshOfflineTilesBtn.textContent = "Rafraîchir l'affichage des cartes offline";
+            }
         });
     }
 
@@ -1375,6 +1408,7 @@ async function setOfflineActivePacks(packs) {
         } catch (_) {}
     }
     notifyServiceWorkerActivePacks(activeOfflinePacks);
+    await refreshOfflineTilesRendering();
 }
 
 function setOfflineOnlineFallbackMode(enabled) {
@@ -1578,7 +1612,7 @@ async function handleZipImport(file) {
 
         statusMessage.textContent = `Préparation terminée. Importation de ${totalFiles} tuiles...`;
 
-        const batchSize = file.size > 300 * 1024 * 1024 ? 8 : 24;
+        const batchSize = file.size > 300 * 1024 * 1024 ? 32 : 96;
         let processedFiles = 0;
 
         for (let i = 0; i < validEntries.length; i += batchSize) {
@@ -1705,7 +1739,6 @@ function displayInstalledMaps() {
             const nextActive = toggles.filter((el) => el.checked).map((el) => el.dataset.packName).filter(Boolean);
             await setOfflineActivePacks(nextActive);
             await updateBaseTileNativeZoomFromAvailability({ forceScan: true });
-            setupBaseTileLayer();
             updateOfflineStatus();
         });
     });
