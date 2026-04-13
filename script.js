@@ -1605,7 +1605,13 @@ async function handleZipImport(file) {
                 transaction.onerror = () => reject(transaction.error);
             });
 
-            await persistTilesBatchToCache(batch);
+            void withTimeout(
+                persistTilesBatchToCache(batch),
+                2500,
+                'Persistance cache trop longue'
+            ).catch((cacheError) => {
+                console.warn('Persistance Cache Storage non bloquante ignorée:', cacheError);
+            });
             await new Promise((resolve) => setTimeout(resolve, 0));
         }
 
