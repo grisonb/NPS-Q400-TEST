@@ -1,10 +1,6 @@
-const APP_CACHE_NAME = 'test-communes-app-cache-v900'; 
-const DATA_CACHE_NAME = 'test-communes-data-cache-v900';
-const TILE_CACHE_NAME = 'test-communes-tile-cache-v900';
-const SW_USER_AGENT = (self.navigator && self.navigator.userAgent) ? self.navigator.userAgent : '';
-const IS_SAFARI_SW = /Safari/i.test(SW_USER_AGENT) && !/Chrome|CriOS|EdgiOS|FxiOS|OPiOS|DuckDuckGo/i.test(SW_USER_AGENT);
-const IS_IOS_SW = /iPad|iPhone|iPod/i.test(SW_USER_AGENT);
-
+const APP_CACHE_NAME = 'test-communes-app-cache-v965'; 
+const DATA_CACHE_NAME = 'test-communes-data-cache-v965';
+const TILE_CACHE_NAME = 'test-communes-tile-cache-v965';
 const APP_SHELL_URLS = [
     './',
     './index.html',
@@ -138,11 +134,21 @@ function isOfflineTilesEnabled() {
             };
         });
     }).catch(() => {
-        // Fallback robuste iOS/Safari: si IndexedDB SW est indisponible, on repasse en mode réseau/cache.
-        offlineTilesEnabledCache = false;
+        // Si IndexedDB SW est indisponible, on conserve la préférence courante en mémoire.
+        offlineTilesEnabledCache = DEFAULT_OFFLINE_TILES_ENABLED;
         offlineTilesEnabledLoaded = true;
-        return false;
+        return DEFAULT_OFFLINE_TILES_ENABLED;
     });
+}
+
+function buildPackScopedTileKey(url, packName) {
+    const safeUrl = String(url || '');
+    const safePack = String(packName || '').trim();
+    return safePack ? `${safeUrl}::${safePack}` : safeUrl;
+}
+
+function normalizeStoredTileUrl(url) {
+    return String(url || '').split('::')[0];
 }
 
 function normalizeTileUrl(url) {
@@ -194,6 +200,13 @@ function getTileFromDb(url) {
                 if (!candidates.includes(candidateUrl)) candidates.push(candidateUrl);
             };
 
+            const packsToCheck = activeSet.size ? Array.from(activeSet) : [''];
+
+            packsToCheck.forEach((packName) => {
+                pushCandidate(buildPackScopedTileKey(url, packName));
+                pushCandidate(buildPackScopedTileKey(normalizedUrl, packName));
+            });
+
             pushCandidate(url);
             pushCandidate(normalizedUrl);
 
@@ -202,7 +215,9 @@ function getTileFromDb(url) {
                 const query = extensionMatch[2] || '';
                 const withoutExt = normalizedUrl.replace(/\.(png|jpg|jpeg)(\?.*)?$/i, '');
                 ['png', 'jpg', 'jpeg'].forEach((ext) => {
-                    pushCandidate(`${withoutExt}.${ext}${query}`);
+                    const variantUrl = `${withoutExt}.${ext}${query}`;
+                    pushCandidate(variantUrl);
+                    packsToCheck.forEach((packName) => pushCandidate(buildPackScopedTileKey(variantUrl, packName)));
                 });
             }
 
@@ -218,9 +233,72 @@ function getTileFromDb(url) {
                 }
             } catch (e) {}
 
+            const lookupByPackIndex = () => {
+                const storeHitToResponse = (record) => {
+                    const tileBlob = record.tile;
+                    memoryTileCache.set(normalizedUrl, { tileBlob, packName: record.packName || '' });
+                    if (memoryTileCache.size > MEMORY_TILE_CACHE_LIMIT) {
+                        const oldestKey = memoryTileCache.keys().next().value;
+                        memoryTileCache.delete(oldestKey);
+                    }
+                    resolve(new Response(tileBlob));
+                };
+
+                if (!activeSet.size) {
+                    const cursorRequest = store.openCursor();
+                    cursorRequest.onsuccess = () => {
+                        const cursor = cursorRequest.result;
+                        if (!cursor) {
+                            resolve(null);
+                            return;
+                        }
+                        const record = cursor.value;
+                        const recordUrl = normalizeTileUrl(normalizeStoredTileUrl(record?.tileUrl || record?.url));
+                        if (record && recordUrl === normalizedUrl) {
+                            storeHitToResponse(record);
+                            return;
+                        }
+                        cursor.continue();
+                    };
+                    cursorRequest.onerror = () => resolve(null);
+                    return;
+                }
+
+                const packs = Array.from(activeSet);
+                const packIndex = store.index('packName');
+                let packCursorPos = 0;
+
+                const scanNextPack = () => {
+                    if (packCursorPos >= packs.length) {
+                        resolve(null);
+                        return;
+                    }
+
+                    const packName = packs[packCursorPos++];
+                    const cursorRequest = packIndex.openCursor(IDBKeyRange.only(packName));
+                    cursorRequest.onsuccess = () => {
+                        const cursor = cursorRequest.result;
+                        if (!cursor) {
+                            scanNextPack();
+                            return;
+                        }
+                        const record = cursor.value;
+                        const recordUrl = normalizeTileUrl(normalizeStoredTileUrl(record?.tileUrl || record?.url));
+                        if (record && recordUrl === normalizedUrl) {
+                            storeHitToResponse(record);
+                            return;
+                        }
+                        cursor.continue();
+                    };
+                    cursorRequest.onerror = () => scanNextPack();
+                };
+
+                scanNextPack();
+            };
+
             const tryNext = () => {
                 if (!candidates.length) {
-                    resolve(null);
+                    lookupByPackIndex();
                     return;
                 }
 
@@ -303,11 +381,6 @@ function createOfflineFallbackResponse() {
 }
 
 self.addEventListener('fetch', event => {
-    if (IS_SAFARI_SW || IS_IOS_SW) {
-        // Fallback robuste Safari/iOS: laisser le navigateur gérer le réseau directement.
-        return;
-    }
-
     if (event.request.method !== 'GET') return;
     const requestUrl = new URL(event.request.url);
 

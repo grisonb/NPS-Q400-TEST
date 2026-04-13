@@ -726,6 +726,45 @@ html, body {
     cursor: pointer;
 }
 
+.neutral-inline-btn {
+    width: 100%;
+    margin: 0 0 10px 0;
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    background: #eef3f8;
+    color: var(--primary-color);
+    padding: 9px 10px;
+    font-weight: 700;
+    cursor: pointer;
+}
+
+.neutral-inline-btn:disabled {
+    opacity: 0.7;
+    cursor: wait;
+}
+
+.offline-toggle-row {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.map-source-buttons {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+#installed-maps-list li {
+    gap: 10px;
+    flex-wrap: wrap;
+}
+
+#installed-maps-list li > span {
+    min-width: 0;
+    flex: 1;
+}
+
 #offline-status {
     margin-top: 8px;
     color: var(--light-text-color);
@@ -805,3 +844,6 @@ html, body {
 .clear-commune-btn:hover {
     color: var(--secondary-color);
 }
+
+
+

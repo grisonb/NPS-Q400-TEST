@@ -86,6 +86,59 @@ const withTimeout = (promise, timeoutMs, timeoutMessage) => new Promise((resolve
         (error) => { clearTimeout(timerId); reject(error); }
     );
 });
+
+const TILE_CACHE_PREFIX = 'test-communes-tile-cache-';
+
+
+function buildStoredTileKey(tileUrl, packName) {
+    const safeUrl = String(tileUrl || '');
+    const safePack = String(packName || '').trim();
+    return safePack ? `${safeUrl}::${safePack}` : safeUrl;
+}
+
+function getTileUrlFromStoredKey(storedUrl) {
+    return String(storedUrl || '').split('::')[0];
+}
+
+function getPreferredTileCacheName(cacheKeys = []) {
+    const tileCacheNames = cacheKeys.filter((name) => name.startsWith(TILE_CACHE_PREFIX)).sort();
+    if (tileCacheNames.length) {
+        return tileCacheNames[tileCacheNames.length - 1];
+    }
+    const versionDigits = (typeof APP_VERSION !== 'undefined' ? String(APP_VERSION) : '').replace(/[^0-9]/g, '');
+    return `${TILE_CACHE_PREFIX}v${versionDigits || 'fallback'}`;
+}
+
+async function persistTilesBatchToCache(batch = []) {
+    if (!('caches' in window) || !Array.isArray(batch) || batch.length === 0) return;
+    try {
+        const cacheKeys = await caches.keys();
+        const tileCacheName = getPreferredTileCacheName(cacheKeys);
+        const cache = await caches.open(tileCacheName);
+        await Promise.all(batch.map(({ url, tile, tileUrl }) => {
+            const targetUrl = tileUrl || getTileUrlFromStoredKey(url);
+            if (!targetUrl || !tile) return Promise.resolve();
+            const contentType = tile.type || (targetUrl.endsWith('.jpg') || targetUrl.endsWith('.jpeg') ? 'image/jpeg' : 'image/png');
+            return cache.put(targetUrl, new Response(tile, { headers: { 'Content-Type': contentType } }));
+        }));
+    } catch (error) {
+        console.warn('Impossible de persister les tuiles dans Cache Storage:', error);
+    }
+}
+
+async function clearTileCaches() {
+    if (!('caches' in window)) return;
+    const cacheNames = await caches.keys();
+    const targets = cacheNames.filter((name) => name.startsWith(TILE_CACHE_PREFIX));
+    await Promise.all(targets.map((name) => caches.delete(name)));
+}
+
+async function refreshOfflineTilesRendering() {
+    notifyServiceWorkerActivePacks(activeOfflinePacks);
+    if (map && baseTileLayer) {
+        setupBaseTileLayer();
+    }
+}
 const calculateDestinationPoint = (lat, lon, bearing, distanceNm) => {
     const R = 3440.065; // Rayon de la Terre en milles nautiques
     const latRad = toRad(lat);
@@ -164,29 +217,30 @@ async function initializeApp() {
         }
     }
     if (!FORCE_DISPLAY_MODE) {
+        activeOfflinePacks = JSON.parse(localStorage.getItem(OFFLINE_ACTIVE_PACKS_KEY) || '[]');
+        if (!Array.isArray(activeOfflinePacks)) activeOfflinePacks = [];
+        const savedMapSourceMode = localStorage.getItem(MAP_SOURCE_MODE_KEY);
+        mapSourceMode = savedMapSourceMode === 'offline' ? 'offline' : DEFAULT_MAP_SOURCE_MODE;
+        offlineOnlineFallbackMode = localStorage.getItem(OFFLINE_ONLINE_FALLBACK_KEY) === null
+            ? DEFAULT_OFFLINE_ONLINE_FALLBACK
+            : localStorage.getItem(OFFLINE_ONLINE_FALLBACK_KEY) === 'true';
+
         try {
-            await Promise.race([
-                initDB(),
-                new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout ouverture IndexedDB')), 4000))
-            ]);
-            activeOfflinePacks = JSON.parse(localStorage.getItem(OFFLINE_ACTIVE_PACKS_KEY) || '[]');
-            if (!Array.isArray(activeOfflinePacks)) activeOfflinePacks = [];
-            const savedMapSourceMode = localStorage.getItem(MAP_SOURCE_MODE_KEY);
-            mapSourceMode = savedMapSourceMode === 'offline' ? 'offline' : DEFAULT_MAP_SOURCE_MODE;
-            offlineOnlineFallbackMode = localStorage.getItem(OFFLINE_ONLINE_FALLBACK_KEY) === null
-                ? DEFAULT_OFFLINE_ONLINE_FALLBACK
-                : localStorage.getItem(OFFLINE_ONLINE_FALLBACK_KEY) === 'true';
-            await initializeOfflineTilePreference();
-            // Évite de bloquer le démarrage sur un scan potentiellement long de la DB offline.
-            await updateBaseTileNativeZoomFromAvailability({ forceScan: true });
-            displayInstalledMaps();
+            await withTimeout(initDB(), 12000, 'Timeout ouverture IndexedDB');
         } catch (startupError) {
-            console.error('Initialisation offline incomplète:', startupError);
-            mapSourceMode = DEFAULT_MAP_SOURCE_MODE;
-            offlineOnlineFallbackMode = DEFAULT_OFFLINE_ONLINE_FALLBACK;
-            activeOfflinePacks = [];
-            displayInstalledMaps();
+            console.warn('Initialisation IndexedDB lente/indisponible au démarrage:', startupError);
+            setTimeout(() => {
+                initDB().catch(() => {});
+            }, 0);
         }
+
+        await initializeOfflineTilePreference();
+        // Démarrage rapide: utilise d'abord les bornes de zoom déjà connues, puis lance un scan complet en arrière-plan.
+        await updateBaseTileNativeZoomFromAvailability({ forceScan: false });
+        setTimeout(() => {
+            updateBaseTileNativeZoomFromAvailability({ forceScan: true }).catch(() => {});
+        }, 0);
+        displayInstalledMaps();
     } else {
         mapSourceMode = DEFAULT_MAP_SOURCE_MODE;
         offlineOnlineFallbackMode = DEFAULT_OFFLINE_ONLINE_FALLBACK;
@@ -412,6 +466,7 @@ function setupEventListeners() {
     const mapSourceOnlineBtn = document.getElementById('map-source-online-btn');
     const mapSourceOfflineBtn = document.getElementById('map-source-offline-btn');
     const purgeInactivePacksBtn = document.getElementById('purge-inactive-packs-btn');
+    const refreshOfflineTilesBtn = document.getElementById('refresh-offline-tiles-btn');
     
     if (mainActionButtons) {
         const versionDisplay = document.getElementById('app-version-display');
@@ -616,6 +671,19 @@ function setupEventListeners() {
         });
     }
 
+    if (refreshOfflineTilesBtn) {
+        refreshOfflineTilesBtn.addEventListener('click', async () => {
+            refreshOfflineTilesBtn.disabled = true;
+            refreshOfflineTilesBtn.textContent = '⏳ Rafraîchissement...';
+            try {
+                await refreshOfflineTilesRendering();
+            } finally {
+                refreshOfflineTilesBtn.disabled = false;
+                refreshOfflineTilesBtn.textContent = "Rafraîchir l'affichage des cartes offline";
+            }
+        });
+    }
+
     updateBaseLabels();
     updateLftwButtonState();
     updateGaarButtonState();
@@ -645,6 +713,19 @@ async function findOfflineTileZoomRange() {
     if (!db) return null;
     const targetPacks = new Set(activeOfflinePacks);
     return new Promise((resolve) => {
+        let settled = false;
+        const finalize = (value) => {
+            if (settled) return;
+            settled = true;
+            clearTimeout(safetyTimer);
+            resolve(value);
+        };
+
+        const safetyTimer = setTimeout(() => {
+            console.warn('Scan zoom offline interrompu (timeout sécurité).');
+            finalize(null);
+        }, 8000);
+
         const tx = db.transaction('tiles', 'readonly');
         const store = tx.objectStore('tiles');
         const request = store.openCursor();
@@ -654,18 +735,15 @@ async function findOfflineTileZoomRange() {
         request.onsuccess = (event) => {
             const cursor = event.target.result;
             if (!cursor) {
-                if (minZoom === null || maxZoom === null) {
-                    resolve(null);
-                } else {
-                    resolve({ minZoom, maxZoom });
-                }
+                finalize(minZoom === null || maxZoom === null ? null : { minZoom, maxZoom });
                 return;
             }
             if (targetPacks.size && !targetPacks.has(cursor.value?.packName || '')) {
                 cursor.continue();
                 return;
             }
-            const url = cursor.value?.url;
+            const storedUrl = cursor.value?.url;
+            const url = getTileUrlFromStoredKey(storedUrl);
             if (typeof url === 'string') {
                 const match = url.match(/\/(\d+)\/\d+\/\d+\.(png|jpg|jpeg)(?:\?.*)?$/i);
                 if (match) {
@@ -679,14 +757,10 @@ async function findOfflineTileZoomRange() {
             cursor.continue();
         };
 
-        request.onerror = () => resolve(null);
-        tx.oncomplete = () => {
-            if (minZoom === null || maxZoom === null) {
-                resolve(null);
-                return;
-            }
-            resolve({ minZoom, maxZoom });
-        };
+        request.onerror = () => finalize(null);
+        tx.onerror = () => finalize(null);
+        tx.onabort = () => finalize(null);
+        tx.oncomplete = () => finalize(minZoom === null || maxZoom === null ? null : { minZoom, maxZoom });
     });
 }
 
@@ -1284,25 +1358,25 @@ function getOfflineTilesEnabled() {
 }
 
 function setOfflineTilesEnabled(enabled) {
-    return new Promise((resolve, reject) => {
-        if (!db) {
-            offlineTilesMode = !!enabled;
-            localStorage.setItem(OFFLINE_TILES_ENABLED_KEY, String(offlineTilesMode));
-            notifyServiceWorkerOfflineTilesPreference(enabled);
-            resolve();
-            return;
-        }
+    offlineTilesMode = !!enabled;
+    localStorage.setItem(OFFLINE_TILES_ENABLED_KEY, String(offlineTilesMode));
+    notifyServiceWorkerOfflineTilesPreference(offlineTilesMode);
+
+    if (!db) {
+        return Promise.resolve();
+    }
+
+    try {
         const transaction = db.transaction('settings', 'readwrite');
         const store = transaction.objectStore('settings');
-        store.put({ key: OFFLINE_TILES_ENABLED_KEY, value: enabled });
-        transaction.oncomplete = () => {
-            offlineTilesMode = !!enabled;
-            localStorage.setItem(OFFLINE_TILES_ENABLED_KEY, String(offlineTilesMode));
-            notifyServiceWorkerOfflineTilesPreference(enabled);
-            resolve();
-        };
-        transaction.onerror = () => reject(transaction.error);
-    });
+        store.put({ key: OFFLINE_TILES_ENABLED_KEY, value: offlineTilesMode });
+        transaction.onerror = () => console.warn('[Offline] Impossible de persister la préférence offline:', transaction.error);
+        transaction.onabort = () => console.warn('[Offline] Transaction annulée lors de la persistance offline:', transaction.error);
+    } catch (error) {
+        console.warn('[Offline] IndexedDB indisponible, préférence conservée en localStorage uniquement:', error);
+    }
+
+    return Promise.resolve();
 }
 
 function notifyServiceWorkerOfflineTilesPreference(enabled) {
@@ -1342,6 +1416,7 @@ async function setOfflineActivePacks(packs) {
         } catch (_) {}
     }
     notifyServiceWorkerActivePacks(activeOfflinePacks);
+    await refreshOfflineTilesRendering();
 }
 
 function setOfflineOnlineFallbackMode(enabled) {
@@ -1383,11 +1458,7 @@ async function setMapSourceMode(mode) {
     updateMapSourceButtons();
     updateOfflineStatus();
     try {
-        await withTimeout(
-            setOfflineTilesEnabled(mapSourceMode === 'offline'),
-            4000,
-            "Changement de mode trop long (IndexedDB)."
-        );
+        await setOfflineTilesEnabled(mapSourceMode === 'offline');
         setOfflineOnlineFallbackMode(false);
         notifyServiceWorkerActivePacks(activeOfflinePacks);
         try {
@@ -1549,15 +1620,17 @@ async function handleZipImport(file) {
 
         statusMessage.textContent = `Préparation terminée. Importation de ${totalFiles} tuiles...`;
 
-        const batchSize = file.size > 300 * 1024 * 1024 ? 8 : 24;
+        const batchSize = file.size > 300 * 1024 * 1024 ? 16 : 48;
         let processedFiles = 0;
 
         for (let i = 0; i < validEntries.length; i += batchSize) {
             const batchEntries = validEntries.slice(i, i + batchSize);
             const batch = await Promise.all(batchEntries.map(async ({ fileEntry, tilePath }) => {
                 const blob = await fileEntry.async('blob');
+                const tileUrl = `https://a.tile.openstreetmap.org/${tilePath}`;
                 return {
-                    url: `https://a.tile.openstreetmap.org/${tilePath}`,
+                    url: buildStoredTileKey(tileUrl, packName),
+                    tileUrl,
                     tile: blob,
                     packName: packName
                 };
@@ -1576,6 +1649,17 @@ async function handleZipImport(file) {
                 transaction.onerror = () => reject(transaction.error);
             });
 
+            const batchIndex = Math.floor(i / batchSize);
+            const shouldPersistCacheBatch = (batchIndex % 6 === 0) || (i + batchSize >= validEntries.length);
+            if (shouldPersistCacheBatch) {
+                void withTimeout(
+                    persistTilesBatchToCache(batch),
+                    2500,
+                    'Persistance cache trop longue'
+                ).catch((cacheError) => {
+                    console.warn('Persistance Cache Storage non bloquante ignorée:', cacheError);
+                });
+            }
             await new Promise((resolve) => setTimeout(resolve, 0));
         }
 
@@ -1669,7 +1753,6 @@ function displayInstalledMaps() {
             const nextActive = toggles.filter((el) => el.checked).map((el) => el.dataset.packName).filter(Boolean);
             await setOfflineActivePacks(nextActive);
             await updateBaseTileNativeZoomFromAvailability({ forceScan: true });
-            setupBaseTileLayer();
             updateOfflineStatus();
         });
     });
