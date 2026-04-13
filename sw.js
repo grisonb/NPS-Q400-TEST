@@ -1,6 +1,6 @@
-const APP_CACHE_NAME = 'test-communes-app-cache-v964'; 
-const DATA_CACHE_NAME = 'test-communes-data-cache-v964';
-const TILE_CACHE_NAME = 'test-communes-tile-cache-v964';
+const APP_CACHE_NAME = 'test-communes-app-cache-v965'; 
+const DATA_CACHE_NAME = 'test-communes-data-cache-v965';
+const TILE_CACHE_NAME = 'test-communes-tile-cache-v965';
 const APP_SHELL_URLS = [
     './',
     './index.html',
@@ -234,8 +234,33 @@ function getTileFromDb(url) {
             } catch (e) {}
 
             const lookupByPackIndex = () => {
+                const storeHitToResponse = (record) => {
+                    const tileBlob = record.tile;
+                    memoryTileCache.set(normalizedUrl, { tileBlob, packName: record.packName || '' });
+                    if (memoryTileCache.size > MEMORY_TILE_CACHE_LIMIT) {
+                        const oldestKey = memoryTileCache.keys().next().value;
+                        memoryTileCache.delete(oldestKey);
+                    }
+                    resolve(new Response(tileBlob));
+                };
+
                 if (!activeSet.size) {
-                    resolve(null);
+                    const cursorRequest = store.openCursor();
+                    cursorRequest.onsuccess = () => {
+                        const cursor = cursorRequest.result;
+                        if (!cursor) {
+                            resolve(null);
+                            return;
+                        }
+                        const record = cursor.value;
+                        const recordUrl = normalizeTileUrl(normalizeStoredTileUrl(record?.tileUrl || record?.url));
+                        if (record && recordUrl === normalizedUrl) {
+                            storeHitToResponse(record);
+                            return;
+                        }
+                        cursor.continue();
+                    };
+                    cursorRequest.onerror = () => resolve(null);
                     return;
                 }
 
@@ -260,13 +285,7 @@ function getTileFromDb(url) {
                         const record = cursor.value;
                         const recordUrl = normalizeTileUrl(normalizeStoredTileUrl(record?.tileUrl || record?.url));
                         if (record && recordUrl === normalizedUrl) {
-                            const tileBlob = record.tile;
-                            memoryTileCache.set(normalizedUrl, { tileBlob, packName: record.packName || '' });
-                            if (memoryTileCache.size > MEMORY_TILE_CACHE_LIMIT) {
-                                const oldestKey = memoryTileCache.keys().next().value;
-                                memoryTileCache.delete(oldestKey);
-                            }
-                            resolve(new Response(tileBlob));
+                            storeHitToResponse(record);
                             return;
                         }
                         cursor.continue();
