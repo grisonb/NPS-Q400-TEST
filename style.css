@@ -726,6 +726,45 @@ html, body {
     cursor: pointer;
 }
 
+.neutral-inline-btn {
+    width: 100%;
+    margin: 0 0 10px 0;
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    background: #eef3f8;
+    color: var(--primary-color);
+    padding: 9px 10px;
+    font-weight: 700;
+    cursor: pointer;
+}
+
+.neutral-inline-btn:disabled {
+    opacity: 0.7;
+    cursor: wait;
+}
+
+.offline-toggle-row {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.map-source-buttons {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+#installed-maps-list li {
+    gap: 10px;
+    flex-wrap: wrap;
+}
+
+#installed-maps-list li > span {
+    min-width: 0;
+    flex: 1;
+}
+
 #offline-status {
     margin-top: 8px;
     color: var(--light-text-color);
@@ -804,4 +843,41 @@ html, body {
 
 .clear-commune-btn:hover {
     color: var(--secondary-color);
+}
+
+
+@media (orientation: landscape) and (min-width: 900px) {
+    #offline-map-modal .main-container {
+        max-width: 920px;
+        width: min(96vw, 920px);
+        max-height: 88vh;
+    }
+
+    #offline-map-modal .modal-content {
+        display: grid;
+        grid-template-columns: minmax(280px, 0.9fr) minmax(420px, 1.1fr);
+        gap: 20px;
+        align-items: start;
+    }
+
+    #offline-map-modal .installed-maps-section {
+        min-width: 0;
+    }
+
+    #installed-maps-list {
+        max-height: 52vh;
+    }
+
+    #installed-maps-list li {
+        gap: 12px;
+    }
+
+    #installed-maps-list li > span {
+        min-width: 0;
+        flex: 1;
+    }
+
+    #installed-maps-list li label {
+        word-break: break-word;
+    }
 }
