@@ -1,6 +1,6 @@
-const APP_CACHE_NAME = 'test-communes-app-cache-v963'; 
-const DATA_CACHE_NAME = 'test-communes-data-cache-v963';
-const TILE_CACHE_NAME = 'test-communes-tile-cache-v963';
+const APP_CACHE_NAME = 'test-communes-app-cache-v964'; 
+const DATA_CACHE_NAME = 'test-communes-data-cache-v964';
+const TILE_CACHE_NAME = 'test-communes-tile-cache-v964';
 const APP_SHELL_URLS = [
     './',
     './index.html',
@@ -233,9 +233,53 @@ function getTileFromDb(url) {
                 }
             } catch (e) {}
 
+            const lookupByPackIndex = () => {
+                if (!activeSet.size) {
+                    resolve(null);
+                    return;
+                }
+
+                const packs = Array.from(activeSet);
+                const packIndex = store.index('packName');
+                let packCursorPos = 0;
+
+                const scanNextPack = () => {
+                    if (packCursorPos >= packs.length) {
+                        resolve(null);
+                        return;
+                    }
+
+                    const packName = packs[packCursorPos++];
+                    const cursorRequest = packIndex.openCursor(IDBKeyRange.only(packName));
+                    cursorRequest.onsuccess = () => {
+                        const cursor = cursorRequest.result;
+                        if (!cursor) {
+                            scanNextPack();
+                            return;
+                        }
+                        const record = cursor.value;
+                        const recordUrl = normalizeTileUrl(normalizeStoredTileUrl(record?.tileUrl || record?.url));
+                        if (record && recordUrl === normalizedUrl) {
+                            const tileBlob = record.tile;
+                            memoryTileCache.set(normalizedUrl, { tileBlob, packName: record.packName || '' });
+                            if (memoryTileCache.size > MEMORY_TILE_CACHE_LIMIT) {
+                                const oldestKey = memoryTileCache.keys().next().value;
+                                memoryTileCache.delete(oldestKey);
+                            }
+                            resolve(new Response(tileBlob));
+                            return;
+                        }
+                        cursor.continue();
+                    };
+                    cursorRequest.onerror = () => scanNextPack();
+                };
+
+                scanNextPack();
+            };
+
             const tryNext = () => {
                 if (!candidates.length) {
-                    resolve(null);
+                    lookupByPackIndex();
                     return;
                 }
 
