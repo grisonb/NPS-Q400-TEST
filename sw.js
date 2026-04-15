@@ -1,6 +1,6 @@
-const APP_CACHE_NAME = 'test-communes-app-cache-v967'; 
-const DATA_CACHE_NAME = 'test-communes-data-cache-v967';
-const TILE_CACHE_NAME = 'test-communes-tile-cache-v967';
+const APP_CACHE_NAME = 'test-communes-app-cache-v968'; 
+const DATA_CACHE_NAME = 'test-communes-data-cache-v968';
+const TILE_CACHE_NAME = 'test-communes-tile-cache-v968';
 const APP_SHELL_URLS = [
     './',
     './index.html',
@@ -67,6 +67,7 @@ self.addEventListener('message', event => {
 let db;
 const OFFLINE_TILES_ENABLED_KEY = 'offlineTilesEnabled';
 const OFFLINE_SELECTED_PACK_KEY = 'offlineSelectedPack';
+const OFFLINE_ACTIVE_PACKS_KEY = 'offlineActivePacks';
 const DEFAULT_OFFLINE_TILES_ENABLED = true;
 let offlineTilesEnabledCache = DEFAULT_OFFLINE_TILES_ENABLED;
 let offlineTilesEnabledLoaded = false;
@@ -175,7 +176,29 @@ function getOfflineActivePacks() {
     if (offlineActivePacksLoaded) {
         return Promise.resolve(offlineActivePacksCache);
     }
-    return Promise.resolve(offlineActivePacksCache);
+
+    return getDb().then(db => {
+        return new Promise(resolve => {
+            const transaction = db.transaction('settings', 'readonly');
+            const store = transaction.objectStore('settings');
+            const request = store.get(OFFLINE_ACTIVE_PACKS_KEY);
+            request.onsuccess = () => {
+                const value = Array.isArray(request.result?.value) ? request.result.value.filter(Boolean) : [];
+                offlineActivePacksCache = value;
+                offlineActivePacksLoaded = true;
+                resolve(value);
+            };
+            request.onerror = () => {
+                offlineActivePacksCache = [];
+                offlineActivePacksLoaded = true;
+                resolve([]);
+            };
+        });
+    }).catch(() => {
+        offlineActivePacksCache = [];
+        offlineActivePacksLoaded = true;
+        return [];
+    });
 }
 
 function getTileFromDb(url) {
