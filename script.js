@@ -1693,12 +1693,16 @@ async function handleZipImport(file) {
     }
 }
 
+function isPlausibleTileZoom(value) {
+    return Number.isFinite(value) && value >= 0 && value <= 22;
+}
+
 function parseTilePathFromName(name) {
     const normalizedName = String(name || '').replace(/\\/g, '/');
     const xyzMatch = normalizedName.match(/(?:^|\/)(\d+)\/(\d+)\/(\d+)\.(png|jpg|jpeg)$/i);
     if (xyzMatch) {
         const zoom = Number.parseInt(xyzMatch[1], 10);
-        if (!Number.isFinite(zoom)) return [];
+        if (!isPlausibleTileZoom(zoom)) return [];
         return [{ tilePath: `${xyzMatch[1]}/${xyzMatch[2]}/${xyzMatch[3]}.png`, zoom }];
     }
 
@@ -1709,11 +1713,11 @@ function parseTilePathFromName(name) {
     const c = Number.parseInt(flatMatch[3], 10);
     const candidates = [];
 
-    if (Number.isFinite(a)) {
+    if (isPlausibleTileZoom(a)) {
         candidates.push({ tilePath: `${flatMatch[1]}/${flatMatch[2]}/${flatMatch[3]}.png`, zoom: a });
     }
     // Compatibilité imports plats potentiellement en x_y_z : on ajoute aussi z/x/y.
-    if (Number.isFinite(c)) {
+    if (isPlausibleTileZoom(c)) {
         const altTilePath = `${flatMatch[3]}/${flatMatch[1]}/${flatMatch[2]}.png`;
         if (!candidates.some((entry) => entry.tilePath === altTilePath)) {
             candidates.push({ tilePath: altTilePath, zoom: c });
