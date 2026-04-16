@@ -1,6 +1,6 @@
-const APP_CACHE_NAME = 'test-communes-app-cache-v968'; 
-const DATA_CACHE_NAME = 'test-communes-data-cache-v968';
-const TILE_CACHE_NAME = 'test-communes-tile-cache-v968';
+const APP_CACHE_NAME = 'test-communes-app-cache-v969'; 
+const DATA_CACHE_NAME = 'test-communes-data-cache-v969';
+const TILE_CACHE_NAME = 'test-communes-tile-cache-v969';
 const APP_SHELL_URLS = [
     './',
     './index.html',
@@ -82,7 +82,7 @@ const memoryTileCache = new Map();
 function getDb() {
     return new Promise((resolve, reject) => {
         if (db) return resolve(db);
-        const request = indexedDB.open('OfflineTilesDB', 2);
+        const request = indexedDB.open('OfflineTilesDB', 3);
         request.onupgradeneeded = event => {
             const dbInstance = event.target.result;
             const transaction = event.target.transaction;
@@ -90,10 +90,18 @@ function getDb() {
             if (!dbInstance.objectStoreNames.contains('tiles')) {
                 const store = dbInstance.createObjectStore('tiles', { keyPath: 'url' });
                 store.createIndex('packName', 'packName', { unique: false });
+                store.createIndex('tileUrl', 'tileUrl', { unique: false });
             }
 
             if (!dbInstance.objectStoreNames.contains('settings')) {
                 dbInstance.createObjectStore('settings', { keyPath: 'key' });
+            }
+
+            if (dbInstance.objectStoreNames.contains('tiles')) {
+                const tilesStore = transaction.objectStore('tiles');
+                if (!tilesStore.indexNames.contains('tileUrl')) {
+                    tilesStore.createIndex('tileUrl', 'tileUrl', { unique: false });
+                }
             }
 
             if (transaction && dbInstance.objectStoreNames.contains('settings')) {
@@ -256,6 +264,36 @@ function getTileFromDb(url) {
                 }
             } catch (e) {}
 
+            const lookupByTileUrlIndex = () => {
+                if (!store.indexNames.contains('tileUrl')) {
+                    lookupByPackIndex();
+                    return;
+                }
+
+                const index = store.index('tileUrl');
+                const request = index.openCursor(IDBKeyRange.only(normalizedUrl));
+                request.onsuccess = () => {
+                    const cursor = request.result;
+                    if (!cursor) {
+                        lookupByPackIndex();
+                        return;
+                    }
+                    const record = cursor.value;
+                    if (!record || (activeSet.size && !activeSet.has(record.packName || ''))) {
+                        cursor.continue();
+                        return;
+                    }
+                    const tileBlob = record.tile;
+                    memoryTileCache.set(normalizedUrl, { tileBlob, packName: record.packName || '' });
+                    if (memoryTileCache.size > MEMORY_TILE_CACHE_LIMIT) {
+                        const oldestKey = memoryTileCache.keys().next().value;
+                        memoryTileCache.delete(oldestKey);
+                    }
+                    resolve(new Response(tileBlob));
+                };
+                request.onerror = () => lookupByPackIndex();
+            };
+
             const lookupByPackIndex = () => {
                 const storeHitToResponse = (record) => {
                     const tileBlob = record.tile;
@@ -321,7 +359,7 @@ function getTileFromDb(url) {
 
             const tryNext = () => {
                 if (!candidates.length) {
-                    lookupByPackIndex();
+                    lookupByTileUrlIndex();
                     return;
                 }
 

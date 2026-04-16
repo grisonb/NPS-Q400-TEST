@@ -1299,7 +1299,7 @@ function initDB() {
             reject(new Error('IndexedDB indisponible'));
             return;
         }
-        const request = indexedDB.open('OfflineTilesDB', 2);
+        const request = indexedDB.open('OfflineTilesDB', 3);
         request.onupgradeneeded = event => {
             const dbInstance = event.target.result;
             const transaction = event.target.transaction;
@@ -1307,10 +1307,18 @@ function initDB() {
             if (!dbInstance.objectStoreNames.contains('tiles')) {
                 const store = dbInstance.createObjectStore('tiles', { keyPath: 'url' });
                 store.createIndex('packName', 'packName', { unique: false });
+                store.createIndex('tileUrl', 'tileUrl', { unique: false });
             }
 
             if (!dbInstance.objectStoreNames.contains('settings')) {
                 dbInstance.createObjectStore('settings', { keyPath: 'key' });
+            }
+
+            if (dbInstance.objectStoreNames.contains('tiles')) {
+                const tilesStore = transaction.objectStore('tiles');
+                if (!tilesStore.indexNames.contains('tileUrl')) {
+                    tilesStore.createIndex('tileUrl', 'tileUrl', { unique: false });
+                }
             }
 
             if (transaction && dbInstance.objectStoreNames.contains('settings')) {
@@ -1774,7 +1782,10 @@ function displayInstalledMaps() {
             const toggles = Array.from(list.querySelectorAll('.offline-pack-active-toggle'));
             const nextActive = toggles.filter((el) => el.checked).map((el) => el.dataset.packName).filter(Boolean);
             await setOfflineActivePacks(nextActive);
-            await updateBaseTileNativeZoomFromAvailability({ forceScan: true });
+            await updateBaseTileNativeZoomFromAvailability({ forceScan: false });
+            setTimeout(() => {
+                updateBaseTileNativeZoomFromAvailability({ forceScan: true }).catch(() => {});
+            }, 0);
             updateOfflineStatus();
         });
     });
