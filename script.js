@@ -2027,7 +2027,7 @@ Calcul : ((${formatTime(params.csFeuTime) || 'N/A'} - ${formatTime(current.time)
 
     // Si une limite temporelle est la première limite atteinte,
     // toute valeur suivante (plus élevée) est impossible et passe en rouge.
-    const shouldForceTimeConstraint = minTimeLimit !== Infinity && minTimeLimit <= minFuelLimit;
+    const shouldForceTimeConstraint = minTimeLimit !== Infinity;
 
     // --- Deuxième passe : Appliquer les styles et mettre à jour le DOM ---
     resultsData.forEach(result => {

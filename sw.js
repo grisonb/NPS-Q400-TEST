@@ -1,6 +1,6 @@
-const APP_CACHE_NAME = 'test-communes-app-cache-v969'; 
-const DATA_CACHE_NAME = 'test-communes-data-cache-v969';
-const TILE_CACHE_NAME = 'test-communes-tile-cache-v969';
+const APP_CACHE_NAME = 'test-communes-app-cache-v970'; 
+const DATA_CACHE_NAME = 'test-communes-data-cache-v970';
+const TILE_CACHE_NAME = 'test-communes-tile-cache-v970';
 const APP_SHELL_URLS = [
     './',
     './index.html',
@@ -76,8 +76,10 @@ let offlineOnlineFallbackLoaded = false;
 let offlineActivePacksCache = [];
 let offlineActivePacksLoaded = false;
 let tileCachePromise = null;
-const MEMORY_TILE_CACHE_LIMIT = 300;
+const MEMORY_TILE_CACHE_LIMIT = 1200;
+const MISSING_TILE_TTL_MS = 30000;
 const memoryTileCache = new Map();
+const missingTileCache = new Map();
 
 function getDb() {
     return new Promise((resolve, reject) => {
@@ -211,6 +213,14 @@ function getOfflineActivePacks() {
 
 function getTileFromDb(url) {
     const normalizedUrl = normalizeTileUrl(url);
+    const missingSince = missingTileCache.get(normalizedUrl);
+    if (missingSince && (Date.now() - missingSince) < MISSING_TILE_TTL_MS) {
+        return Promise.resolve(null);
+    }
+    if (missingSince) {
+        missingTileCache.delete(normalizedUrl);
+    }
+
     return Promise.all([getDb(), getOfflineActivePacks()]).then(([db, activePacks]) => {
         const activeSet = new Set(Array.isArray(activePacks) ? activePacks : []);
         const inMemoryTile = memoryTileCache.get(normalizedUrl);
@@ -275,6 +285,11 @@ function getTileFromDb(url) {
                 request.onsuccess = () => {
                     const cursor = request.result;
                     if (!cursor) {
+                        if (activeSet.size) {
+                            missingTileCache.set(normalizedUrl, Date.now());
+                            resolve(null);
+                            return;
+                        }
                         lookupByPackIndex();
                         return;
                     }
@@ -310,6 +325,7 @@ function getTileFromDb(url) {
                     cursorRequest.onsuccess = () => {
                         const cursor = cursorRequest.result;
                         if (!cursor) {
+                            missingTileCache.set(normalizedUrl, Date.now());
                             resolve(null);
                             return;
                         }
@@ -321,7 +337,7 @@ function getTileFromDb(url) {
                         }
                         cursor.continue();
                     };
-                    cursorRequest.onerror = () => resolve(null);
+                    cursorRequest.onerror = () => { missingTileCache.set(normalizedUrl, Date.now()); resolve(null); };
                     return;
                 }
 
@@ -331,6 +347,7 @@ function getTileFromDb(url) {
 
                 const scanNextPack = () => {
                     if (packCursorPos >= packs.length) {
+                        missingTileCache.set(normalizedUrl, Date.now());
                         resolve(null);
                         return;
                     }
@@ -374,6 +391,7 @@ function getTileFromDb(url) {
                             const oldestKey = memoryTileCache.keys().next().value;
                             memoryTileCache.delete(oldestKey);
                         }
+                        missingTileCache.delete(normalizedUrl);
                         resolve(new Response(tileBlob));
                     } else {
                         tryNext();
