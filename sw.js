@@ -1,10 +1,6 @@
-const APP_CACHE_NAME = 'test-communes-app-cache-v900'; 
-const DATA_CACHE_NAME = 'test-communes-data-cache-v900';
-const TILE_CACHE_NAME = 'test-communes-tile-cache-v900';
-const SW_USER_AGENT = (self.navigator && self.navigator.userAgent) ? self.navigator.userAgent : '';
-const IS_SAFARI_SW = /Safari/i.test(SW_USER_AGENT) && !/Chrome|CriOS|EdgiOS|FxiOS|OPiOS|DuckDuckGo/i.test(SW_USER_AGENT);
-const IS_IOS_SW = /iPad|iPhone|iPod/i.test(SW_USER_AGENT);
-
+const APP_CACHE_NAME = 'test-communes-app-cache-v970'; 
+const DATA_CACHE_NAME = 'test-communes-data-cache-v970';
+const TILE_CACHE_NAME = 'test-communes-tile-cache-v970';
 const APP_SHELL_URLS = [
     './',
     './index.html',
@@ -71,6 +67,7 @@ self.addEventListener('message', event => {
 let db;
 const OFFLINE_TILES_ENABLED_KEY = 'offlineTilesEnabled';
 const OFFLINE_SELECTED_PACK_KEY = 'offlineSelectedPack';
+const OFFLINE_ACTIVE_PACKS_KEY = 'offlineActivePacks';
 const DEFAULT_OFFLINE_TILES_ENABLED = true;
 let offlineTilesEnabledCache = DEFAULT_OFFLINE_TILES_ENABLED;
 let offlineTilesEnabledLoaded = false;
@@ -79,13 +76,15 @@ let offlineOnlineFallbackLoaded = false;
 let offlineActivePacksCache = [];
 let offlineActivePacksLoaded = false;
 let tileCachePromise = null;
-const MEMORY_TILE_CACHE_LIMIT = 300;
+const MEMORY_TILE_CACHE_LIMIT = 1200;
+const MISSING_TILE_TTL_MS = 30000;
 const memoryTileCache = new Map();
+const missingTileCache = new Map();
 
 function getDb() {
     return new Promise((resolve, reject) => {
         if (db) return resolve(db);
-        const request = indexedDB.open('OfflineTilesDB', 2);
+        const request = indexedDB.open('OfflineTilesDB', 3);
         request.onupgradeneeded = event => {
             const dbInstance = event.target.result;
             const transaction = event.target.transaction;
@@ -93,10 +92,18 @@ function getDb() {
             if (!dbInstance.objectStoreNames.contains('tiles')) {
                 const store = dbInstance.createObjectStore('tiles', { keyPath: 'url' });
                 store.createIndex('packName', 'packName', { unique: false });
+                store.createIndex('tileUrl', 'tileUrl', { unique: false });
             }
 
             if (!dbInstance.objectStoreNames.contains('settings')) {
                 dbInstance.createObjectStore('settings', { keyPath: 'key' });
+            }
+
+            if (dbInstance.objectStoreNames.contains('tiles')) {
+                const tilesStore = transaction.objectStore('tiles');
+                if (!tilesStore.indexNames.contains('tileUrl')) {
+                    tilesStore.createIndex('tileUrl', 'tileUrl', { unique: false });
+                }
             }
 
             if (transaction && dbInstance.objectStoreNames.contains('settings')) {
@@ -138,11 +145,21 @@ function isOfflineTilesEnabled() {
             };
         });
     }).catch(() => {
-        // Fallback robuste iOS/Safari: si IndexedDB SW est indisponible, on repasse en mode réseau/cache.
-        offlineTilesEnabledCache = false;
+        // Si IndexedDB SW est indisponible, on conserve la préférence courante en mémoire.
+        offlineTilesEnabledCache = DEFAULT_OFFLINE_TILES_ENABLED;
         offlineTilesEnabledLoaded = true;
-        return false;
+        return DEFAULT_OFFLINE_TILES_ENABLED;
     });
+}
+
+function buildPackScopedTileKey(url, packName) {
+    const safeUrl = String(url || '');
+    const safePack = String(packName || '').trim();
+    return safePack ? `${safeUrl}::${safePack}` : safeUrl;
+}
+
+function normalizeStoredTileUrl(url) {
+    return String(url || '').split('::')[0];
 }
 
 function normalizeTileUrl(url) {
@@ -169,11 +186,41 @@ function getOfflineActivePacks() {
     if (offlineActivePacksLoaded) {
         return Promise.resolve(offlineActivePacksCache);
     }
-    return Promise.resolve(offlineActivePacksCache);
+
+    return getDb().then(db => {
+        return new Promise(resolve => {
+            const transaction = db.transaction('settings', 'readonly');
+            const store = transaction.objectStore('settings');
+            const request = store.get(OFFLINE_ACTIVE_PACKS_KEY);
+            request.onsuccess = () => {
+                const value = Array.isArray(request.result?.value) ? request.result.value.filter(Boolean) : [];
+                offlineActivePacksCache = value;
+                offlineActivePacksLoaded = true;
+                resolve(value);
+            };
+            request.onerror = () => {
+                offlineActivePacksCache = [];
+                offlineActivePacksLoaded = true;
+                resolve([]);
+            };
+        });
+    }).catch(() => {
+        offlineActivePacksCache = [];
+        offlineActivePacksLoaded = true;
+        return [];
+    });
 }
 
 function getTileFromDb(url) {
     const normalizedUrl = normalizeTileUrl(url);
+    const missingSince = missingTileCache.get(normalizedUrl);
+    if (missingSince && (Date.now() - missingSince) < MISSING_TILE_TTL_MS) {
+        return Promise.resolve(null);
+    }
+    if (missingSince) {
+        missingTileCache.delete(normalizedUrl);
+    }
+
     return Promise.all([getDb(), getOfflineActivePacks()]).then(([db, activePacks]) => {
         const activeSet = new Set(Array.isArray(activePacks) ? activePacks : []);
         const inMemoryTile = memoryTileCache.get(normalizedUrl);
@@ -194,6 +241,13 @@ function getTileFromDb(url) {
                 if (!candidates.includes(candidateUrl)) candidates.push(candidateUrl);
             };
 
+            const packsToCheck = activeSet.size ? Array.from(activeSet) : [''];
+
+            packsToCheck.forEach((packName) => {
+                pushCandidate(buildPackScopedTileKey(url, packName));
+                pushCandidate(buildPackScopedTileKey(normalizedUrl, packName));
+            });
+
             pushCandidate(url);
             pushCandidate(normalizedUrl);
 
@@ -202,7 +256,9 @@ function getTileFromDb(url) {
                 const query = extensionMatch[2] || '';
                 const withoutExt = normalizedUrl.replace(/\.(png|jpg|jpeg)(\?.*)?$/i, '');
                 ['png', 'jpg', 'jpeg'].forEach((ext) => {
-                    pushCandidate(`${withoutExt}.${ext}${query}`);
+                    const variantUrl = `${withoutExt}.${ext}${query}`;
+                    pushCandidate(variantUrl);
+                    packsToCheck.forEach((packName) => pushCandidate(buildPackScopedTileKey(variantUrl, packName)));
                 });
             }
 
@@ -218,9 +274,109 @@ function getTileFromDb(url) {
                 }
             } catch (e) {}
 
+            const lookupByTileUrlIndex = () => {
+                if (!store.indexNames.contains('tileUrl')) {
+                    lookupByPackIndex();
+                    return;
+                }
+
+                const index = store.index('tileUrl');
+                const request = index.openCursor(IDBKeyRange.only(normalizedUrl));
+                request.onsuccess = () => {
+                    const cursor = request.result;
+                    if (!cursor) {
+                        if (activeSet.size) {
+                            missingTileCache.set(normalizedUrl, Date.now());
+                            resolve(null);
+                            return;
+                        }
+                        lookupByPackIndex();
+                        return;
+                    }
+                    const record = cursor.value;
+                    if (!record || (activeSet.size && !activeSet.has(record.packName || ''))) {
+                        cursor.continue();
+                        return;
+                    }
+                    const tileBlob = record.tile;
+                    memoryTileCache.set(normalizedUrl, { tileBlob, packName: record.packName || '' });
+                    if (memoryTileCache.size > MEMORY_TILE_CACHE_LIMIT) {
+                        const oldestKey = memoryTileCache.keys().next().value;
+                        memoryTileCache.delete(oldestKey);
+                    }
+                    resolve(new Response(tileBlob));
+                };
+                request.onerror = () => lookupByPackIndex();
+            };
+
+            const lookupByPackIndex = () => {
+                const storeHitToResponse = (record) => {
+                    const tileBlob = record.tile;
+                    memoryTileCache.set(normalizedUrl, { tileBlob, packName: record.packName || '' });
+                    if (memoryTileCache.size > MEMORY_TILE_CACHE_LIMIT) {
+                        const oldestKey = memoryTileCache.keys().next().value;
+                        memoryTileCache.delete(oldestKey);
+                    }
+                    resolve(new Response(tileBlob));
+                };
+
+                if (!activeSet.size) {
+                    const cursorRequest = store.openCursor();
+                    cursorRequest.onsuccess = () => {
+                        const cursor = cursorRequest.result;
+                        if (!cursor) {
+                            missingTileCache.set(normalizedUrl, Date.now());
+                            resolve(null);
+                            return;
+                        }
+                        const record = cursor.value;
+                        const recordUrl = normalizeTileUrl(normalizeStoredTileUrl(record?.tileUrl || record?.url));
+                        if (record && recordUrl === normalizedUrl) {
+                            storeHitToResponse(record);
+                            return;
+                        }
+                        cursor.continue();
+                    };
+                    cursorRequest.onerror = () => { missingTileCache.set(normalizedUrl, Date.now()); resolve(null); };
+                    return;
+                }
+
+                const packs = Array.from(activeSet);
+                const packIndex = store.index('packName');
+                let packCursorPos = 0;
+
+                const scanNextPack = () => {
+                    if (packCursorPos >= packs.length) {
+                        missingTileCache.set(normalizedUrl, Date.now());
+                        resolve(null);
+                        return;
+                    }
+
+                    const packName = packs[packCursorPos++];
+                    const cursorRequest = packIndex.openCursor(IDBKeyRange.only(packName));
+                    cursorRequest.onsuccess = () => {
+                        const cursor = cursorRequest.result;
+                        if (!cursor) {
+                            scanNextPack();
+                            return;
+                        }
+                        const record = cursor.value;
+                        const recordUrl = normalizeTileUrl(normalizeStoredTileUrl(record?.tileUrl || record?.url));
+                        if (record && recordUrl === normalizedUrl) {
+                            storeHitToResponse(record);
+                            return;
+                        }
+                        cursor.continue();
+                    };
+                    cursorRequest.onerror = () => scanNextPack();
+                };
+
+                scanNextPack();
+            };
+
             const tryNext = () => {
                 if (!candidates.length) {
-                    resolve(null);
+                    lookupByTileUrlIndex();
                     return;
                 }
 
@@ -235,6 +391,7 @@ function getTileFromDb(url) {
                             const oldestKey = memoryTileCache.keys().next().value;
                             memoryTileCache.delete(oldestKey);
                         }
+                        missingTileCache.delete(normalizedUrl);
                         resolve(new Response(tileBlob));
                     } else {
                         tryNext();
@@ -303,11 +460,6 @@ function createOfflineFallbackResponse() {
 }
 
 self.addEventListener('fetch', event => {
-    if (IS_SAFARI_SW || IS_IOS_SW) {
-        // Fallback robuste Safari/iOS: laisser le navigateur gérer le réseau directement.
-        return;
-    }
-
     if (event.request.method !== 'GET') return;
     const requestUrl = new URL(event.request.url);
 
