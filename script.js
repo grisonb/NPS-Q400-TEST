@@ -433,6 +433,7 @@ function clearCurrentSelection() {
     drawPermanentAirportMarkers();
     currentCommune = null;
     localStorage.removeItem('currentCommune');
+    updateBaseLabels();
     updateCalculatorData();
     masterRecalculate();
     updateCommuneDisplay(null);
@@ -446,6 +447,7 @@ function setupEventListeners() {
     const clearSearchBtn = document.getElementById('clear-search');
     const airportCountInput = document.getElementById('airport-count');
     const gpsFeuButton = document.getElementById('gps-feu-button');
+    const centerGpsButton = document.getElementById('center-gps-button');
     const liveGpsButton = document.getElementById('live-gps-button');
     const lftwRouteButton = document.getElementById('lftw-route-button');
     const gaarModeButton = document.getElementById('gaar-mode-button');
@@ -580,6 +582,10 @@ function setupEventListeners() {
             { enableHighAccuracy: true }
         );
     });
+
+    if (centerGpsButton) {
+        centerGpsButton.addEventListener('click', centerMapOnCurrentPosition);
+    }
 
     liveGpsButton.addEventListener('click', toggleLiveGps);
     lftwRouteButton.addEventListener('click', toggleLftwRoute);
@@ -899,6 +905,7 @@ function displayCommuneDetails(commune, shouldFitBounds = true) {
         drawLftwRoute();
     }
 
+    updateBaseLabels();
     updateCalculatorData();
     updateMapBingoDisplay();
     // Nous appelons directement la fonction de dessin. Si le GPS est actif, elle utilisera la dernière position.
@@ -978,6 +985,13 @@ function updateBaseLabels() {
     });
     const deroutFuelMiniBaseLabel = document.getElementById('derout-fuel-mini-base-label');
     if (deroutFuelMiniBaseLabel) deroutFuelMiniBaseLabel.textContent = `Fuel mini 1 largage / BASE (${selectedBaseOACI}) :`;
+
+    const deroutFuelMiniPelicLabel = document.getElementById('derout-fuel-mini-pelic-label');
+    if (deroutFuelMiniPelicLabel) {
+        const selectedPelic = selectedPelicanOACI ? getAirportByOaci(selectedPelicanOACI) : null;
+        const pelicName = selectedPelic ? `${selectedPelic.name}` : 'Pélic';
+        deroutFuelMiniPelicLabel.textContent = `Fuel mini 1 largage / Pélic (${pelicName}) :`;
+    }
 }
 function refreshUI() { drawPermanentAirportMarkers(); if (currentCommune) displayCommuneDetails(currentCommune, false); }
 function drawPermanentAirportMarkers() {
@@ -1139,6 +1153,30 @@ window.setBaseAirport = oaci => {
     refreshUI();
     if (map) map.closePopup();
 };
+
+function centerMapOnCurrentPosition() {
+    if (!map) return;
+
+    if (userMarker && userMarker.getLatLng()) {
+        const pos = userMarker.getLatLng();
+        map.setView([pos.lat, pos.lng], Math.max(map.getZoom(), 11));
+        return;
+    }
+
+    if (!navigator.geolocation) {
+        alert("La géolocalisation n'est pas supportée par votre navigateur.");
+        return;
+    }
+
+    navigator.geolocation.getCurrentPosition(
+        (pos) => {
+            updateUserPosition(pos);
+            map.setView([pos.coords.latitude, pos.coords.longitude], Math.max(map.getZoom(), 11));
+        },
+        () => { alert("Impossible d'obtenir la position GPS. Vérifiez les autorisations."); },
+        { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+    );
+}
 
 function toggleLiveGps() {
     const liveGpsButton = document.getElementById('live-gps-button');
@@ -1852,6 +1890,45 @@ window.deleteMapPack = async function(packName) {
         tx.onabort = () => reject(tx.error || new Error('Transaction lecture indexedDB annulée (scan)'));
     });
 
+
+    const deletePackChunkByIndex = (limit = 400) => new Promise((resolve, reject) => {
+        let deleted = 0;
+        let resolved = false;
+        const tx = db.transaction('tiles', 'readwrite');
+        const store = tx.objectStore('tiles');
+        const index = store.index('packName');
+        const req = index.openCursor(IDBKeyRange.only(packName));
+
+        const finish = (hasMore) => {
+            if (resolved) return;
+            resolved = true;
+            resolve({ deleted, hasMore });
+        };
+
+        req.onsuccess = () => {
+            const cursor = req.result;
+            if (!cursor) {
+                finish(false);
+                return;
+            }
+
+            const delReq = cursor.delete();
+            delReq.onsuccess = () => {
+                deleted += 1;
+                if (deleted >= limit) {
+                    finish(true);
+                    return;
+                }
+                cursor.continue();
+            };
+            delReq.onerror = () => reject(delReq.error || new Error('Erreur suppression clé pack (index)'));
+        };
+
+        req.onerror = () => reject(req.error || new Error('Erreur lecture pack (index+delete)'));
+        tx.onerror = () => reject(tx.error || new Error('Erreur transaction suppression pack (index+delete)'));
+        tx.onabort = () => reject(tx.error || new Error('Transaction suppression pack annulée (index+delete)'));
+    });
+
     const deleteKeysBatch = (keys) => new Promise((resolve, reject) => {
         if (!keys.length) {
             resolve(0);
@@ -1915,9 +1992,19 @@ window.deleteMapPack = async function(packName) {
             await withTimeout(initDB(), 15000, 'Initialisation indexedDB trop longue');
         }
 
-        let deletedCount = await purgeByCollector(collectPackKeysByIndex, 200);
-        if (deletedCount === 0) {
-            deletedCount = await purgeByCollector(collectPackKeysByScan, 100);
+        let deletedCount = 0;
+        try {
+            while (true) {
+                const { deleted, hasMore } = await withTimeout(deletePackChunkByIndex(500), 45000, 'Suppression indexée du pack trop longue');
+                deletedCount += deleted;
+                if (!hasMore) break;
+            }
+        } catch (fastDeleteError) {
+            console.warn('Suppression indexée rapide indisponible, fallback sur collecte:', fastDeleteError);
+            deletedCount = await purgeByCollector(collectPackKeysByIndex, 200);
+            if (deletedCount === 0) {
+                deletedCount = await purgeByCollector(collectPackKeysByScan, 100);
+            }
         }
 
         alert(`${deletedCount} tuiles du pack "${packName}" ont été supprimées.`);
@@ -2948,7 +3035,14 @@ function initializeCalculator() {
     updateLftwSunset();
     setInterval(updateLftwSunset, 60000);
 
-    onglets.forEach(onglet => { onglet.addEventListener('click', () => { document.querySelectorAll('.onglet-bouton').forEach(btn => btn.classList.remove('active')); document.querySelectorAll('.onglet-panneau').forEach(p => p.classList.remove('active')); onglet.classList.add('active'); document.getElementById(onglet.dataset.onglet).classList.add('active'); resetButton.style.display = (onglet.dataset.onglet === 'bloc-fuel') ? 'flex' : 'none'; }); });
+    const activateTab = (onglet) => { document.querySelectorAll('.onglet-bouton').forEach(btn => btn.classList.remove('active')); document.querySelectorAll('.onglet-panneau').forEach(p => p.classList.remove('active')); onglet.classList.add('active'); document.getElementById(onglet.dataset.onglet).classList.add('active'); resetButton.style.display = (onglet.dataset.onglet === 'bloc-fuel') ? 'flex' : 'none'; };
+    onglets.forEach(onglet => {
+        onglet.addEventListener('click', () => activateTab(onglet));
+        onglet.addEventListener('touchend', (event) => {
+            event.preventDefault();
+            activateTab(onglet);
+        }, { passive: false });
+    });
 
     function saveCalculatorState() {
         const state = {};
