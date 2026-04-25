@@ -1157,13 +1157,12 @@ window.setBaseAirport = oaci => {
 function centerMapOnCurrentPosition() {
     if (!map) return;
 
-    if (userMarker && userMarker.getLatLng()) {
-        const pos = userMarker.getLatLng();
-        map.setView([pos.lat, pos.lng], Math.max(map.getZoom(), 11));
-        return;
-    }
-
     if (!navigator.geolocation) {
+        if (userMarker && userMarker.getLatLng()) {
+            const pos = userMarker.getLatLng();
+            map.setView([pos.lat, pos.lng], Math.max(map.getZoom(), 11));
+            return;
+        }
         alert("La géolocalisation n'est pas supportée par votre navigateur.");
         return;
     }
@@ -1173,7 +1172,18 @@ function centerMapOnCurrentPosition() {
             updateUserPosition(pos);
             map.setView([pos.coords.latitude, pos.coords.longitude], Math.max(map.getZoom(), 11));
         },
-        () => { alert("Impossible d'obtenir la position GPS. Vérifiez les autorisations."); },
+        () => {
+            if (lastPosition && Number.isFinite(lastPosition.lat) && Number.isFinite(lastPosition.lng)) {
+                map.setView([lastPosition.lat, lastPosition.lng], Math.max(map.getZoom(), 11));
+                return;
+            }
+            if (userMarker && userMarker.getLatLng()) {
+                const pos = userMarker.getLatLng();
+                map.setView([pos.lat, pos.lng], Math.max(map.getZoom(), 11));
+                return;
+            }
+            alert("Impossible d'obtenir la position GPS. Vérifiez les autorisations.");
+        },
         { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
     );
 }
@@ -1247,6 +1257,7 @@ function findClosestCommune(lat, lon, maxDistanceNm = null) {
 
 function updateUserPosition(pos) {
     const { latitude, longitude } = pos.coords;
+    lastPosition = { lat: latitude, lng: longitude };
 
     if (!userMarker) {
         // La classe 'user-marker' dans style.css définit déjà un rond rouge. 
@@ -2351,6 +2362,13 @@ function updateDeroutementTab() {
         if (icon) { icon.onclick = () => alert(formula || "Données insuffisantes pour le calcul."); }
     };
 
+    const deroutFuelMiniPelicLabel = document.getElementById('derout-fuel-mini-pelic-label');
+    if (deroutFuelMiniPelicLabel) {
+        const selectedPelic = selectedPelicanOACI ? getAirportByOaci(selectedPelicanOACI) : null;
+        const pelicName = selectedPelic ? selectedPelic.name : 'Pélic';
+        deroutFuelMiniPelicLabel.textContent = `Fuel mini 1 largage / Pélic (${pelicName}) :`;
+    }
+
     if (!currentCommune) {
         document.getElementById('derout-bingo-base').innerHTML = '-- kg';
         document.getElementById('derout-bingo-pelic').innerHTML = '-- kg';
@@ -3038,6 +3056,10 @@ function initializeCalculator() {
     const activateTab = (onglet) => { document.querySelectorAll('.onglet-bouton').forEach(btn => btn.classList.remove('active')); document.querySelectorAll('.onglet-panneau').forEach(p => p.classList.remove('active')); onglet.classList.add('active'); document.getElementById(onglet.dataset.onglet).classList.add('active'); resetButton.style.display = (onglet.dataset.onglet === 'bloc-fuel') ? 'flex' : 'none'; };
     onglets.forEach(onglet => {
         onglet.addEventListener('click', () => activateTab(onglet));
+        onglet.addEventListener('touchstart', (event) => {
+            event.preventDefault();
+            activateTab(onglet);
+        }, { passive: false });
         onglet.addEventListener('touchend', (event) => {
             event.preventDefault();
             activateTab(onglet);
