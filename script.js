@@ -10,7 +10,7 @@ document.addEventListener('DOMContentLoaded', () => {
 // VARIABLES GLOBALES
 // =========================================================================
 let allCommunes = [], map, baseTileLayer, permanentAirportLayer, routesLayer, currentCommune = null, selectedPelicanOACI = null;
-let disabledAirports = new Set(), waterAirports = new Set();
+let disabledAirports = new Set(), waterAirports = new Set(), customPelicanAirports = new Set();
 const MAGNETIC_DECLINATION = 1.0;
 let userMarker = null, watchId = null, accuracyCircle = null, headingLayer = null, lastPosition = null;
 let userToTargetLayer = null, lftwRouteLayer = null;
@@ -86,6 +86,59 @@ const withTimeout = (promise, timeoutMs, timeoutMessage) => new Promise((resolve
         (error) => { clearTimeout(timerId); reject(error); }
     );
 });
+
+const TILE_CACHE_PREFIX = 'test-communes-tile-cache-';
+
+
+function buildStoredTileKey(tileUrl, packName) {
+    const safeUrl = String(tileUrl || '');
+    const safePack = String(packName || '').trim();
+    return safePack ? `${safeUrl}::${safePack}` : safeUrl;
+}
+
+function getTileUrlFromStoredKey(storedUrl) {
+    return String(storedUrl || '').split('::')[0];
+}
+
+function getPreferredTileCacheName(cacheKeys = []) {
+    const tileCacheNames = cacheKeys.filter((name) => name.startsWith(TILE_CACHE_PREFIX)).sort();
+    if (tileCacheNames.length) {
+        return tileCacheNames[tileCacheNames.length - 1];
+    }
+    const versionDigits = (typeof APP_VERSION !== 'undefined' ? String(APP_VERSION) : '').replace(/[^0-9]/g, '');
+    return `${TILE_CACHE_PREFIX}v${versionDigits || 'fallback'}`;
+}
+
+async function persistTilesBatchToCache(batch = []) {
+    if (!('caches' in window) || !Array.isArray(batch) || batch.length === 0) return;
+    try {
+        const cacheKeys = await caches.keys();
+        const tileCacheName = getPreferredTileCacheName(cacheKeys);
+        const cache = await caches.open(tileCacheName);
+        await Promise.all(batch.map(({ url, tile, tileUrl }) => {
+            const targetUrl = tileUrl || getTileUrlFromStoredKey(url);
+            if (!targetUrl || !tile) return Promise.resolve();
+            const contentType = tile.type || (targetUrl.endsWith('.jpg') || targetUrl.endsWith('.jpeg') ? 'image/jpeg' : 'image/png');
+            return cache.put(targetUrl, new Response(tile, { headers: { 'Content-Type': contentType } }));
+        }));
+    } catch (error) {
+        console.warn('Impossible de persister les tuiles dans Cache Storage:', error);
+    }
+}
+
+async function clearTileCaches() {
+    if (!('caches' in window)) return;
+    const cacheNames = await caches.keys();
+    const targets = cacheNames.filter((name) => name.startsWith(TILE_CACHE_PREFIX));
+    await Promise.all(targets.map((name) => caches.delete(name)));
+}
+
+async function refreshOfflineTilesRendering() {
+    notifyServiceWorkerActivePacks(activeOfflinePacks);
+    if (map && baseTileLayer) {
+        setupBaseTileLayer();
+    }
+}
 const calculateDestinationPoint = (lat, lon, bearing, distanceNm) => {
     const R = 3440.065; // Rayon de la Terre en milles nautiques
     const latRad = toRad(lat);
@@ -164,29 +217,30 @@ async function initializeApp() {
         }
     }
     if (!FORCE_DISPLAY_MODE) {
+        activeOfflinePacks = JSON.parse(localStorage.getItem(OFFLINE_ACTIVE_PACKS_KEY) || '[]');
+        if (!Array.isArray(activeOfflinePacks)) activeOfflinePacks = [];
+        const savedMapSourceMode = localStorage.getItem(MAP_SOURCE_MODE_KEY);
+        mapSourceMode = savedMapSourceMode === 'offline' ? 'offline' : DEFAULT_MAP_SOURCE_MODE;
+        offlineOnlineFallbackMode = localStorage.getItem(OFFLINE_ONLINE_FALLBACK_KEY) === null
+            ? DEFAULT_OFFLINE_ONLINE_FALLBACK
+            : localStorage.getItem(OFFLINE_ONLINE_FALLBACK_KEY) === 'true';
+
         try {
-            await Promise.race([
-                initDB(),
-                new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout ouverture IndexedDB')), 4000))
-            ]);
-            activeOfflinePacks = JSON.parse(localStorage.getItem(OFFLINE_ACTIVE_PACKS_KEY) || '[]');
-            if (!Array.isArray(activeOfflinePacks)) activeOfflinePacks = [];
-            const savedMapSourceMode = localStorage.getItem(MAP_SOURCE_MODE_KEY);
-            mapSourceMode = savedMapSourceMode === 'offline' ? 'offline' : DEFAULT_MAP_SOURCE_MODE;
-            offlineOnlineFallbackMode = localStorage.getItem(OFFLINE_ONLINE_FALLBACK_KEY) === null
-                ? DEFAULT_OFFLINE_ONLINE_FALLBACK
-                : localStorage.getItem(OFFLINE_ONLINE_FALLBACK_KEY) === 'true';
-            await initializeOfflineTilePreference();
-            // Évite de bloquer le démarrage sur un scan potentiellement long de la DB offline.
-            await updateBaseTileNativeZoomFromAvailability({ forceScan: true });
-            displayInstalledMaps();
+            await withTimeout(initDB(), 12000, 'Timeout ouverture IndexedDB');
         } catch (startupError) {
-            console.error('Initialisation offline incomplète:', startupError);
-            mapSourceMode = DEFAULT_MAP_SOURCE_MODE;
-            offlineOnlineFallbackMode = DEFAULT_OFFLINE_ONLINE_FALLBACK;
-            activeOfflinePacks = [];
-            displayInstalledMaps();
+            console.warn('Initialisation IndexedDB lente/indisponible au démarrage:', startupError);
+            setTimeout(() => {
+                initDB().catch(() => {});
+            }, 0);
         }
+
+        await initializeOfflineTilePreference();
+        // Démarrage rapide: utilise d'abord les bornes de zoom déjà connues, puis lance un scan complet en arrière-plan.
+        await updateBaseTileNativeZoomFromAvailability({ forceScan: false });
+        setTimeout(() => {
+            updateBaseTileNativeZoomFromAvailability({ forceScan: true }).catch(() => {});
+        }, 0);
+        displayInstalledMaps();
     } else {
         mapSourceMode = DEFAULT_MAP_SOURCE_MODE;
         offlineOnlineFallbackMode = DEFAULT_OFFLINE_ONLINE_FALLBACK;
@@ -379,6 +433,7 @@ function clearCurrentSelection() {
     drawPermanentAirportMarkers();
     currentCommune = null;
     localStorage.removeItem('currentCommune');
+    updateBaseLabels();
     updateCalculatorData();
     masterRecalculate();
     updateCommuneDisplay(null);
@@ -392,6 +447,7 @@ function setupEventListeners() {
     const clearSearchBtn = document.getElementById('clear-search');
     const airportCountInput = document.getElementById('airport-count');
     const gpsFeuButton = document.getElementById('gps-feu-button');
+    const centerGpsButton = document.getElementById('center-gps-button');
     const liveGpsButton = document.getElementById('live-gps-button');
     const lftwRouteButton = document.getElementById('lftw-route-button');
     const gaarModeButton = document.getElementById('gaar-mode-button');
@@ -412,6 +468,7 @@ function setupEventListeners() {
     const mapSourceOnlineBtn = document.getElementById('map-source-online-btn');
     const mapSourceOfflineBtn = document.getElementById('map-source-offline-btn');
     const purgeInactivePacksBtn = document.getElementById('purge-inactive-packs-btn');
+    const refreshOfflineTilesBtn = document.getElementById('refresh-offline-tiles-btn');
     
     if (mainActionButtons) {
         const versionDisplay = document.getElementById('app-version-display');
@@ -526,6 +583,10 @@ function setupEventListeners() {
         );
     });
 
+    if (centerGpsButton) {
+        centerGpsButton.addEventListener('click', centerMapOnCurrentPosition);
+    }
+
     liveGpsButton.addEventListener('click', toggleLiveGps);
     lftwRouteButton.addEventListener('click', toggleLftwRoute);
     gaarModeButton.addEventListener('click', toggleGaarVisibility);
@@ -616,6 +677,19 @@ function setupEventListeners() {
         });
     }
 
+    if (refreshOfflineTilesBtn) {
+        refreshOfflineTilesBtn.addEventListener('click', async () => {
+            refreshOfflineTilesBtn.disabled = true;
+            refreshOfflineTilesBtn.textContent = '⏳ Rafraîchissement...';
+            try {
+                await refreshOfflineTilesRendering();
+            } finally {
+                refreshOfflineTilesBtn.disabled = false;
+                refreshOfflineTilesBtn.textContent = "Rafraîchir l'affichage des cartes offline";
+            }
+        });
+    }
+
     updateBaseLabels();
     updateLftwButtonState();
     updateGaarButtonState();
@@ -645,6 +719,19 @@ async function findOfflineTileZoomRange() {
     if (!db) return null;
     const targetPacks = new Set(activeOfflinePacks);
     return new Promise((resolve) => {
+        let settled = false;
+        const finalize = (value) => {
+            if (settled) return;
+            settled = true;
+            clearTimeout(safetyTimer);
+            resolve(value);
+        };
+
+        const safetyTimer = setTimeout(() => {
+            console.warn('Scan zoom offline interrompu (timeout sécurité).');
+            finalize(null);
+        }, 8000);
+
         const tx = db.transaction('tiles', 'readonly');
         const store = tx.objectStore('tiles');
         const request = store.openCursor();
@@ -654,18 +741,15 @@ async function findOfflineTileZoomRange() {
         request.onsuccess = (event) => {
             const cursor = event.target.result;
             if (!cursor) {
-                if (minZoom === null || maxZoom === null) {
-                    resolve(null);
-                } else {
-                    resolve({ minZoom, maxZoom });
-                }
+                finalize(minZoom === null || maxZoom === null ? null : { minZoom, maxZoom });
                 return;
             }
             if (targetPacks.size && !targetPacks.has(cursor.value?.packName || '')) {
                 cursor.continue();
                 return;
             }
-            const url = cursor.value?.url;
+            const storedUrl = cursor.value?.url;
+            const url = getTileUrlFromStoredKey(storedUrl);
             if (typeof url === 'string') {
                 const match = url.match(/\/(\d+)\/\d+\/\d+\.(png|jpg|jpeg)(?:\?.*)?$/i);
                 if (match) {
@@ -679,14 +763,10 @@ async function findOfflineTileZoomRange() {
             cursor.continue();
         };
 
-        request.onerror = () => resolve(null);
-        tx.oncomplete = () => {
-            if (minZoom === null || maxZoom === null) {
-                resolve(null);
-                return;
-            }
-            resolve({ minZoom, maxZoom });
-        };
+        request.onerror = () => finalize(null);
+        tx.onerror = () => finalize(null);
+        tx.onabort = () => finalize(null);
+        tx.oncomplete = () => finalize(minZoom === null || maxZoom === null ? null : { minZoom, maxZoom });
     });
 }
 
@@ -825,6 +905,7 @@ function displayCommuneDetails(commune, shouldFitBounds = true) {
         drawLftwRoute();
     }
 
+    updateBaseLabels();
     updateCalculatorData();
     updateMapBingoDisplay();
     // Nous appelons directement la fonction de dessin. Si le GPS est actif, elle utilisera la dernière position.
@@ -887,7 +968,7 @@ function drawRoute(startLatLng, endLatLng, options = {}) {
     }
 }
 
-function getClosestAirports(lat, lon, count) { return pelicanAirports.filter(ap => !disabledAirports.has(ap.oaci)).map(ap => ({ ...ap, distance: calculateDistanceInNm(lat, lon, ap.lat, ap.lon) })).sort((a, b) => a.distance - b.distance).slice(0, count); }
+function getClosestAirports(lat, lon, count) { const customPelican = otherAirports.filter(ap => customPelicanAirports.has(ap.oaci)); return [...pelicanAirports, ...customPelican].filter(ap => !disabledAirports.has(ap.oaci)).map(ap => ({ ...ap, distance: calculateDistanceInNm(lat, lon, ap.lat, ap.lon) })).sort((a, b) => a.distance - b.distance).slice(0, count); }
 function getAirportByOaci(oaci) {
     return [...pelicanAirports, ...otherAirports].find(ap => ap.oaci === oaci) || null;
 }
@@ -904,15 +985,41 @@ function updateBaseLabels() {
     });
     const deroutFuelMiniBaseLabel = document.getElementById('derout-fuel-mini-base-label');
     if (deroutFuelMiniBaseLabel) deroutFuelMiniBaseLabel.textContent = `Fuel mini 1 largage / BASE (${selectedBaseOACI}) :`;
+
+    const deroutFuelMiniPelicLabel = document.getElementById('derout-fuel-mini-pelic-label');
+    if (deroutFuelMiniPelicLabel) {
+        const selectedPelic = selectedPelicanOACI ? getAirportByOaci(selectedPelicanOACI) : null;
+        const pelicCode = selectedPelic ? selectedPelic.oaci : 'PÉLIC';
+        deroutFuelMiniPelicLabel.textContent = `Fuel mini 1 largage / Pélic (${pelicCode}) :`;
+    }
 }
 function refreshUI() { drawPermanentAirportMarkers(); if (currentCommune) displayCommuneDetails(currentCommune, false); }
 function drawPermanentAirportMarkers() {
     permanentAirportLayer.clearLayers();
 
     otherAirports.forEach(airport => {
+        const isCustomPelic = customPelicanAirports.has(airport.oaci);
         const isBase = selectedBaseOACI === airport.oaci;
         const baseButtonText = isBase ? 'BASE ✓' : 'BASE';
         const baseButtonClass = isBase ? 'base-btn base-btn-active' : 'base-btn';
+        const customPelicText = isCustomPelic ? 'PÉLIC ✓' : 'PÉLIC';
+        const customPelicClass = isCustomPelic ? 'base-btn base-btn-active' : 'base-btn';
+
+        if (isCustomPelic) {
+            const isDisabled = disabledAirports.has(airport.oaci);
+            const isWater = waterAirports.has(airport.oaci);
+            let iconClass = "custom-marker-icon airport-marker-base ", iconHTML = "✈️";
+            isDisabled ? (iconClass += "airport-marker-disabled", iconHTML = "<b>+</b>") : isWater ? (iconClass += "airport-marker-water", iconHTML = "💧") : iconClass += "airport-marker-active";
+            const waterButtonText = isWater ? "RETARDANT" : "EAU";
+            const waterButtonClass = isWater ? "water-btn water-btn-retardant" : "water-btn";
+            const disableButtonText = isDisabled ? "Activer" : "Désactiver";
+            const disableButtonClass = isDisabled ? "enable-btn" : "disable-btn";
+            const marker = L.marker([airport.lat, airport.lon], { icon: L.divIcon({ className: iconClass, html: iconHTML }) });
+            marker.bindPopup(`<div class="airport-popup"><b>${airport.oaci}</b><br>${airport.name}<div class="popup-buttons"><button class="${waterButtonClass}" onclick="window.toggleWater('${airport.oaci}')">${waterButtonText}</button><button class="${disableButtonClass}" onclick="window.toggleAirport('${airport.oaci}')">${disableButtonText}</button><button class="${baseButtonClass}" onclick="window.setBaseAirport('${airport.oaci}')">${baseButtonText}</button><button class="${customPelicClass}" onclick="window.toggleCustomPelican('${airport.oaci}')">${customPelicText}</button></div></div>`);
+            marker.addTo(permanentAirportLayer);
+            return;
+        }
+
         const marker = L.circleMarker([airport.lat, airport.lon], {
             radius: 2.5,
             fillColor: 'black',
@@ -920,7 +1027,7 @@ function drawPermanentAirportMarkers() {
             color: 'transparent',
             weight: 15,
             opacity: 0
-        }).bindPopup(`<div class="airport-popup"><b>${airport.oaci}</b><br>${airport.name}<div class="popup-buttons"><button class="${baseButtonClass}" onclick="window.setBaseAirport('${airport.oaci}')">${baseButtonText}</button></div></div>`);
+        }).bindPopup(`<div class="airport-popup"><b>${airport.oaci}</b><br>${airport.name}<div class="popup-buttons"><button class="${baseButtonClass}" onclick="window.setBaseAirport('${airport.oaci}')">${baseButtonText}</button><button class="${customPelicClass}" onclick="window.toggleCustomPelican('${airport.oaci}')">${customPelicText}</button></div></div>`);
         marker.addTo(permanentAirportLayer);
     });
 
@@ -1041,6 +1148,8 @@ const loadState = () => {
     if (savedDisabled) disabledAirports = new Set(JSON.parse(savedDisabled));
     const savedWater = localStorage.getItem('water_airports');
     if (savedWater) waterAirports = new Set(JSON.parse(savedWater));
+    const savedCustomPelic = localStorage.getItem('custom_pelican_airports');
+    if (savedCustomPelic) customPelicanAirports = new Set(JSON.parse(savedCustomPelic));
     const savedBase = localStorage.getItem('selected_base_oaci');
     if (savedBase && getAirportByOaci(savedBase)) {
         selectedBaseOACI = savedBase;
@@ -1050,9 +1159,22 @@ const saveState = () => {
     localStorage.setItem('disabled_airports', JSON.stringify([...disabledAirports]));
     localStorage.setItem('water_airports', JSON.stringify([...waterAirports]));
     localStorage.setItem('selected_base_oaci', selectedBaseOACI);
+    localStorage.setItem('custom_pelican_airports', JSON.stringify([...customPelicanAirports]));
 };
 window.toggleAirport = oaci => { disabledAirports.has(oaci) ? disabledAirports.delete(oaci) : (disabledAirports.add(oaci), waterAirports.delete(oaci)), saveState(), refreshUI() };
 window.toggleWater = oaci => { waterAirports.has(oaci) ? waterAirports.delete(oaci) : (waterAirports.add(oaci), disabledAirports.delete(oaci)), saveState(), refreshUI() };
+window.toggleCustomPelican = oaci => {
+    if (customPelicanAirports.has(oaci)) {
+        customPelicanAirports.delete(oaci);
+        waterAirports.delete(oaci);
+        disabledAirports.delete(oaci);
+    } else {
+        customPelicanAirports.add(oaci);
+        disabledAirports.delete(oaci);
+    }
+    saveState();
+    refreshUI();
+};
 window.setBaseAirport = oaci => {
     if (!getAirportByOaci(oaci)) return;
     selectedBaseOACI = oaci;
@@ -1065,6 +1187,40 @@ window.setBaseAirport = oaci => {
     refreshUI();
     if (map) map.closePopup();
 };
+
+function centerMapOnCurrentPosition() {
+    if (!map) return;
+
+    if (!navigator.geolocation) {
+        if (userMarker && userMarker.getLatLng()) {
+            const pos = userMarker.getLatLng();
+            map.setView([pos.lat, pos.lng], Math.max(map.getZoom(), 11));
+            return;
+        }
+        alert("La géolocalisation n'est pas supportée par votre navigateur.");
+        return;
+    }
+
+    navigator.geolocation.getCurrentPosition(
+        (pos) => {
+            updateUserPosition(pos);
+            map.setView([pos.coords.latitude, pos.coords.longitude], Math.max(map.getZoom(), 11));
+        },
+        () => {
+            if (lastPosition && Number.isFinite(lastPosition.lat) && Number.isFinite(lastPosition.lng)) {
+                map.setView([lastPosition.lat, lastPosition.lng], Math.max(map.getZoom(), 11));
+                return;
+            }
+            if (userMarker && userMarker.getLatLng()) {
+                const pos = userMarker.getLatLng();
+                map.setView([pos.lat, pos.lng], Math.max(map.getZoom(), 11));
+                return;
+            }
+            alert("Impossible d'obtenir la position GPS. Vérifiez les autorisations.");
+        },
+        { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+    );
+}
 
 function toggleLiveGps() {
     const liveGpsButton = document.getElementById('live-gps-button');
@@ -1135,6 +1291,7 @@ function findClosestCommune(lat, lon, maxDistanceNm = null) {
 
 function updateUserPosition(pos) {
     const { latitude, longitude } = pos.coords;
+    lastPosition = { lat: latitude, lng: longitude };
 
     if (!userMarker) {
         // La classe 'user-marker' dans style.css définit déjà un rond rouge. 
@@ -1225,7 +1382,7 @@ function initDB() {
             reject(new Error('IndexedDB indisponible'));
             return;
         }
-        const request = indexedDB.open('OfflineTilesDB', 2);
+        const request = indexedDB.open('OfflineTilesDB', 3);
         request.onupgradeneeded = event => {
             const dbInstance = event.target.result;
             const transaction = event.target.transaction;
@@ -1233,10 +1390,18 @@ function initDB() {
             if (!dbInstance.objectStoreNames.contains('tiles')) {
                 const store = dbInstance.createObjectStore('tiles', { keyPath: 'url' });
                 store.createIndex('packName', 'packName', { unique: false });
+                store.createIndex('tileUrl', 'tileUrl', { unique: false });
             }
 
             if (!dbInstance.objectStoreNames.contains('settings')) {
                 dbInstance.createObjectStore('settings', { keyPath: 'key' });
+            }
+
+            if (dbInstance.objectStoreNames.contains('tiles')) {
+                const tilesStore = transaction.objectStore('tiles');
+                if (!tilesStore.indexNames.contains('tileUrl')) {
+                    tilesStore.createIndex('tileUrl', 'tileUrl', { unique: false });
+                }
             }
 
             if (transaction && dbInstance.objectStoreNames.contains('settings')) {
@@ -1284,25 +1449,25 @@ function getOfflineTilesEnabled() {
 }
 
 function setOfflineTilesEnabled(enabled) {
-    return new Promise((resolve, reject) => {
-        if (!db) {
-            offlineTilesMode = !!enabled;
-            localStorage.setItem(OFFLINE_TILES_ENABLED_KEY, String(offlineTilesMode));
-            notifyServiceWorkerOfflineTilesPreference(enabled);
-            resolve();
-            return;
-        }
+    offlineTilesMode = !!enabled;
+    localStorage.setItem(OFFLINE_TILES_ENABLED_KEY, String(offlineTilesMode));
+    notifyServiceWorkerOfflineTilesPreference(offlineTilesMode);
+
+    if (!db) {
+        return Promise.resolve();
+    }
+
+    try {
         const transaction = db.transaction('settings', 'readwrite');
         const store = transaction.objectStore('settings');
-        store.put({ key: OFFLINE_TILES_ENABLED_KEY, value: enabled });
-        transaction.oncomplete = () => {
-            offlineTilesMode = !!enabled;
-            localStorage.setItem(OFFLINE_TILES_ENABLED_KEY, String(offlineTilesMode));
-            notifyServiceWorkerOfflineTilesPreference(enabled);
-            resolve();
-        };
-        transaction.onerror = () => reject(transaction.error);
-    });
+        store.put({ key: OFFLINE_TILES_ENABLED_KEY, value: offlineTilesMode });
+        transaction.onerror = () => console.warn('[Offline] Impossible de persister la préférence offline:', transaction.error);
+        transaction.onabort = () => console.warn('[Offline] Transaction annulée lors de la persistance offline:', transaction.error);
+    } catch (error) {
+        console.warn('[Offline] IndexedDB indisponible, préférence conservée en localStorage uniquement:', error);
+    }
+
+    return Promise.resolve();
 }
 
 function notifyServiceWorkerOfflineTilesPreference(enabled) {
@@ -1342,6 +1507,7 @@ async function setOfflineActivePacks(packs) {
         } catch (_) {}
     }
     notifyServiceWorkerActivePacks(activeOfflinePacks);
+    await refreshOfflineTilesRendering();
 }
 
 function setOfflineOnlineFallbackMode(enabled) {
@@ -1383,11 +1549,7 @@ async function setMapSourceMode(mode) {
     updateMapSourceButtons();
     updateOfflineStatus();
     try {
-        await withTimeout(
-            setOfflineTilesEnabled(mapSourceMode === 'offline'),
-            4000,
-            "Changement de mode trop long (IndexedDB)."
-        );
+        await setOfflineTilesEnabled(mapSourceMode === 'offline');
         setOfflineOnlineFallbackMode(false);
         notifyServiceWorkerActivePacks(activeOfflinePacks);
         try {
@@ -1529,11 +1691,13 @@ async function handleZipImport(file) {
         for (let i = 0; i < zipEntries.length; i += 1) {
             const fileEntry = zipEntries[i];
             if (fileEntry.dir) continue;
-            const parsedTile = parseTilePathFromName(fileEntry.name);
-            if (!parsedTile) continue;
-            validEntries.push({ fileEntry, tilePath: parsedTile.tilePath });
-            importedMaxZoom = Math.max(importedMaxZoom, parsedTile.zoom);
-            importedMinZoom = Math.min(importedMinZoom, parsedTile.zoom);
+            const parsedTiles = parseTilePathFromName(fileEntry.name);
+            if (!parsedTiles.length) continue;
+            parsedTiles.forEach((parsedTile) => {
+                validEntries.push({ fileEntry, tilePath: parsedTile.tilePath });
+                importedMaxZoom = Math.max(importedMaxZoom, parsedTile.zoom);
+                importedMinZoom = Math.min(importedMinZoom, parsedTile.zoom);
+            });
 
             if (i % 1000 === 0) {
                 statusMessage.textContent = `Préparation des tuiles... ${i} / ${zipEntries.length}`;
@@ -1549,15 +1713,17 @@ async function handleZipImport(file) {
 
         statusMessage.textContent = `Préparation terminée. Importation de ${totalFiles} tuiles...`;
 
-        const batchSize = file.size > 300 * 1024 * 1024 ? 8 : 24;
+        const batchSize = file.size > 300 * 1024 * 1024 ? 16 : 48;
         let processedFiles = 0;
 
         for (let i = 0; i < validEntries.length; i += batchSize) {
             const batchEntries = validEntries.slice(i, i + batchSize);
             const batch = await Promise.all(batchEntries.map(async ({ fileEntry, tilePath }) => {
                 const blob = await fileEntry.async('blob');
+                const tileUrl = `https://a.tile.openstreetmap.org/${tilePath}`;
                 return {
-                    url: `https://a.tile.openstreetmap.org/${tilePath}`,
+                    url: buildStoredTileKey(tileUrl, packName),
+                    tileUrl,
                     tile: blob,
                     packName: packName
                 };
@@ -1576,6 +1742,17 @@ async function handleZipImport(file) {
                 transaction.onerror = () => reject(transaction.error);
             });
 
+            const batchIndex = Math.floor(i / batchSize);
+            const shouldPersistCacheBatch = (batchIndex % 6 === 0) || (i + batchSize >= validEntries.length);
+            if (shouldPersistCacheBatch) {
+                void withTimeout(
+                    persistTilesBatchToCache(batch),
+                    2500,
+                    'Persistance cache trop longue'
+                ).catch((cacheError) => {
+                    console.warn('Persistance Cache Storage non bloquante ignorée:', cacheError);
+                });
+            }
             await new Promise((resolve) => setTimeout(resolve, 0));
         }
 
@@ -1607,18 +1784,38 @@ async function handleZipImport(file) {
     }
 }
 
+function isPlausibleTileZoom(value) {
+    return Number.isFinite(value) && value >= 0 && value <= 22;
+}
+
 function parseTilePathFromName(name) {
     const normalizedName = String(name || '').replace(/\\/g, '/');
     const xyzMatch = normalizedName.match(/(?:^|\/)(\d+)\/(\d+)\/(\d+)\.(png|jpg|jpeg)$/i);
-    const flatMatch = xyzMatch ? null : normalizedName.match(/(?:^|\/)(\d+)[-_](\d+)[-_](\d+)\.(png|jpg|jpeg)$/i);
-    const parts = xyzMatch || flatMatch;
-    if (!parts) return null;
-    const zoom = Number.parseInt(parts[1], 10);
-    if (!Number.isFinite(zoom)) return null;
-    return {
-        tilePath: `${parts[1]}/${parts[2]}/${parts[3]}.png`,
-        zoom
-    };
+    if (xyzMatch) {
+        const zoom = Number.parseInt(xyzMatch[1], 10);
+        if (!isPlausibleTileZoom(zoom)) return [];
+        return [{ tilePath: `${xyzMatch[1]}/${xyzMatch[2]}/${xyzMatch[3]}.png`, zoom }];
+    }
+
+    const flatMatch = normalizedName.match(/(?:^|\/)(\d+)[-_](\d+)[-_](\d+)\.(png|jpg|jpeg)$/i);
+    if (!flatMatch) return [];
+
+    const a = Number.parseInt(flatMatch[1], 10);
+    const c = Number.parseInt(flatMatch[3], 10);
+    const candidates = [];
+
+    if (isPlausibleTileZoom(a)) {
+        candidates.push({ tilePath: `${flatMatch[1]}/${flatMatch[2]}/${flatMatch[3]}.png`, zoom: a });
+    }
+    // Compatibilité imports plats potentiellement en x_y_z : on ajoute aussi z/x/y.
+    if (isPlausibleTileZoom(c)) {
+        const altTilePath = `${flatMatch[3]}/${flatMatch[1]}/${flatMatch[2]}.png`;
+        if (!candidates.some((entry) => entry.tilePath === altTilePath)) {
+            candidates.push({ tilePath: altTilePath, zoom: c });
+        }
+    }
+
+    return candidates;
 }
 
 function displayInstalledMaps() {
@@ -1668,8 +1865,10 @@ function displayInstalledMaps() {
             const toggles = Array.from(list.querySelectorAll('.offline-pack-active-toggle'));
             const nextActive = toggles.filter((el) => el.checked).map((el) => el.dataset.packName).filter(Boolean);
             await setOfflineActivePacks(nextActive);
-            await updateBaseTileNativeZoomFromAvailability({ forceScan: true });
-            setupBaseTileLayer();
+            await updateBaseTileNativeZoomFromAvailability({ forceScan: false });
+            setTimeout(() => {
+                updateBaseTileNativeZoomFromAvailability({ forceScan: true }).catch(() => {});
+            }, 0);
             updateOfflineStatus();
         });
     });
@@ -1736,6 +1935,45 @@ window.deleteMapPack = async function(packName) {
         tx.onabort = () => reject(tx.error || new Error('Transaction lecture indexedDB annulée (scan)'));
     });
 
+
+    const deletePackChunkByIndex = (limit = 400) => new Promise((resolve, reject) => {
+        let deleted = 0;
+        let resolved = false;
+        const tx = db.transaction('tiles', 'readwrite');
+        const store = tx.objectStore('tiles');
+        const index = store.index('packName');
+        const req = index.openCursor(IDBKeyRange.only(packName));
+
+        const finish = (hasMore) => {
+            if (resolved) return;
+            resolved = true;
+            resolve({ deleted, hasMore });
+        };
+
+        req.onsuccess = () => {
+            const cursor = req.result;
+            if (!cursor) {
+                finish(false);
+                return;
+            }
+
+            const delReq = cursor.delete();
+            delReq.onsuccess = () => {
+                deleted += 1;
+                if (deleted >= limit) {
+                    finish(true);
+                    return;
+                }
+                cursor.continue();
+            };
+            delReq.onerror = () => reject(delReq.error || new Error('Erreur suppression clé pack (index)'));
+        };
+
+        req.onerror = () => reject(req.error || new Error('Erreur lecture pack (index+delete)'));
+        tx.onerror = () => reject(tx.error || new Error('Erreur transaction suppression pack (index+delete)'));
+        tx.onabort = () => reject(tx.error || new Error('Transaction suppression pack annulée (index+delete)'));
+    });
+
     const deleteKeysBatch = (keys) => new Promise((resolve, reject) => {
         if (!keys.length) {
             resolve(0);
@@ -1799,9 +2037,19 @@ window.deleteMapPack = async function(packName) {
             await withTimeout(initDB(), 15000, 'Initialisation indexedDB trop longue');
         }
 
-        let deletedCount = await purgeByCollector(collectPackKeysByIndex, 200);
-        if (deletedCount === 0) {
-            deletedCount = await purgeByCollector(collectPackKeysByScan, 100);
+        let deletedCount = 0;
+        try {
+            while (true) {
+                const { deleted, hasMore } = await withTimeout(deletePackChunkByIndex(500), 45000, 'Suppression indexée du pack trop longue');
+                deletedCount += deleted;
+                if (!hasMore) break;
+            }
+        } catch (fastDeleteError) {
+            console.warn('Suppression indexée rapide indisponible, fallback sur collecte:', fastDeleteError);
+            deletedCount = await purgeByCollector(collectPackKeysByIndex, 200);
+            if (deletedCount === 0) {
+                deletedCount = await purgeByCollector(collectPackKeysByScan, 100);
+            }
         }
 
         alert(`${deletedCount} tuiles du pack "${packName}" ont été supprimées.`);
@@ -1911,7 +2159,7 @@ Calcul : ((${formatTime(params.csFeuTime) || 'N/A'} - ${formatTime(current.time)
 
     // Si une limite temporelle est la première limite atteinte,
     // toute valeur suivante (plus élevée) est impossible et passe en rouge.
-    const shouldForceTimeConstraint = minTimeLimit !== Infinity && minTimeLimit <= minFuelLimit;
+    const shouldForceTimeConstraint = minTimeLimit !== Infinity;
 
     // --- Deuxième passe : Appliquer les styles et mettre à jour le DOM ---
     resultsData.forEach(result => {
@@ -2147,6 +2395,13 @@ function updateDeroutementTab() {
         const icon = document.getElementById(id);
         if (icon) { icon.onclick = () => alert(formula || "Données insuffisantes pour le calcul."); }
     };
+
+    const deroutFuelMiniPelicLabel = document.getElementById('derout-fuel-mini-pelic-label');
+    if (deroutFuelMiniPelicLabel) {
+        const selectedPelic = selectedPelicanOACI ? getAirportByOaci(selectedPelicanOACI) : null;
+        const pelicCode = selectedPelic ? selectedPelic.oaci : 'PÉLIC';
+        deroutFuelMiniPelicLabel.textContent = `Fuel mini 1 largage / Pélic (${pelicCode}) :`;
+    }
 
     if (!currentCommune) {
         document.getElementById('derout-bingo-base').innerHTML = '-- kg';
@@ -2832,7 +3087,14 @@ function initializeCalculator() {
     updateLftwSunset();
     setInterval(updateLftwSunset, 60000);
 
-    onglets.forEach(onglet => { onglet.addEventListener('click', () => { document.querySelectorAll('.onglet-bouton').forEach(btn => btn.classList.remove('active')); document.querySelectorAll('.onglet-panneau').forEach(p => p.classList.remove('active')); onglet.classList.add('active'); document.getElementById(onglet.dataset.onglet).classList.add('active'); resetButton.style.display = (onglet.dataset.onglet === 'bloc-fuel') ? 'flex' : 'none'; }); });
+    const activateTab = (onglet) => { document.querySelectorAll('.onglet-bouton').forEach(btn => btn.classList.remove('active')); document.querySelectorAll('.onglet-panneau').forEach(p => p.classList.remove('active')); onglet.classList.add('active'); document.getElementById(onglet.dataset.onglet).classList.add('active'); resetButton.style.display = (onglet.dataset.onglet === 'bloc-fuel') ? 'flex' : 'none'; };
+    onglets.forEach(onglet => {
+        onglet.addEventListener('click', () => activateTab(onglet));
+        onglet.addEventListener('pointerup', (event) => {
+            event.preventDefault();
+            activateTab(onglet);
+        });
+    });
 
     function saveCalculatorState() {
         const state = {};
