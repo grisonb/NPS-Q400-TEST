@@ -1763,9 +1763,7 @@ async function handleZipImport(file) {
             installedPacks.push({ name: packName, date: new Date().toLocaleDateString() });
             localStorage.setItem('installedMapPacks', JSON.stringify(installedPacks));
         }
-        if (!activeOfflinePacks.includes(packName)) {
-            await setOfflineActivePacks([...activeOfflinePacks, packName]);
-        }
+        await setOfflineActivePacks([packName]);
         const currentOfflineMax = Number.parseInt(localStorage.getItem(OFFLINE_TILES_MAX_ZOOM_KEY) || '', 10);
         const currentOfflineMin = Number.parseInt(localStorage.getItem(OFFLINE_TILES_MIN_ZOOM_KEY) || '', 10);
         const nextOfflineMin = Number.isFinite(currentOfflineMin) ? Math.min(currentOfflineMin, importedMinZoom) : importedMinZoom;
@@ -1827,7 +1825,7 @@ function displayInstalledMaps() {
     list.innerHTML = '';
 
     if (activeOfflinePacks.length === 0 && installedPacks.length > 0) {
-        activeOfflinePacks = [...installedPackNames];
+        activeOfflinePacks = [installedPackNames[0]];
         localStorage.setItem(OFFLINE_ACTIVE_PACKS_KEY, JSON.stringify(activeOfflinePacks));
         notifyServiceWorkerActivePacks(activeOfflinePacks);
     } else {
@@ -1863,7 +1861,12 @@ function displayInstalledMaps() {
     list.querySelectorAll('.offline-pack-active-toggle').forEach((checkbox) => {
         checkbox.addEventListener('change', async () => {
             const toggles = Array.from(list.querySelectorAll('.offline-pack-active-toggle'));
-            const nextActive = toggles.filter((el) => el.checked).map((el) => el.dataset.packName).filter(Boolean);
+            if (checkbox.checked) {
+                toggles.forEach((el) => {
+                    if (el !== checkbox) el.checked = false;
+                });
+            }
+            const nextActive = checkbox.checked && checkbox.dataset.packName ? [checkbox.dataset.packName] : [];
             await setOfflineActivePacks(nextActive);
             await updateBaseTileNativeZoomFromAvailability({ forceScan: false });
             setTimeout(() => {
