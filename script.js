@@ -10,7 +10,7 @@ document.addEventListener('DOMContentLoaded', () => {
 // VARIABLES GLOBALES
 // =========================================================================
 let allCommunes = [], map, baseTileLayer, permanentAirportLayer, routesLayer, currentCommune = null, selectedPelicanOACI = null;
-let disabledAirports = new Set(), waterAirports = new Set();
+let disabledAirports = new Set(), waterAirports = new Set(), customPelicanAirports = new Set();
 const MAGNETIC_DECLINATION = 1.0;
 let userMarker = null, watchId = null, accuracyCircle = null, headingLayer = null, lastPosition = null;
 let userToTargetLayer = null, lftwRouteLayer = null;
@@ -968,7 +968,7 @@ function drawRoute(startLatLng, endLatLng, options = {}) {
     }
 }
 
-function getClosestAirports(lat, lon, count) { return pelicanAirports.filter(ap => !disabledAirports.has(ap.oaci)).map(ap => ({ ...ap, distance: calculateDistanceInNm(lat, lon, ap.lat, ap.lon) })).sort((a, b) => a.distance - b.distance).slice(0, count); }
+function getClosestAirports(lat, lon, count) { const customPelican = otherAirports.filter(ap => customPelicanAirports.has(ap.oaci)); return [...pelicanAirports, ...customPelican].filter(ap => !disabledAirports.has(ap.oaci)).map(ap => ({ ...ap, distance: calculateDistanceInNm(lat, lon, ap.lat, ap.lon) })).sort((a, b) => a.distance - b.distance).slice(0, count); }
 function getAirportByOaci(oaci) {
     return [...pelicanAirports, ...otherAirports].find(ap => ap.oaci === oaci) || null;
 }
@@ -989,8 +989,8 @@ function updateBaseLabels() {
     const deroutFuelMiniPelicLabel = document.getElementById('derout-fuel-mini-pelic-label');
     if (deroutFuelMiniPelicLabel) {
         const selectedPelic = selectedPelicanOACI ? getAirportByOaci(selectedPelicanOACI) : null;
-        const pelicName = selectedPelic ? `${selectedPelic.name}` : 'Pélic';
-        deroutFuelMiniPelicLabel.textContent = `Fuel mini 1 largage / Pélic (${pelicName}) :`;
+        const pelicCode = selectedPelic ? selectedPelic.oaci : 'PÉLIC';
+        deroutFuelMiniPelicLabel.textContent = `Fuel mini 1 largage / Pélic (${pelicCode}) :`;
     }
 }
 function refreshUI() { drawPermanentAirportMarkers(); if (currentCommune) displayCommuneDetails(currentCommune, false); }
@@ -998,9 +998,28 @@ function drawPermanentAirportMarkers() {
     permanentAirportLayer.clearLayers();
 
     otherAirports.forEach(airport => {
+        const isCustomPelic = customPelicanAirports.has(airport.oaci);
         const isBase = selectedBaseOACI === airport.oaci;
         const baseButtonText = isBase ? 'BASE ✓' : 'BASE';
         const baseButtonClass = isBase ? 'base-btn base-btn-active' : 'base-btn';
+        const customPelicText = isCustomPelic ? 'PÉLIC ✓' : 'PÉLIC';
+        const customPelicClass = isCustomPelic ? 'base-btn base-btn-active' : 'base-btn';
+
+        if (isCustomPelic) {
+            const isDisabled = disabledAirports.has(airport.oaci);
+            const isWater = waterAirports.has(airport.oaci);
+            let iconClass = "custom-marker-icon airport-marker-base ", iconHTML = "✈️";
+            isDisabled ? (iconClass += "airport-marker-disabled", iconHTML = "<b>+</b>") : isWater ? (iconClass += "airport-marker-water", iconHTML = "💧") : iconClass += "airport-marker-active";
+            const waterButtonText = isWater ? "RETARDANT" : "EAU";
+            const waterButtonClass = isWater ? "water-btn water-btn-retardant" : "water-btn";
+            const disableButtonText = isDisabled ? "Activer" : "Désactiver";
+            const disableButtonClass = isDisabled ? "enable-btn" : "disable-btn";
+            const marker = L.marker([airport.lat, airport.lon], { icon: L.divIcon({ className: iconClass, html: iconHTML }) });
+            marker.bindPopup(`<div class="airport-popup"><b>${airport.oaci}</b><br>${airport.name}<div class="popup-buttons"><button class="${waterButtonClass}" onclick="window.toggleWater('${airport.oaci}')">${waterButtonText}</button><button class="${disableButtonClass}" onclick="window.toggleAirport('${airport.oaci}')">${disableButtonText}</button><button class="${baseButtonClass}" onclick="window.setBaseAirport('${airport.oaci}')">${baseButtonText}</button><button class="${customPelicClass}" onclick="window.toggleCustomPelican('${airport.oaci}')">${customPelicText}</button></div></div>`);
+            marker.addTo(permanentAirportLayer);
+            return;
+        }
+
         const marker = L.circleMarker([airport.lat, airport.lon], {
             radius: 2.5,
             fillColor: 'black',
@@ -1008,7 +1027,7 @@ function drawPermanentAirportMarkers() {
             color: 'transparent',
             weight: 15,
             opacity: 0
-        }).bindPopup(`<div class="airport-popup"><b>${airport.oaci}</b><br>${airport.name}<div class="popup-buttons"><button class="${baseButtonClass}" onclick="window.setBaseAirport('${airport.oaci}')">${baseButtonText}</button></div></div>`);
+        }).bindPopup(`<div class="airport-popup"><b>${airport.oaci}</b><br>${airport.name}<div class="popup-buttons"><button class="${baseButtonClass}" onclick="window.setBaseAirport('${airport.oaci}')">${baseButtonText}</button><button class="${customPelicClass}" onclick="window.toggleCustomPelican('${airport.oaci}')">${customPelicText}</button></div></div>`);
         marker.addTo(permanentAirportLayer);
     });
 
@@ -1129,6 +1148,8 @@ const loadState = () => {
     if (savedDisabled) disabledAirports = new Set(JSON.parse(savedDisabled));
     const savedWater = localStorage.getItem('water_airports');
     if (savedWater) waterAirports = new Set(JSON.parse(savedWater));
+    const savedCustomPelic = localStorage.getItem('custom_pelican_airports');
+    if (savedCustomPelic) customPelicanAirports = new Set(JSON.parse(savedCustomPelic));
     const savedBase = localStorage.getItem('selected_base_oaci');
     if (savedBase && getAirportByOaci(savedBase)) {
         selectedBaseOACI = savedBase;
@@ -1138,9 +1159,22 @@ const saveState = () => {
     localStorage.setItem('disabled_airports', JSON.stringify([...disabledAirports]));
     localStorage.setItem('water_airports', JSON.stringify([...waterAirports]));
     localStorage.setItem('selected_base_oaci', selectedBaseOACI);
+    localStorage.setItem('custom_pelican_airports', JSON.stringify([...customPelicanAirports]));
 };
 window.toggleAirport = oaci => { disabledAirports.has(oaci) ? disabledAirports.delete(oaci) : (disabledAirports.add(oaci), waterAirports.delete(oaci)), saveState(), refreshUI() };
 window.toggleWater = oaci => { waterAirports.has(oaci) ? waterAirports.delete(oaci) : (waterAirports.add(oaci), disabledAirports.delete(oaci)), saveState(), refreshUI() };
+window.toggleCustomPelican = oaci => {
+    if (customPelicanAirports.has(oaci)) {
+        customPelicanAirports.delete(oaci);
+        waterAirports.delete(oaci);
+        disabledAirports.delete(oaci);
+    } else {
+        customPelicanAirports.add(oaci);
+        disabledAirports.delete(oaci);
+    }
+    saveState();
+    refreshUI();
+};
 window.setBaseAirport = oaci => {
     if (!getAirportByOaci(oaci)) return;
     selectedBaseOACI = oaci;
@@ -2365,8 +2399,8 @@ function updateDeroutementTab() {
     const deroutFuelMiniPelicLabel = document.getElementById('derout-fuel-mini-pelic-label');
     if (deroutFuelMiniPelicLabel) {
         const selectedPelic = selectedPelicanOACI ? getAirportByOaci(selectedPelicanOACI) : null;
-        const pelicName = selectedPelic ? selectedPelic.name : 'Pélic';
-        deroutFuelMiniPelicLabel.textContent = `Fuel mini 1 largage / Pélic (${pelicName}) :`;
+        const pelicCode = selectedPelic ? selectedPelic.oaci : 'PÉLIC';
+        deroutFuelMiniPelicLabel.textContent = `Fuel mini 1 largage / Pélic (${pelicCode}) :`;
     }
 
     if (!currentCommune) {
@@ -3056,14 +3090,10 @@ function initializeCalculator() {
     const activateTab = (onglet) => { document.querySelectorAll('.onglet-bouton').forEach(btn => btn.classList.remove('active')); document.querySelectorAll('.onglet-panneau').forEach(p => p.classList.remove('active')); onglet.classList.add('active'); document.getElementById(onglet.dataset.onglet).classList.add('active'); resetButton.style.display = (onglet.dataset.onglet === 'bloc-fuel') ? 'flex' : 'none'; };
     onglets.forEach(onglet => {
         onglet.addEventListener('click', () => activateTab(onglet));
-        onglet.addEventListener('touchstart', (event) => {
+        onglet.addEventListener('pointerup', (event) => {
             event.preventDefault();
             activateTab(onglet);
-        }, { passive: false });
-        onglet.addEventListener('touchend', (event) => {
-            event.preventDefault();
-            activateTab(onglet);
-        }, { passive: false });
+        });
     });
 
     function saveCalculatorState() {
