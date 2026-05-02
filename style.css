@@ -153,6 +153,46 @@ html, body {
 #live-gps-button:hover { background-color: #e9f5ff; }
 #main-action-buttons { position: absolute; top: var(--safe-area-top); right: 20px; z-index: 1001; display: flex; flex-direction: column; gap: 15px; align-items: center; }
 #toggle-search-button, #calculator-button, #gps-feu-button, #center-gps-button { width: 90px; height: 90px; font-size: 48px; border: 2px solid var(--border-color); border-radius: 20px; background-color: rgba(255, 255, 255, 0.8); backdrop-filter: blur(5px); -webkit-backdrop-filter: blur(5px); color: var(--primary-color); cursor: pointer; display: flex; align-items: center; justify-content: center; box-shadow: var(--shadow); padding: 0; line-height: 1; }
+
+#calculator-button .calculator-fun-icon {
+    width: 62px;
+    height: 62px;
+    border: 6px solid #1f1b24;
+    border-radius: 18px;
+    background: #e9f6ff;
+    position: relative;
+    box-shadow: 0 2px 0 #fff inset;
+}
+#calculator-button .calculator-fun-icon::before {
+    content: '';
+    position: absolute;
+    top: 8px;
+    left: 8px;
+    right: 8px;
+    height: 16px;
+    background: #ffd000;
+    border: 4px solid #1f1b24;
+    border-radius: 8px;
+}
+#calculator-button .calculator-fun-icon::after {
+    content: '';
+    position: absolute;
+    left: 10px;
+    right: 10px;
+    bottom: 8px;
+    top: 32px;
+    border-radius: 10px;
+    background:
+        linear-gradient(#2d8cff, #2d8cff) 0 0 / 12px 12px no-repeat,
+        linear-gradient(#2d8cff, #2d8cff) 18px 0 / 12px 12px no-repeat,
+        linear-gradient(#2d8cff, #2d8cff) 36px 0 / 12px 12px no-repeat,
+        linear-gradient(#2d8cff, #2d8cff) 0 18px / 12px 12px no-repeat,
+        linear-gradient(#2d8cff, #2d8cff) 18px 18px / 12px 12px no-repeat,
+        linear-gradient(#ff1a2f, #ff1a2f) 36px 18px / 12px 30px no-repeat,
+        linear-gradient(#2d8cff, #2d8cff) 0 36px / 12px 12px no-repeat,
+        linear-gradient(#2d8cff, #2d8cff) 18px 36px / 12px 12px no-repeat;
+}
+
 #chat-toggle-button { width: 90px; height: 90px; font-size: 48px; border: 2px solid var(--border-color); border-radius: 20px; background-color: rgba(255, 255, 255, 0.8); backdrop-filter: blur(5px); -webkit-backdrop-filter: blur(5px); color: var(--primary-color); cursor: pointer; display: flex; align-items: center; justify-content: center; box-shadow: var(--shadow); padding: 0; line-height: 1; position: relative; }
 #chat-alert-badge {
     position: absolute;

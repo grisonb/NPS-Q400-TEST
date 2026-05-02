@@ -1051,55 +1051,29 @@ function drawPermanentAirportMarkers() {
 }
 
 async function loadDepartmentsLayerData() {
-    const byDepartment = new Map();
+    const DEPARTMENTS_GEOJSON_URL = 'https://etalab-datasets.geo.data.gouv.fr/contours-administratifs/latest/geojson/departements-1000m.geojson';
+    const response = await fetch(DEPARTMENTS_GEOJSON_URL, { cache: 'force-cache' });
+    if (!response.ok) {
+        throw new Error(`HTTP ${response.status}`);
+    }
 
-    allCommunes.forEach((commune) => {
-        const depCode = commune?.dep_code;
-        if (!depCode) return;
-
-        if (!byDepartment.has(depCode)) {
-            byDepartment.set(depCode, {
-                points: [],
-                latSum: 0,
-                lonSum: 0,
-                count: 0
-            });
-        }
-
-        const depData = byDepartment.get(depCode);
-
-        if (Number.isFinite(commune.latitude_centre) && Number.isFinite(commune.longitude_centre)) {
-            depData.points.push([commune.latitude_centre, commune.longitude_centre]);
-        }
-
-        if (Number.isFinite(commune.latitude_mairie) && Number.isFinite(commune.longitude_mairie)) {
-            depData.latSum += commune.latitude_mairie;
-            depData.lonSum += commune.longitude_mairie;
-            depData.count += 1;
-        }
-    });
-
-    byDepartment.forEach((depData, depCode) => {
-        if (!depData.points.length) return;
-
-        const sampleStep = Math.max(1, Math.floor(depData.points.length / 400));
-        const sampledPoints = depData.points.filter((_, idx) => idx % sampleStep === 0);
-        const hull = computeConvexHull(sampledPoints);
-        if (hull.length < 3) return;
-
-        const polygon = L.polygon(hull, {
+    const departmentsGeojson = await response.json();
+    const geoJsonLayer = L.geoJSON(departmentsGeojson, {
+        style: {
             color: '#111',
             weight: 1,
             opacity: 0.9,
             fillColor: '#ffffff',
             fillOpacity: 0.03
-        });
-        departmentsLayerGroup.addLayer(polygon);
+        }
+    });
 
-        const center = depData.count > 0
-            ? [depData.latSum / depData.count, depData.lonSum / depData.count]
-            : polygon.getBounds().getCenter();
-
+    geoJsonLayer.eachLayer((layer) => {
+        departmentsLayerGroup.addLayer(layer);
+        const properties = layer.feature?.properties || {};
+        const depCode = properties.code || properties.code_departement || properties.dep_code || '';
+        if (!depCode || !layer.getBounds) return;
+        const center = layer.getBounds().getCenter();
         departmentsLabelsLayer.addLayer(L.marker(center, {
             icon: L.divIcon({
                 className: 'department-code-label',
