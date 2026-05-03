@@ -155,24 +155,27 @@ html, body {
 #toggle-search-button, #calculator-button, #gps-feu-button, #center-gps-button { width: 90px; height: 90px; font-size: 48px; border: 2px solid var(--border-color); border-radius: 20px; background-color: rgba(255, 255, 255, 0.8); backdrop-filter: blur(5px); -webkit-backdrop-filter: blur(5px); color: var(--primary-color); cursor: pointer; display: flex; align-items: center; justify-content: center; box-shadow: var(--shadow); padding: 0; line-height: 1; }
 
 #calculator-button .calculator-fun-icon {
-    width: 62px;
-    height: 62px;
-    border: 6px solid #1f1b24;
+    width: 64px;
+    height: 74px;
+    border: 4px solid #1f1b24;
     border-radius: 18px;
-    background: #e9f6ff;
+    background: #e6f4ff;
     position: relative;
-    box-shadow: 0 2px 0 #fff inset;
+    box-shadow: 0 0 0 4px #ffffff, 0 0 0 7px #1f1b24;
 }
 #calculator-button .calculator-fun-icon::before {
     content: '';
     position: absolute;
-    top: 8px;
+    top: 7px;
     left: 8px;
     right: 8px;
-    height: 16px;
-    background: #ffd000;
+    height: 17px;
+    border-radius: 7px;
     border: 4px solid #1f1b24;
-    border-radius: 8px;
+    background:
+        radial-gradient(circle at calc(100% - 9px) 50%, #f6d100 6px, transparent 6px),
+        radial-gradient(circle at calc(100% - 9px) 50%, #1f1b24 2.7px, transparent 3px),
+        #f6d100;
 }
 #calculator-button .calculator-fun-icon::after {
     content: '';
@@ -180,17 +183,18 @@ html, body {
     left: 10px;
     right: 10px;
     bottom: 8px;
-    top: 32px;
-    border-radius: 10px;
+    top: 35px;
+    border-radius: 8px;
     background:
-        linear-gradient(#2d8cff, #2d8cff) 0 0 / 12px 12px no-repeat,
-        linear-gradient(#2d8cff, #2d8cff) 18px 0 / 12px 12px no-repeat,
-        linear-gradient(#2d8cff, #2d8cff) 36px 0 / 12px 12px no-repeat,
-        linear-gradient(#2d8cff, #2d8cff) 0 18px / 12px 12px no-repeat,
-        linear-gradient(#2d8cff, #2d8cff) 18px 18px / 12px 12px no-repeat,
-        linear-gradient(#ff1a2f, #ff1a2f) 36px 18px / 12px 30px no-repeat,
-        linear-gradient(#2d8cff, #2d8cff) 0 36px / 12px 12px no-repeat,
-        linear-gradient(#2d8cff, #2d8cff) 18px 36px / 12px 12px no-repeat;
+        linear-gradient(#2d8cff, #2d8cff) 0 0 / 14px 12px no-repeat,
+        linear-gradient(#2d8cff, #2d8cff) 19px 0 / 14px 12px no-repeat,
+        linear-gradient(#2d8cff, #2d8cff) 38px 0 / 14px 12px no-repeat,
+        linear-gradient(#2d8cff, #2d8cff) 0 18px / 14px 12px no-repeat,
+        linear-gradient(#2d8cff, #2d8cff) 19px 18px / 14px 12px no-repeat,
+        linear-gradient(#2d8cff, #2d8cff) 0 36px / 14px 12px no-repeat,
+        linear-gradient(#2d8cff, #2d8cff) 19px 36px / 14px 12px no-repeat,
+        linear-gradient(#f21b31, #f21b31) 38px 18px / 14px 30px no-repeat;
+    box-shadow: inset 0 0 0 4px #1f1b24;
 }
 
 #chat-toggle-button { width: 90px; height: 90px; font-size: 48px; border: 2px solid var(--border-color); border-radius: 20px; background-color: rgba(255, 255, 255, 0.8); backdrop-filter: blur(5px); -webkit-backdrop-filter: blur(5px); color: var(--primary-color); cursor: pointer; display: flex; align-items: center; justify-content: center; box-shadow: var(--shadow); padding: 0; line-height: 1; position: relative; }
