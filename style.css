@@ -152,7 +152,51 @@ html, body {
 #live-gps-button { flex-shrink: 0; width: 48px; height: 48px; padding: 0; border: 1px solid var(--border-color); border-radius: var(--border-radius); background-color: var(--card-background-color); color: var(--primary-color); font-size: 24px; cursor: pointer; display: flex; align-items: center; justify-content: center; line-height: 1; transition: background-color 0.2s, color 0.2s; }
 #live-gps-button:hover { background-color: #e9f5ff; }
 #main-action-buttons { position: absolute; top: var(--safe-area-top); right: 20px; z-index: 1001; display: flex; flex-direction: column; gap: 15px; align-items: center; }
-#toggle-search-button, #calculator-button, #gps-feu-button { width: 90px; height: 90px; font-size: 48px; border: 2px solid var(--border-color); border-radius: 20px; background-color: rgba(255, 255, 255, 0.8); backdrop-filter: blur(5px); -webkit-backdrop-filter: blur(5px); color: var(--primary-color); cursor: pointer; display: flex; align-items: center; justify-content: center; box-shadow: var(--shadow); padding: 0; line-height: 1; }
+#toggle-search-button, #calculator-button, #gps-feu-button, #center-gps-button { width: 90px; height: 90px; font-size: 48px; border: 2px solid var(--border-color); border-radius: 20px; background-color: rgba(255, 255, 255, 0.8); backdrop-filter: blur(5px); -webkit-backdrop-filter: blur(5px); color: var(--primary-color); cursor: pointer; display: flex; align-items: center; justify-content: center; box-shadow: var(--shadow); padding: 0; line-height: 1; }
+
+#calculator-button .calculator-fun-icon {
+    width: 64px;
+    height: 74px;
+    border: 4px solid #1f1b24;
+    border-radius: 18px;
+    background: #e6f4ff;
+    position: relative;
+    box-shadow: 0 0 0 4px #ffffff, 0 0 0 7px #1f1b24;
+}
+#calculator-button .calculator-fun-icon::before {
+    content: '';
+    position: absolute;
+    top: 7px;
+    left: 8px;
+    right: 8px;
+    height: 17px;
+    border-radius: 7px;
+    border: 4px solid #1f1b24;
+    background:
+        radial-gradient(circle at calc(100% - 9px) 50%, #f6d100 6px, transparent 6px),
+        radial-gradient(circle at calc(100% - 9px) 50%, #1f1b24 2.7px, transparent 3px),
+        #f6d100;
+}
+#calculator-button .calculator-fun-icon::after {
+    content: '';
+    position: absolute;
+    left: 10px;
+    right: 10px;
+    bottom: 8px;
+    top: 35px;
+    border-radius: 8px;
+    background:
+        linear-gradient(#2d8cff, #2d8cff) 0 0 / 14px 12px no-repeat,
+        linear-gradient(#2d8cff, #2d8cff) 19px 0 / 14px 12px no-repeat,
+        linear-gradient(#2d8cff, #2d8cff) 38px 0 / 14px 12px no-repeat,
+        linear-gradient(#2d8cff, #2d8cff) 0 18px / 14px 12px no-repeat,
+        linear-gradient(#2d8cff, #2d8cff) 19px 18px / 14px 12px no-repeat,
+        linear-gradient(#2d8cff, #2d8cff) 0 36px / 14px 12px no-repeat,
+        linear-gradient(#2d8cff, #2d8cff) 19px 36px / 14px 12px no-repeat,
+        linear-gradient(#f21b31, #f21b31) 38px 18px / 14px 30px no-repeat;
+    box-shadow: inset 0 0 0 4px #1f1b24;
+}
+
 #chat-toggle-button { width: 90px; height: 90px; font-size: 48px; border: 2px solid var(--border-color); border-radius: 20px; background-color: rgba(255, 255, 255, 0.8); backdrop-filter: blur(5px); -webkit-backdrop-filter: blur(5px); color: var(--primary-color); cursor: pointer; display: flex; align-items: center; justify-content: center; box-shadow: var(--shadow); padding: 0; line-height: 1; position: relative; }
 #chat-alert-badge {
     position: absolute;
@@ -394,8 +438,8 @@ html, body {
     transform: scale(1.1); /* Effet de grossissement au survol */
 }
 .main-container { width: 100%; max-width: 1000px; height: 100%; max-height: 95vh; background-color: #fff; border-radius: var(--border-radius); box-shadow: var(--shadow); overflow: hidden; display: flex; flex-direction: column; position: relative; }
-.onglets-navigation { display: flex; align-items: stretch; background-color: var(--background-color); border-bottom: 1px solid var(--border-color); }
-.onglet-bouton { flex: 1; min-height: 56px; padding: 16px 10px; border: none; background: transparent; font-size: 16px; font-weight: 500; color: var(--light-text-color); cursor: pointer; border-bottom: 3px solid transparent; transition: all 0.2s; white-space: nowrap; display: flex; align-items: center; justify-content: center; touch-action: manipulation; }
+.onglets-navigation { display: flex; align-items: stretch; background-color: var(--background-color); border-bottom: 1px solid var(--border-color); position: relative; z-index: 5; }
+.onglet-bouton { flex: 1; min-height: 60px; padding: 0 10px; border: none; background: transparent; font-size: 16px; font-weight: 500; color: var(--light-text-color); cursor: pointer; border-bottom: 3px solid transparent; transition: all 0.2s; white-space: nowrap; display: flex; align-items: center; justify-content: center; touch-action: manipulation; position: relative; z-index: 6; -webkit-tap-highlight-color: transparent; }
 .onglet-bouton.active { color: var(--primary-color); border-bottom-color: var(--primary-color); }
 .onglets-conteneur { flex-grow: 1; position: relative; overflow: hidden; }
 .onglet-panneau { display: none; flex-direction: column; height: 100%; }
@@ -726,6 +770,45 @@ html, body {
     cursor: pointer;
 }
 
+.neutral-inline-btn {
+    width: 100%;
+    margin: 0 0 10px 0;
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    background: #eef3f8;
+    color: var(--primary-color);
+    padding: 9px 10px;
+    font-weight: 700;
+    cursor: pointer;
+}
+
+.neutral-inline-btn:disabled {
+    opacity: 0.7;
+    cursor: wait;
+}
+
+.offline-toggle-row {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.map-source-buttons {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+#installed-maps-list li {
+    gap: 10px;
+    flex-wrap: wrap;
+}
+
+#installed-maps-list li > span {
+    min-width: 0;
+    flex: 1;
+}
+
 #offline-status {
     margin-top: 8px;
     color: var(--light-text-color);
@@ -805,3 +888,6 @@ html, body {
 .clear-commune-btn:hover {
     color: var(--secondary-color);
 }
+
+
+
