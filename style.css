@@ -155,21 +155,21 @@ html, body {
 #toggle-search-button, #calculator-button, #gps-feu-button, #center-gps-button { width: 90px; height: 90px; font-size: 48px; border: 2px solid var(--border-color); border-radius: 20px; background-color: rgba(255, 255, 255, 0.8); backdrop-filter: blur(5px); -webkit-backdrop-filter: blur(5px); color: var(--primary-color); cursor: pointer; display: flex; align-items: center; justify-content: center; box-shadow: var(--shadow); padding: 0; line-height: 1; }
 
 #calculator-button .calculator-fun-icon {
-    width: 64px;
-    height: 74px;
+    width: 62px;
+    height: 76px;
     border: 4px solid #1f1b24;
-    border-radius: 18px;
+    border-radius: 16px;
     background: #e6f4ff;
     position: relative;
-    box-shadow: 0 0 0 4px #ffffff, 0 0 0 7px #1f1b24;
+    box-shadow: 0 0 0 3px #ffffff, 0 0 0 6px #1f1b24;
 }
 #calculator-button .calculator-fun-icon::before {
     content: '';
     position: absolute;
-    top: 7px;
+    top: 6px;
     left: 8px;
     right: 8px;
-    height: 17px;
+    height: 18px;
     border-radius: 7px;
     border: 4px solid #1f1b24;
     background:
@@ -183,7 +183,7 @@ html, body {
     left: 10px;
     right: 10px;
     bottom: 8px;
-    top: 35px;
+    top: 36px;
     border-radius: 8px;
     background:
         linear-gradient(#2d8cff, #2d8cff) 0 0 / 14px 12px no-repeat,
@@ -499,6 +499,27 @@ html, body {
 .result-line .label { font-weight: 500; text-align: left; }
 .result-line .value { font-weight: bold; background-color: #e9f5ff; padding: 8px 15px; border-radius: 6px; text-align: right; }
 .result-line .input-wrapper { max-width: 180px; }
+
+#offline-maps-button {
+    border-color: #1f8f35;
+    background: rgba(42, 179, 74, 0.2);
+    color: #0f6d24;
+    font-weight: 700;
+}
+#offline-maps-button:hover {
+    background: rgba(42, 179, 74, 0.3);
+}
+
+.rotations-group {
+    border: 2px solid #d9e3ef;
+    border-radius: 12px;
+    background: #f7fbff;
+    padding: 14px 14px 8px;
+    margin-bottom: 14px;
+}
+.rotations-group .analyse-col-title {
+    margin-top: 0;
+}
 .bingo-group { margin-bottom: 20px; }
 .bingo-group .result-line .label { font-size: 22px; font-weight: bold; }
 .bingo-group .result-line .value { border: 2px solid var(--secondary-color); background-color: #fff0f3; margin-top: 5px; width: 100%; box-sizing: border-box; height: auto; min-height: 45px; display: flex; align-items: center; justify-content: center; text-align: center; line-height: 1.2; white-space: nowrap; font-size: 17px; padding: 10px 8px; }
