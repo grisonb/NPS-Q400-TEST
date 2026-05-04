@@ -3126,6 +3126,27 @@ function initializeCalculator() {
         });
 
         if (engineInput) {
+            const openTimePicker = (event) => {
+                if (event) event.preventDefault();
+                if (typeof engineInput.showPicker === 'function') {
+                    engineInput.showPicker();
+                } else {
+                    engineInput.focus();
+                    engineInput.click();
+                }
+            };
+
+            displayInput.addEventListener('click', openTimePicker);
+            const clockIcon = wrapper.querySelector('.clock-icon');
+            if (clockIcon) {
+                clockIcon.addEventListener('click', openTimePicker);
+            }
+            wrapper.addEventListener('click', (event) => {
+                if (event.target === clearBtn) return;
+                if (event.target === engineInput) return;
+                openTimePicker(event);
+            });
+
             engineInput.addEventListener('change', () => {
                 if (engineInput.value) {
                     displayInput.value = engineInput.value;
