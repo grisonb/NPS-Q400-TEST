@@ -3183,7 +3183,6 @@ function initializeCalculator() {
             const clockIcon = wrapper.querySelector('.clock-icon');
             if (clockIcon) {
                 clockIcon.addEventListener('click', openTimePicker);
-                clockIcon.addEventListener('touchstart', openTimePicker, { passive: true });
             }
             wrapper.addEventListener('click', (event) => {
                 if (event.target === clearBtn) return;
@@ -3191,13 +3190,6 @@ function initializeCalculator() {
                 if (event.target === displayInput) return;
                 openTimePicker();
             });
-            wrapper.addEventListener('touchstart', (event) => {
-                if (event.target === clearBtn) return;
-                if (event.target === engineInput) return;
-                if (event.target === displayInput) return;
-                openTimePicker();
-            }, { passive: true });
-
             engineInput.addEventListener('change', () => {
                 if (engineInput.value) {
                     displayInput.value = engineInput.value;

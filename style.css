@@ -548,6 +548,19 @@ html, body {
 .time-input-wrapper .clock-icon { position: absolute; top: 50%; right: 12px; transform: translateY(-50%); font-size: 26px; pointer-events: auto; cursor: pointer; z-index: 4; }
 .time-input-wrapper .engine-input { position: absolute; top: 0; right: 0; width: 48px; height: 100%; opacity: 0; cursor: pointer; border: none; z-index: 3; }
 
+@media (hover: none) and (pointer: coarse) {
+    .time-input-wrapper .engine-input {
+        left: 0;
+        right: 0;
+        width: 100%;
+        z-index: 5;
+    }
+    .time-input-wrapper .clock-icon {
+        pointer-events: none;
+    }
+}
+
+
 #refresh-gps-btn {
     grid-column: 1 / -1; /* Pour qu'il prenne toute la largeur de sa colonne */
     margin-top: 15px;
