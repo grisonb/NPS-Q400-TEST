@@ -152,7 +152,17 @@ html, body {
 #live-gps-button { flex-shrink: 0; width: 48px; height: 48px; padding: 0; border: 1px solid var(--border-color); border-radius: var(--border-radius); background-color: var(--card-background-color); color: var(--primary-color); font-size: 24px; cursor: pointer; display: flex; align-items: center; justify-content: center; line-height: 1; transition: background-color 0.2s, color 0.2s; }
 #live-gps-button:hover { background-color: #e9f5ff; }
 #main-action-buttons { position: absolute; top: var(--safe-area-top); right: 20px; z-index: 1001; display: flex; flex-direction: column; gap: 15px; align-items: center; }
-#toggle-search-button, #calculator-button, #gps-feu-button { width: 90px; height: 90px; font-size: 48px; border: 2px solid var(--border-color); border-radius: 20px; background-color: rgba(255, 255, 255, 0.8); backdrop-filter: blur(5px); -webkit-backdrop-filter: blur(5px); color: var(--primary-color); cursor: pointer; display: flex; align-items: center; justify-content: center; box-shadow: var(--shadow); padding: 0; line-height: 1; }
+#toggle-search-button, #calculator-button, #gps-feu-button, #center-gps-button { width: 90px; height: 90px; font-size: 48px; border: 2px solid var(--border-color); border-radius: 20px; background-color: rgba(255, 255, 255, 0.8); backdrop-filter: blur(5px); -webkit-backdrop-filter: blur(5px); color: var(--primary-color); cursor: pointer; display: flex; align-items: center; justify-content: center; box-shadow: var(--shadow); padding: 0; line-height: 1; }
+
+#calculator-button .calculator-fun-icon {
+    width: 64px;
+    height: 76px;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 120 145'%3E%3Crect x='3' y='3' width='114' height='139' rx='24' fill='%23fff' stroke='%23211f26' stroke-width='6'/%3E%3Crect x='12' y='12' width='96' height='121' rx='18' fill='%23e8f5ff' stroke='%23211f26' stroke-width='6'/%3E%3Crect x='24' y='24' width='72' height='30' rx='7' fill='%23ffd100' stroke='%23211f26' stroke-width='6'/%3E%3Ccircle cx='84' cy='39' r='6' fill='none' stroke='%23211f26' stroke-width='6'/%3E%3Cg stroke='%23211f26' stroke-width='6'%3E%3Crect x='24' y='67' width='22' height='20' rx='5' fill='%232d8cff'/%3E%3Crect x='49' y='67' width='22' height='20' rx='5' fill='%232d8cff'/%3E%3Crect x='74' y='67' width='22' height='20' rx='5' fill='%232d8cff'/%3E%3Crect x='24' y='92' width='22' height='20' rx='5' fill='%232d8cff'/%3E%3Crect x='49' y='92' width='22' height='20' rx='5' fill='%232d8cff'/%3E%3Crect x='24' y='117' width='22' height='20' rx='5' fill='%232d8cff'/%3E%3Crect x='49' y='117' width='22' height='20' rx='5' fill='%232d8cff'/%3E%3Crect x='74' y='92' width='22' height='45' rx='7' fill='%23f32034'/%3E%3C/g%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-size: contain;
+    background-position: center;
+}
+
 #chat-toggle-button { width: 90px; height: 90px; font-size: 48px; border: 2px solid var(--border-color); border-radius: 20px; background-color: rgba(255, 255, 255, 0.8); backdrop-filter: blur(5px); -webkit-backdrop-filter: blur(5px); color: var(--primary-color); cursor: pointer; display: flex; align-items: center; justify-content: center; box-shadow: var(--shadow); padding: 0; line-height: 1; position: relative; }
 #chat-alert-badge {
     position: absolute;
@@ -394,8 +404,8 @@ html, body {
     transform: scale(1.1); /* Effet de grossissement au survol */
 }
 .main-container { width: 100%; max-width: 1000px; height: 100%; max-height: 95vh; background-color: #fff; border-radius: var(--border-radius); box-shadow: var(--shadow); overflow: hidden; display: flex; flex-direction: column; position: relative; }
-.onglets-navigation { display: flex; align-items: stretch; background-color: var(--background-color); border-bottom: 1px solid var(--border-color); }
-.onglet-bouton { flex: 1; min-height: 56px; padding: 16px 10px; border: none; background: transparent; font-size: 16px; font-weight: 500; color: var(--light-text-color); cursor: pointer; border-bottom: 3px solid transparent; transition: all 0.2s; white-space: nowrap; display: flex; align-items: center; justify-content: center; touch-action: manipulation; }
+.onglets-navigation { display: flex; align-items: stretch; background-color: var(--background-color); border-bottom: 1px solid var(--border-color); position: relative; z-index: 5; }
+.onglet-bouton { flex: 1; min-height: 60px; padding: 0 10px; border: none; background: transparent; font-size: 16px; font-weight: 500; color: var(--light-text-color); cursor: pointer; border-bottom: 3px solid transparent; transition: all 0.2s; white-space: nowrap; display: flex; align-items: center; justify-content: center; touch-action: manipulation; position: relative; z-index: 6; -webkit-tap-highlight-color: transparent; }
 .onglet-bouton.active { color: var(--primary-color); border-bottom-color: var(--primary-color); }
 .onglets-conteneur { flex-grow: 1; position: relative; overflow: hidden; }
 .onglet-panneau { display: none; flex-direction: column; height: 100%; }
@@ -455,6 +465,27 @@ html, body {
 .result-line .label { font-weight: 500; text-align: left; }
 .result-line .value { font-weight: bold; background-color: #e9f5ff; padding: 8px 15px; border-radius: 6px; text-align: right; }
 .result-line .input-wrapper { max-width: 180px; }
+
+#offline-maps-button {
+    border-color: #1f8f35;
+    background: rgba(42, 179, 74, 0.2);
+    color: #0f6d24;
+    font-weight: 700;
+}
+#offline-maps-button:hover {
+    background: rgba(42, 179, 74, 0.3);
+}
+
+.rotations-group {
+    border: 2px solid #d9e3ef;
+    border-radius: 12px;
+    background: #f7fbff;
+    padding: 14px 14px 8px;
+    margin-bottom: 14px;
+}
+.rotations-group .analyse-col-title {
+    margin-top: 0;
+}
 .bingo-group { margin-bottom: 20px; }
 .bingo-group .result-line .label { font-size: 22px; font-weight: bold; }
 .bingo-group .result-line .value { border: 2px solid var(--secondary-color); background-color: #fff0f3; margin-top: 5px; width: 100%; box-sizing: border-box; height: auto; min-height: 45px; display: flex; align-items: center; justify-content: center; text-align: center; line-height: 1.2; white-space: nowrap; font-size: 17px; padding: 10px 8px; }
@@ -514,8 +545,21 @@ html, body {
 .input-wrapper { position: relative; width: 100%; }
 .input-wrapper.time-input-wrapper .display-input { padding-left: 45px; padding-right: 45px; }
 .input-wrapper .clear-btn { position: absolute; top: 50%; left: 12px; transform: translateY(-50%); font-size: 30px; font-weight: bold; color: var(--light-text-color); cursor: pointer; z-index: 2; }
-.time-input-wrapper .clock-icon { position: absolute; top: 50%; right: 12px; transform: translateY(-50%); font-size: 26px; pointer-events: none; }
+.time-input-wrapper .clock-icon { position: absolute; top: 50%; right: 12px; transform: translateY(-50%); font-size: 26px; pointer-events: auto; cursor: pointer; z-index: 4; }
 .time-input-wrapper .engine-input { position: absolute; top: 0; right: 0; width: 48px; height: 100%; opacity: 0; cursor: pointer; border: none; z-index: 3; }
+
+@media (hover: none) and (pointer: coarse) {
+    .time-input-wrapper .engine-input {
+        left: 0;
+        right: 0;
+        width: 100%;
+        z-index: 5;
+    }
+    .time-input-wrapper .clock-icon {
+        pointer-events: none;
+    }
+}
+
 
 #refresh-gps-btn {
     grid-column: 1 / -1; /* Pour qu'il prenne toute la largeur de sa colonne */
@@ -726,6 +770,45 @@ html, body {
     cursor: pointer;
 }
 
+.neutral-inline-btn {
+    width: 100%;
+    margin: 0 0 10px 0;
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    background: #eef3f8;
+    color: var(--primary-color);
+    padding: 9px 10px;
+    font-weight: 700;
+    cursor: pointer;
+}
+
+.neutral-inline-btn:disabled {
+    opacity: 0.7;
+    cursor: wait;
+}
+
+.offline-toggle-row {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.map-source-buttons {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+#installed-maps-list li {
+    gap: 10px;
+    flex-wrap: wrap;
+}
+
+#installed-maps-list li > span {
+    min-width: 0;
+    flex: 1;
+}
+
 #offline-status {
     margin-top: 8px;
     color: var(--light-text-color);
@@ -805,3 +888,6 @@ html, body {
 .clear-commune-btn:hover {
     color: var(--secondary-color);
 }
+
+
+
