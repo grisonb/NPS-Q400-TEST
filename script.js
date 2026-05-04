@@ -3165,26 +3165,38 @@ function initializeCalculator() {
         });
 
         if (engineInput) {
-            const openTimePicker = (event) => {
-                if (event) event.preventDefault();
+            const openTimePicker = () => {
                 if (typeof engineInput.showPicker === 'function') {
                     engineInput.showPicker();
-                } else {
-                    engineInput.focus();
-                    engineInput.click();
+                    return;
                 }
+                engineInput.focus();
+                setTimeout(() => {
+                    try {
+                        engineInput.click();
+                    } catch (_) {
+                        // iOS fallback: focus is usually enough to open the picker
+                    }
+                }, 0);
             };
 
             const clockIcon = wrapper.querySelector('.clock-icon');
             if (clockIcon) {
                 clockIcon.addEventListener('click', openTimePicker);
+                clockIcon.addEventListener('touchstart', openTimePicker, { passive: true });
             }
             wrapper.addEventListener('click', (event) => {
                 if (event.target === clearBtn) return;
                 if (event.target === engineInput) return;
                 if (event.target === displayInput) return;
-                openTimePicker(event);
+                openTimePicker();
             });
+            wrapper.addEventListener('touchstart', (event) => {
+                if (event.target === clearBtn) return;
+                if (event.target === engineInput) return;
+                if (event.target === displayInput) return;
+                openTimePicker();
+            }, { passive: true });
 
             engineInput.addEventListener('change', () => {
                 if (engineInput.value) {
