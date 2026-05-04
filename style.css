@@ -155,54 +155,12 @@ html, body {
 #toggle-search-button, #calculator-button, #gps-feu-button, #center-gps-button { width: 90px; height: 90px; font-size: 48px; border: 2px solid var(--border-color); border-radius: 20px; background-color: rgba(255, 255, 255, 0.8); backdrop-filter: blur(5px); -webkit-backdrop-filter: blur(5px); color: var(--primary-color); cursor: pointer; display: flex; align-items: center; justify-content: center; box-shadow: var(--shadow); padding: 0; line-height: 1; }
 
 #calculator-button .calculator-fun-icon {
-    width: 62px;
+    width: 64px;
     height: 76px;
-    border: 4px solid #1f1b24;
-    border-radius: 16px;
-    background: #e6f4ff;
-    position: relative;
-    box-shadow: 0 0 0 3px #ffffff, 0 0 0 6px #1f1b24;
-}
-#calculator-button .calculator-fun-icon::before {
-    content: '';
-    position: absolute;
-    top: 6px;
-    left: 8px;
-    right: 8px;
-    height: 18px;
-    border-radius: 7px;
-    border: 4px solid #1f1b24;
-    background:
-        radial-gradient(circle at calc(100% - 9px) 50%, #f6d100 6px, transparent 6px),
-        radial-gradient(circle at calc(100% - 9px) 50%, #1f1b24 2.7px, transparent 3px),
-        #f6d100;
-}
-#calculator-button .calculator-fun-icon::after {
-    content: '';
-    position: absolute;
-    left: 10px;
-    right: 10px;
-    bottom: 8px;
-    top: 36px;
-    border-radius: 8px;
-    background:
-        linear-gradient(#1f1b24, #1f1b24) 0 0 / 14px 12px no-repeat,
-        linear-gradient(#2d8cff, #2d8cff) 2px 2px / 10px 8px no-repeat,
-        linear-gradient(#1f1b24, #1f1b24) 19px 0 / 14px 12px no-repeat,
-        linear-gradient(#2d8cff, #2d8cff) 21px 2px / 10px 8px no-repeat,
-        linear-gradient(#1f1b24, #1f1b24) 38px 0 / 14px 12px no-repeat,
-        linear-gradient(#2d8cff, #2d8cff) 40px 2px / 10px 8px no-repeat,
-        linear-gradient(#1f1b24, #1f1b24) 0 18px / 14px 12px no-repeat,
-        linear-gradient(#2d8cff, #2d8cff) 2px 20px / 10px 8px no-repeat,
-        linear-gradient(#1f1b24, #1f1b24) 19px 18px / 14px 12px no-repeat,
-        linear-gradient(#2d8cff, #2d8cff) 21px 20px / 10px 8px no-repeat,
-        linear-gradient(#1f1b24, #1f1b24) 0 36px / 14px 12px no-repeat,
-        linear-gradient(#2d8cff, #2d8cff) 2px 38px / 10px 8px no-repeat,
-        linear-gradient(#1f1b24, #1f1b24) 19px 36px / 14px 12px no-repeat,
-        linear-gradient(#2d8cff, #2d8cff) 21px 38px / 10px 8px no-repeat,
-        linear-gradient(#1f1b24, #1f1b24) 38px 18px / 14px 30px no-repeat,
-        linear-gradient(#f21b31, #f21b31) 40px 20px / 10px 26px no-repeat;
-    box-shadow: inset 0 0 0 4px #1f1b24;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 120 145'%3E%3Crect x='3' y='3' width='114' height='139' rx='24' fill='%23fff' stroke='%23211f26' stroke-width='6'/%3E%3Crect x='12' y='12' width='96' height='121' rx='18' fill='%23e8f5ff' stroke='%23211f26' stroke-width='6'/%3E%3Crect x='24' y='24' width='72' height='30' rx='7' fill='%23ffd100' stroke='%23211f26' stroke-width='6'/%3E%3Ccircle cx='84' cy='39' r='6' fill='none' stroke='%23211f26' stroke-width='6'/%3E%3Cg stroke='%23211f26' stroke-width='6'%3E%3Crect x='24' y='67' width='22' height='20' rx='5' fill='%232d8cff'/%3E%3Crect x='49' y='67' width='22' height='20' rx='5' fill='%232d8cff'/%3E%3Crect x='74' y='67' width='22' height='20' rx='5' fill='%232d8cff'/%3E%3Crect x='24' y='92' width='22' height='20' rx='5' fill='%232d8cff'/%3E%3Crect x='49' y='92' width='22' height='20' rx='5' fill='%232d8cff'/%3E%3Crect x='24' y='117' width='22' height='20' rx='5' fill='%232d8cff'/%3E%3Crect x='49' y='117' width='22' height='20' rx='5' fill='%232d8cff'/%3E%3Crect x='74' y='92' width='22' height='45' rx='7' fill='%23f32034'/%3E%3C/g%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-size: contain;
+    background-position: center;
 }
 
 #chat-toggle-button { width: 90px; height: 90px; font-size: 48px; border: 2px solid var(--border-color); border-radius: 20px; background-color: rgba(255, 255, 255, 0.8); backdrop-filter: blur(5px); -webkit-backdrop-filter: blur(5px); color: var(--primary-color); cursor: pointer; display: flex; align-items: center; justify-content: center; box-shadow: var(--shadow); padding: 0; line-height: 1; position: relative; }

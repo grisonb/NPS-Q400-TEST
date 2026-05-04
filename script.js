@@ -3107,7 +3107,46 @@ function initializeCalculator() {
             }
         };
 
+
+        displayInput.readOnly = false;
+        displayInput.inputMode = 'numeric';
+        displayInput.placeholder = '--:--';
+
+        const normalizeTypedTime = (raw) => {
+            const digits = String(raw || '').replace(/\D/g, '').slice(0, 4);
+            if (digits.length === 0) return '';
+            if (digits.length <= 2) return digits;
+            return `${digits.slice(0, 2)}:${digits.slice(2)}`;
+        };
+
+        const commitTypedTime = () => {
+            const m = /^([0-1]?\d|2[0-3]):?([0-5]?\d)$/.exec(displayInput.value.trim());
+            if (!m) {
+                setTimeValue('');
+                masterRecalculate();
+                saveCalculatorState();
+                return;
+            }
+            const hh = m[1].padStart(2, '0');
+            const mm = m[2].padStart(2, '0');
+            setTimeValue(`${hh}:${mm}`);
+            masterRecalculate();
+            saveCalculatorState();
+        };
+
         setTimeValue(initialValue);
+
+        displayInput.addEventListener('input', () => {
+            displayInput.value = normalizeTypedTime(displayInput.value);
+        });
+        displayInput.addEventListener('blur', commitTypedTime);
+        displayInput.addEventListener('keydown', (event) => {
+            if (event.key === 'Enter') {
+                event.preventDefault();
+                commitTypedTime();
+                displayInput.blur();
+            }
+        });
 
         displayInput.addEventListener('dblclick', (e) => {
             e.preventDefault();
@@ -3136,7 +3175,6 @@ function initializeCalculator() {
                 }
             };
 
-            displayInput.addEventListener('click', openTimePicker);
             const clockIcon = wrapper.querySelector('.clock-icon');
             if (clockIcon) {
                 clockIcon.addEventListener('click', openTimePicker);
@@ -3144,6 +3182,7 @@ function initializeCalculator() {
             wrapper.addEventListener('click', (event) => {
                 if (event.target === clearBtn) return;
                 if (event.target === engineInput) return;
+                if (event.target === displayInput) return;
                 openTimePicker(event);
             });
 
