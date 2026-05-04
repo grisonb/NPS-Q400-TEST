@@ -10,7 +10,7 @@ document.addEventListener('DOMContentLoaded', () => {
 // VARIABLES GLOBALES
 // =========================================================================
 let allCommunes = [], map, baseTileLayer, permanentAirportLayer, routesLayer, currentCommune = null, selectedPelicanOACI = null;
-let disabledAirports = new Set(), waterAirports = new Set();
+let disabledAirports = new Set(), waterAirports = new Set(), customPelicanAirports = new Set();
 const MAGNETIC_DECLINATION = 1.0;
 let userMarker = null, watchId = null, accuracyCircle = null, headingLayer = null, lastPosition = null;
 let userToTargetLayer = null, lftwRouteLayer = null;
@@ -67,7 +67,7 @@ const pelicanAirports = [
 ];
 
 const otherAirports = [
-    { oaci: "LFBC", name: "Cazaux", lat: 44.534, lon: -1.155 }, { oaci: "LFBF", name: "Toulouse-Francazal", lat: 43.546, lon: 1.365 }, { oaci: "LFBG", name: "Cognac-Châteaubernard", lat: 45.660, lon: -0.354 }, { oaci: "LFBI", name: "Poitiers-Biard", lat: 46.587, lon: 0.309 }, { oaci: "LFBK", name: "Saint-Brieuc-Armor", lat: 48.538, lon: -2.852 }, { oaci: "LFBO", name: "Toulouse-Blagnac", lat: 43.635, lon: 1.363 }, { oaci: "LFBS", name: "Chambéry-Savoie", lat: 45.640, lon: 5.881 }, { oaci: "LFBT", name: "Tarbes-Lourdes-Pyrénées", lat: 43.185, lon: -0.003 }, { oaci: "LFBU", name: "Angoulême-Cognac", lat: 45.729, lon: 0.220 }, { oaci: "LFBV", name: "Brive-Souillac", lat: 45.040, lon: 1.484 }, { oaci: "LFCU", name: "Avord", lat: 47.056, lon: 2.637 }, { oaci: "LFLA", name: "Auxerre-Branches", lat: 47.848, lon: 3.497 }, { oaci: "LFLC", name: "Clermont-Ferrand-Auvergne", lat: 45.786, lon: 3.169 }, { oaci: "LFLD", name: "Bourges", lat: 47.059, lon: 2.370 }, { oaci: "LFLL", name: "Lyon-Saint Exupéry", lat: 45.725, lon: 5.081 }, { oaci: "LFLN", name: "Saint-Yan", lat: 46.409, lon: 4.013 }, { oaci: "LFLS", name: "Grenoble-Isère", lat: 45.363, lon: 5.331 }, { oaci: "LFLV", name: "Vichy-Charmeil", lat: 46.167, lon: 3.403 }, { oaci: "LFLW", name: "Aurillac", lat: 44.887, lon: 2.418 }, { oaci: "LFLY", name: "Lyon-Bron", lat: 45.729, lon: 4.945 }, { oaci: "LFLZ", name: "Le Puy-Loudes", lat: 45.079, lon: 3.762 }, { oaci: "LFMC", name: "Le Luc-Le Cannet", lat: 43.385, lon: 6.368 }, { oaci: "LFMI", name: "Istres-Le Tubé", lat: 43.524, lon: 4.944 }, { oaci: "LFMN", name: "Nice-Côte d'Azur", lat: 43.665, lon: 7.215 }, { oaci: "LFMQ", name: "Le Castellet", lat: 43.253, lon: 5.786 }, { oaci: "LFMV", name: "Avignon-Provence", lat: 43.906, lon: 4.902 }, { oaci: "LFMY", name: "Salon-de-Provence", lat: 43.606, lon: 5.110 }, { oaci: "LFOA", name: "Avord", lat: 47.056, lon: 2.637 }, { oaci: "LFOB", name: "Paris-Le Bourget", lat: 48.969, lon: 2.441 }, { oaci: "LFOC", name: "Châteaudun", lat: 48.058, lon: 1.378 }, { oaci: "LFOE", name: "Évreux-Fauville", lat: 49.028, lon: 1.218 }, { oaci: "LFOK", name: "Châlons-Vatry", lat: 48.776, lon: 4.185 }, { oaci: "LFOJ", name: "Orléans-Bricy", lat: 47.989, lon: 1.758 }, { oaci: "LFOP", name: "Rouen-Vallée de Seine", lat: 49.385, lon: 1.182 }, { oaci: "LFOQ", name: "Blois-Le Breuil", lat: 47.678, lon: 1.217 }, { oaci: "LFOR", name: "Chartres-Métropole", lat: 48.455, lon: 1.530 }, { oaci: "LFOT", name: "Tours-Val de Loire", lat: 47.432, lon: 0.722 }, { oaci: "LFOU", name: "Cholet-Le Pontreau", lat: 47.081, lon: -0.871 }, { oaci: "LFOV", name: "Laval-Entrammes", lat: 48.033, lon: -0.749 }, { oaci: "LFPB", name: "Paris-Le Bourget", lat: 48.969, lon: 2.441 }, { oaci: "LFPC", name: "Creil", lat: 49.253, lon: 2.520 }, { oaci: "LFPG", name: "Paris-Charles-de-Gaulle", lat: 49.009, lon: 2.547 }, { oaci: "LFPO", name: "Paris-Orly", lat: 48.723, lon: 2.379 }, { oaci: "LFPV", name: "Villacoublay-Vélizy", lat: 48.773, lon: 2.203 }, { oaci: "LFRB", name: "Brest-Bretagne", lat: 48.447, lon: -4.418 }, { oaci: "LFRC", name: "Cherbourg-Manche", lat: 49.650, lon: -1.478 }, { oaci: "LFRD", name: "Dinard-Pleurtuit-Saint-Malo", lat: 48.587, lon: -2.080 }, { oaci: "LFRE", name: "La Baule-Escoublac", lat: 47.289, lon: -2.348 }, { oaci: "LFRF", name: "Granville-Mont-Saint-Michel", lat: 48.887, lon: -1.564 }, { oaci: "LFRG", name: "Deauville-Normandie", lat: 49.365, lon: 0.154 }, { oaci: "LFRH", name: "Lorient-Bretagne-Sud", lat: 47.760, lon: -3.440 }, { oaci: "LFRI", name: "La Roche-sur-Yon-Les Ajoncs", lat: 46.702, lon: -1.381 }, { oaci: "LFRJ", name: "Landivisiau", lat: 48.527, lon: -4.156 }, { oaci: "LFRK", name: "Caen-Carpiquet", lat: 49.173, lon: -0.450 }, { oaci: "LFRL", name: "Lanvéoc-Poulmic", lat: 48.278, lon: -4.437 }, { oaci: "LFRM", name: "Le Mans-Arnage", lat: 47.949, lon: 0.203 }, { oaci: "LFRN", name: "Rennes-Saint-Jacques", lat: 48.070, lon: -1.732 }, { oaci: "LFRO", name: "Lannion-Côte de Granit Rose", lat: 48.755, lon: -3.472 }, { oaci: "LFRQ", name: "Quimper-Pluguffan", lat: 47.975, lon: -4.167 }, { oaci: "LFRS", name: "Nantes-Atlantique", lat: 47.153, lon: -1.607 }, { oaci: "LFRT", name: "Saint-Nazaire-Montoir", lat: 47.312, lon: -2.152 }, { oaci: "LFRU", name: "Morlaix-Ploujean", lat: 48.604, lon: -3.818 }, { oaci: "LFSD", name: "Dijon-Longvic", lat: 47.268, lon: 5.088 }, { oaci: "LFSF", name: "Metz-Nancy-Lorraine", lat: 48.981, lon: 6.251 }, { oaci: "LFSH", name: "Haguenau", lat: 48.790, lon: 7.820 }, { oaci: "LFSJ", name: "Dole-Tavaux", lat: 47.039, lon: 5.428 }, { oaci: "LFSK", name: "Colmar-Houssen", lat: 48.110, lon: 7.359 }, { oaci: "LFSO", name: "Nancy-Ochey", lat: 48.577, lon: 5.955 }, { oaci: "LFSQ", name: "Luxeuil-Saint-Sauveur", lat: 47.779, lon: 6.353 }, { oaci: "LFSR", name: "Reims-Prunay", lat: 49.207, lon: 4.148 }, { oaci: "LFST", name: "Strasbourg-Entzheim", lat: 48.542, lon: 7.628 }, { oaci: "LFSX", name: "Montbéliard-Courcelles", lat: 47.487, lon: 6.852 }, { oaci: "LFYR", name: "Romorantin-Pruniers", lat: 47.352, lon: 1.670 }, { oaci: "LFYD", name: "Dinard", lat: 48.587, lon: -2.080 }, { oaci: "LFXI", name: "Reims-Champagne", lat: 49.308, lon: 4.045 }, { oaci: "LFYL", name: "Lille-Lesquin", lat: 50.563, lon: 3.086 }, { oaci: "LFXM", name: "Melun-Villaroche", lat: 48.608, lon: 2.671 }, { oaci: "LFXO", name: "Beauvais-Tillé", lat: 49.454, lon: 2.112 }, { oaci: "LFXQ", name: "Saint-Omer-Wizernes", lat: 50.725, lon: 2.220 }, { oaci: "LFKS", name: "Solenzara", lat: 41.924, lon: 9.405 }
+    { oaci: "LFBC", name: "Cazaux", lat: 44.534, lon: -1.155 }, { oaci: "LFBH", name: "La Rochelle-Île de Ré", lat: 46.179, lon: -1.195 }, { oaci: "LFBF", name: "Toulouse-Francazal", lat: 43.546, lon: 1.365 }, { oaci: "LFBG", name: "Cognac-Châteaubernard", lat: 45.660, lon: -0.354 }, { oaci: "LFBI", name: "Poitiers-Biard", lat: 46.587, lon: 0.309 }, { oaci: "LFBK", name: "Saint-Brieuc-Armor", lat: 48.538, lon: -2.852 }, { oaci: "LFBO", name: "Toulouse-Blagnac", lat: 43.635, lon: 1.363 }, { oaci: "LFBS", name: "Chambéry-Savoie", lat: 45.640, lon: 5.881 }, { oaci: "LFBT", name: "Tarbes-Lourdes-Pyrénées", lat: 43.185, lon: -0.003 }, { oaci: "LFBU", name: "Angoulême-Cognac", lat: 45.729, lon: 0.220 }, { oaci: "LFBV", name: "Brive-Souillac", lat: 45.040, lon: 1.484 }, { oaci: "LFCU", name: "Avord", lat: 47.056, lon: 2.637 }, { oaci: "LFLA", name: "Auxerre-Branches", lat: 47.848, lon: 3.497 }, { oaci: "LFLC", name: "Clermont-Ferrand-Auvergne", lat: 45.786, lon: 3.169 }, { oaci: "LFLD", name: "Bourges", lat: 47.059, lon: 2.370 }, { oaci: "LFLL", name: "Lyon-Saint Exupéry", lat: 45.725, lon: 5.081 }, { oaci: "LFLN", name: "Saint-Yan", lat: 46.409, lon: 4.013 }, { oaci: "LFLS", name: "Grenoble-Isère", lat: 45.363, lon: 5.331 }, { oaci: "LFLV", name: "Vichy-Charmeil", lat: 46.167, lon: 3.403 }, { oaci: "LFLW", name: "Aurillac", lat: 44.887, lon: 2.418 }, { oaci: "LFLY", name: "Lyon-Bron", lat: 45.729, lon: 4.945 }, { oaci: "LFLZ", name: "Le Puy-Loudes", lat: 45.079, lon: 3.762 }, { oaci: "LFMC", name: "Le Luc-Le Cannet", lat: 43.385, lon: 6.368 }, { oaci: "LFMI", name: "Istres-Le Tubé", lat: 43.524, lon: 4.944 }, { oaci: "LFMN", name: "Nice-Côte d'Azur", lat: 43.665, lon: 7.215 }, { oaci: "LFMQ", name: "Le Castellet", lat: 43.253, lon: 5.786 }, { oaci: "LFMV", name: "Avignon-Provence", lat: 43.906, lon: 4.902 }, { oaci: "LFMY", name: "Salon-de-Provence", lat: 43.606, lon: 5.110 }, { oaci: "LFOA", name: "Avord", lat: 47.056, lon: 2.637 }, { oaci: "LFOB", name: "Paris-Le Bourget", lat: 48.969, lon: 2.441 }, { oaci: "LFOC", name: "Châteaudun", lat: 48.058, lon: 1.378 }, { oaci: "LFOE", name: "Évreux-Fauville", lat: 49.028, lon: 1.218 }, { oaci: "LFOK", name: "Châlons-Vatry", lat: 48.776, lon: 4.185 }, { oaci: "LFOJ", name: "Orléans-Bricy", lat: 47.989, lon: 1.758 }, { oaci: "LFOP", name: "Rouen-Vallée de Seine", lat: 49.385, lon: 1.182 }, { oaci: "LFOQ", name: "Blois-Le Breuil", lat: 47.678, lon: 1.217 }, { oaci: "LFOR", name: "Chartres-Métropole", lat: 48.455, lon: 1.530 }, { oaci: "LFOT", name: "Tours-Val de Loire", lat: 47.432, lon: 0.722 }, { oaci: "LFOU", name: "Cholet-Le Pontreau", lat: 47.081, lon: -0.871 }, { oaci: "LFOV", name: "Laval-Entrammes", lat: 48.033, lon: -0.749 }, { oaci: "LFPB", name: "Paris-Le Bourget", lat: 48.969, lon: 2.441 }, { oaci: "LFPC", name: "Creil", lat: 49.253, lon: 2.520 }, { oaci: "LFPG", name: "Paris-Charles-de-Gaulle", lat: 49.009, lon: 2.547 }, { oaci: "LFPO", name: "Paris-Orly", lat: 48.723, lon: 2.379 }, { oaci: "LFPV", name: "Villacoublay-Vélizy", lat: 48.773, lon: 2.203 }, { oaci: "LFRB", name: "Brest-Bretagne", lat: 48.447, lon: -4.418 }, { oaci: "LFRC", name: "Cherbourg-Manche", lat: 49.650, lon: -1.478 }, { oaci: "LFRD", name: "Dinard-Pleurtuit-Saint-Malo", lat: 48.587, lon: -2.080 }, { oaci: "LFRE", name: "La Baule-Escoublac", lat: 47.289, lon: -2.348 }, { oaci: "LFRF", name: "Granville-Mont-Saint-Michel", lat: 48.887, lon: -1.564 }, { oaci: "LFRG", name: "Deauville-Normandie", lat: 49.365, lon: 0.154 }, { oaci: "LFRH", name: "Lorient-Bretagne-Sud", lat: 47.760, lon: -3.440 }, { oaci: "LFRI", name: "La Roche-sur-Yon-Les Ajoncs", lat: 46.702, lon: -1.381 }, { oaci: "LFRJ", name: "Landivisiau", lat: 48.527, lon: -4.156 }, { oaci: "LFRK", name: "Caen-Carpiquet", lat: 49.173, lon: -0.450 }, { oaci: "LFRL", name: "Lanvéoc-Poulmic", lat: 48.278, lon: -4.437 }, { oaci: "LFRM", name: "Le Mans-Arnage", lat: 47.949, lon: 0.203 }, { oaci: "LFRN", name: "Rennes-Saint-Jacques", lat: 48.070, lon: -1.732 }, { oaci: "LFRO", name: "Lannion-Côte de Granit Rose", lat: 48.755, lon: -3.472 }, { oaci: "LFRQ", name: "Quimper-Pluguffan", lat: 47.975, lon: -4.167 }, { oaci: "LFRS", name: "Nantes-Atlantique", lat: 47.153, lon: -1.607 }, { oaci: "LFRT", name: "Saint-Nazaire-Montoir", lat: 47.312, lon: -2.152 }, { oaci: "LFRU", name: "Morlaix-Ploujean", lat: 48.604, lon: -3.818 }, { oaci: "LFSD", name: "Dijon-Longvic", lat: 47.268, lon: 5.088 }, { oaci: "LFSF", name: "Metz-Nancy-Lorraine", lat: 48.981, lon: 6.251 }, { oaci: "LFSH", name: "Haguenau", lat: 48.790, lon: 7.820 }, { oaci: "LFSJ", name: "Dole-Tavaux", lat: 47.039, lon: 5.428 }, { oaci: "LFSK", name: "Colmar-Houssen", lat: 48.110, lon: 7.359 }, { oaci: "LFSO", name: "Nancy-Ochey", lat: 48.577, lon: 5.955 }, { oaci: "LFSQ", name: "Luxeuil-Saint-Sauveur", lat: 47.779, lon: 6.353 }, { oaci: "LFSR", name: "Reims-Prunay", lat: 49.207, lon: 4.148 }, { oaci: "LFST", name: "Strasbourg-Entzheim", lat: 48.542, lon: 7.628 }, { oaci: "LFSX", name: "Montbéliard-Courcelles", lat: 47.487, lon: 6.852 }, { oaci: "LFYR", name: "Romorantin-Pruniers", lat: 47.352, lon: 1.670 }, { oaci: "LFYD", name: "Dinard", lat: 48.587, lon: -2.080 }, { oaci: "LFXI", name: "Reims-Champagne", lat: 49.308, lon: 4.045 }, { oaci: "LFYL", name: "Lille-Lesquin", lat: 50.563, lon: 3.086 }, { oaci: "LFXM", name: "Melun-Villaroche", lat: 48.608, lon: 2.671 }, { oaci: "LFXO", name: "Beauvais-Tillé", lat: 49.454, lon: 2.112 }, { oaci: "LFXQ", name: "Saint-Omer-Wizernes", lat: 50.725, lon: 2.220 }, { oaci: "LFKS", name: "Solenzara", lat: 41.924, lon: 9.405 }
 ];
 
 // =========================================================================
@@ -86,6 +86,59 @@ const withTimeout = (promise, timeoutMs, timeoutMessage) => new Promise((resolve
         (error) => { clearTimeout(timerId); reject(error); }
     );
 });
+
+const TILE_CACHE_PREFIX = 'test-communes-tile-cache-';
+
+
+function buildStoredTileKey(tileUrl, packName) {
+    const safeUrl = String(tileUrl || '');
+    const safePack = String(packName || '').trim();
+    return safePack ? `${safeUrl}::${safePack}` : safeUrl;
+}
+
+function getTileUrlFromStoredKey(storedUrl) {
+    return String(storedUrl || '').split('::')[0];
+}
+
+function getPreferredTileCacheName(cacheKeys = []) {
+    const tileCacheNames = cacheKeys.filter((name) => name.startsWith(TILE_CACHE_PREFIX)).sort();
+    if (tileCacheNames.length) {
+        return tileCacheNames[tileCacheNames.length - 1];
+    }
+    const versionDigits = (typeof APP_VERSION !== 'undefined' ? String(APP_VERSION) : '').replace(/[^0-9]/g, '');
+    return `${TILE_CACHE_PREFIX}v${versionDigits || 'fallback'}`;
+}
+
+async function persistTilesBatchToCache(batch = []) {
+    if (!('caches' in window) || !Array.isArray(batch) || batch.length === 0) return;
+    try {
+        const cacheKeys = await caches.keys();
+        const tileCacheName = getPreferredTileCacheName(cacheKeys);
+        const cache = await caches.open(tileCacheName);
+        await Promise.all(batch.map(({ url, tile, tileUrl }) => {
+            const targetUrl = tileUrl || getTileUrlFromStoredKey(url);
+            if (!targetUrl || !tile) return Promise.resolve();
+            const contentType = tile.type || (targetUrl.endsWith('.jpg') || targetUrl.endsWith('.jpeg') ? 'image/jpeg' : 'image/png');
+            return cache.put(targetUrl, new Response(tile, { headers: { 'Content-Type': contentType } }));
+        }));
+    } catch (error) {
+        console.warn('Impossible de persister les tuiles dans Cache Storage:', error);
+    }
+}
+
+async function clearTileCaches() {
+    if (!('caches' in window)) return;
+    const cacheNames = await caches.keys();
+    const targets = cacheNames.filter((name) => name.startsWith(TILE_CACHE_PREFIX));
+    await Promise.all(targets.map((name) => caches.delete(name)));
+}
+
+async function refreshOfflineTilesRendering() {
+    notifyServiceWorkerActivePacks(activeOfflinePacks);
+    if (map && baseTileLayer) {
+        setupBaseTileLayer();
+    }
+}
 const calculateDestinationPoint = (lat, lon, bearing, distanceNm) => {
     const R = 3440.065; // Rayon de la Terre en milles nautiques
     const latRad = toRad(lat);
@@ -164,29 +217,30 @@ async function initializeApp() {
         }
     }
     if (!FORCE_DISPLAY_MODE) {
+        activeOfflinePacks = JSON.parse(localStorage.getItem(OFFLINE_ACTIVE_PACKS_KEY) || '[]');
+        if (!Array.isArray(activeOfflinePacks)) activeOfflinePacks = [];
+        const savedMapSourceMode = localStorage.getItem(MAP_SOURCE_MODE_KEY);
+        mapSourceMode = savedMapSourceMode === 'offline' ? 'offline' : DEFAULT_MAP_SOURCE_MODE;
+        offlineOnlineFallbackMode = localStorage.getItem(OFFLINE_ONLINE_FALLBACK_KEY) === null
+            ? DEFAULT_OFFLINE_ONLINE_FALLBACK
+            : localStorage.getItem(OFFLINE_ONLINE_FALLBACK_KEY) === 'true';
+
         try {
-            await Promise.race([
-                initDB(),
-                new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout ouverture IndexedDB')), 4000))
-            ]);
-            activeOfflinePacks = JSON.parse(localStorage.getItem(OFFLINE_ACTIVE_PACKS_KEY) || '[]');
-            if (!Array.isArray(activeOfflinePacks)) activeOfflinePacks = [];
-            const savedMapSourceMode = localStorage.getItem(MAP_SOURCE_MODE_KEY);
-            mapSourceMode = savedMapSourceMode === 'offline' ? 'offline' : DEFAULT_MAP_SOURCE_MODE;
-            offlineOnlineFallbackMode = localStorage.getItem(OFFLINE_ONLINE_FALLBACK_KEY) === null
-                ? DEFAULT_OFFLINE_ONLINE_FALLBACK
-                : localStorage.getItem(OFFLINE_ONLINE_FALLBACK_KEY) === 'true';
-            await initializeOfflineTilePreference();
-            // Évite de bloquer le démarrage sur un scan potentiellement long de la DB offline.
-            await updateBaseTileNativeZoomFromAvailability({ forceScan: true });
-            displayInstalledMaps();
+            await withTimeout(initDB(), 12000, 'Timeout ouverture IndexedDB');
         } catch (startupError) {
-            console.error('Initialisation offline incomplète:', startupError);
-            mapSourceMode = DEFAULT_MAP_SOURCE_MODE;
-            offlineOnlineFallbackMode = DEFAULT_OFFLINE_ONLINE_FALLBACK;
-            activeOfflinePacks = [];
-            displayInstalledMaps();
+            console.warn('Initialisation IndexedDB lente/indisponible au démarrage:', startupError);
+            setTimeout(() => {
+                initDB().catch(() => {});
+            }, 0);
         }
+
+        await initializeOfflineTilePreference();
+        // Démarrage rapide: utilise d'abord les bornes de zoom déjà connues, puis lance un scan complet en arrière-plan.
+        await updateBaseTileNativeZoomFromAvailability({ forceScan: false });
+        setTimeout(() => {
+            updateBaseTileNativeZoomFromAvailability({ forceScan: true }).catch(() => {});
+        }, 0);
+        displayInstalledMaps();
     } else {
         mapSourceMode = DEFAULT_MAP_SOURCE_MODE;
         offlineOnlineFallbackMode = DEFAULT_OFFLINE_ONLINE_FALLBACK;
@@ -379,6 +433,7 @@ function clearCurrentSelection() {
     drawPermanentAirportMarkers();
     currentCommune = null;
     localStorage.removeItem('currentCommune');
+    updateBaseLabels();
     updateCalculatorData();
     masterRecalculate();
     updateCommuneDisplay(null);
@@ -392,6 +447,7 @@ function setupEventListeners() {
     const clearSearchBtn = document.getElementById('clear-search');
     const airportCountInput = document.getElementById('airport-count');
     const gpsFeuButton = document.getElementById('gps-feu-button');
+    const centerGpsButton = document.getElementById('center-gps-button');
     const liveGpsButton = document.getElementById('live-gps-button');
     const lftwRouteButton = document.getElementById('lftw-route-button');
     const gaarModeButton = document.getElementById('gaar-mode-button');
@@ -412,6 +468,7 @@ function setupEventListeners() {
     const mapSourceOnlineBtn = document.getElementById('map-source-online-btn');
     const mapSourceOfflineBtn = document.getElementById('map-source-offline-btn');
     const purgeInactivePacksBtn = document.getElementById('purge-inactive-packs-btn');
+    const refreshOfflineTilesBtn = document.getElementById('refresh-offline-tiles-btn');
     
     if (mainActionButtons) {
         const versionDisplay = document.getElementById('app-version-display');
@@ -526,6 +583,10 @@ function setupEventListeners() {
         );
     });
 
+    if (centerGpsButton) {
+        centerGpsButton.addEventListener('click', centerMapOnCurrentPosition);
+    }
+
     liveGpsButton.addEventListener('click', toggleLiveGps);
     lftwRouteButton.addEventListener('click', toggleLftwRoute);
     gaarModeButton.addEventListener('click', toggleGaarVisibility);
@@ -616,6 +677,19 @@ function setupEventListeners() {
         });
     }
 
+    if (refreshOfflineTilesBtn) {
+        refreshOfflineTilesBtn.addEventListener('click', async () => {
+            refreshOfflineTilesBtn.disabled = true;
+            refreshOfflineTilesBtn.textContent = '⏳ Rafraîchissement...';
+            try {
+                await refreshOfflineTilesRendering();
+            } finally {
+                refreshOfflineTilesBtn.disabled = false;
+                refreshOfflineTilesBtn.textContent = "Rafraîchir l'affichage des cartes offline";
+            }
+        });
+    }
+
     updateBaseLabels();
     updateLftwButtonState();
     updateGaarButtonState();
@@ -645,6 +719,19 @@ async function findOfflineTileZoomRange() {
     if (!db) return null;
     const targetPacks = new Set(activeOfflinePacks);
     return new Promise((resolve) => {
+        let settled = false;
+        const finalize = (value) => {
+            if (settled) return;
+            settled = true;
+            clearTimeout(safetyTimer);
+            resolve(value);
+        };
+
+        const safetyTimer = setTimeout(() => {
+            console.warn('Scan zoom offline interrompu (timeout sécurité).');
+            finalize(null);
+        }, 8000);
+
         const tx = db.transaction('tiles', 'readonly');
         const store = tx.objectStore('tiles');
         const request = store.openCursor();
@@ -654,18 +741,15 @@ async function findOfflineTileZoomRange() {
         request.onsuccess = (event) => {
             const cursor = event.target.result;
             if (!cursor) {
-                if (minZoom === null || maxZoom === null) {
-                    resolve(null);
-                } else {
-                    resolve({ minZoom, maxZoom });
-                }
+                finalize(minZoom === null || maxZoom === null ? null : { minZoom, maxZoom });
                 return;
             }
             if (targetPacks.size && !targetPacks.has(cursor.value?.packName || '')) {
                 cursor.continue();
                 return;
             }
-            const url = cursor.value?.url;
+            const storedUrl = cursor.value?.url;
+            const url = getTileUrlFromStoredKey(storedUrl);
             if (typeof url === 'string') {
                 const match = url.match(/\/(\d+)\/\d+\/\d+\.(png|jpg|jpeg)(?:\?.*)?$/i);
                 if (match) {
@@ -679,14 +763,10 @@ async function findOfflineTileZoomRange() {
             cursor.continue();
         };
 
-        request.onerror = () => resolve(null);
-        tx.oncomplete = () => {
-            if (minZoom === null || maxZoom === null) {
-                resolve(null);
-                return;
-            }
-            resolve({ minZoom, maxZoom });
-        };
+        request.onerror = () => finalize(null);
+        tx.onerror = () => finalize(null);
+        tx.onabort = () => finalize(null);
+        tx.oncomplete = () => finalize(minZoom === null || maxZoom === null ? null : { minZoom, maxZoom });
     });
 }
 
@@ -825,6 +905,7 @@ function displayCommuneDetails(commune, shouldFitBounds = true) {
         drawLftwRoute();
     }
 
+    updateBaseLabels();
     updateCalculatorData();
     updateMapBingoDisplay();
     // Nous appelons directement la fonction de dessin. Si le GPS est actif, elle utilisera la dernière position.
@@ -887,7 +968,7 @@ function drawRoute(startLatLng, endLatLng, options = {}) {
     }
 }
 
-function getClosestAirports(lat, lon, count) { return pelicanAirports.filter(ap => !disabledAirports.has(ap.oaci)).map(ap => ({ ...ap, distance: calculateDistanceInNm(lat, lon, ap.lat, ap.lon) })).sort((a, b) => a.distance - b.distance).slice(0, count); }
+function getClosestAirports(lat, lon, count) { const customPelican = otherAirports.filter(ap => customPelicanAirports.has(ap.oaci)); return [...pelicanAirports, ...customPelican].filter(ap => !disabledAirports.has(ap.oaci)).map(ap => ({ ...ap, distance: calculateDistanceInNm(lat, lon, ap.lat, ap.lon) })).sort((a, b) => a.distance - b.distance).slice(0, count); }
 function getAirportByOaci(oaci) {
     return [...pelicanAirports, ...otherAirports].find(ap => ap.oaci === oaci) || null;
 }
@@ -904,15 +985,41 @@ function updateBaseLabels() {
     });
     const deroutFuelMiniBaseLabel = document.getElementById('derout-fuel-mini-base-label');
     if (deroutFuelMiniBaseLabel) deroutFuelMiniBaseLabel.textContent = `Fuel mini 1 largage / BASE (${selectedBaseOACI}) :`;
+
+    const deroutFuelMiniPelicLabel = document.getElementById('derout-fuel-mini-pelic-label');
+    if (deroutFuelMiniPelicLabel) {
+        const selectedPelic = selectedPelicanOACI ? getAirportByOaci(selectedPelicanOACI) : null;
+        const pelicCode = selectedPelic ? selectedPelic.oaci : 'PÉLIC';
+        deroutFuelMiniPelicLabel.textContent = `Fuel mini 1 largage / Pélic (${pelicCode}) :`;
+    }
 }
 function refreshUI() { drawPermanentAirportMarkers(); if (currentCommune) displayCommuneDetails(currentCommune, false); }
 function drawPermanentAirportMarkers() {
     permanentAirportLayer.clearLayers();
 
     otherAirports.forEach(airport => {
+        const isCustomPelic = customPelicanAirports.has(airport.oaci);
         const isBase = selectedBaseOACI === airport.oaci;
         const baseButtonText = isBase ? 'BASE ✓' : 'BASE';
         const baseButtonClass = isBase ? 'base-btn base-btn-active' : 'base-btn';
+        const customPelicText = isCustomPelic ? 'PÉLIC ✓' : 'PÉLIC';
+        const customPelicClass = isCustomPelic ? 'base-btn base-btn-active' : 'base-btn';
+
+        if (isCustomPelic) {
+            const isDisabled = disabledAirports.has(airport.oaci);
+            const isWater = waterAirports.has(airport.oaci);
+            let iconClass = "custom-marker-icon airport-marker-base ", iconHTML = "✈️";
+            isDisabled ? (iconClass += "airport-marker-disabled", iconHTML = "<b>+</b>") : isWater ? (iconClass += "airport-marker-water", iconHTML = "💧") : iconClass += "airport-marker-active";
+            const waterButtonText = isWater ? "RETARDANT" : "EAU";
+            const waterButtonClass = isWater ? "water-btn water-btn-retardant" : "water-btn";
+            const disableButtonText = isDisabled ? "Activer" : "Désactiver";
+            const disableButtonClass = isDisabled ? "enable-btn" : "disable-btn";
+            const marker = L.marker([airport.lat, airport.lon], { icon: L.divIcon({ className: iconClass, html: iconHTML }) });
+            marker.bindPopup(`<div class="airport-popup"><b>${airport.oaci}</b><br>${airport.name}<div class="popup-buttons"><button class="${waterButtonClass}" onclick="window.toggleWater('${airport.oaci}')">${waterButtonText}</button><button class="${disableButtonClass}" onclick="window.toggleAirport('${airport.oaci}')">${disableButtonText}</button><button class="${baseButtonClass}" onclick="window.setBaseAirport('${airport.oaci}')">${baseButtonText}</button><button class="${customPelicClass}" onclick="window.toggleCustomPelican('${airport.oaci}')">${customPelicText}</button></div></div>`);
+            marker.addTo(permanentAirportLayer);
+            return;
+        }
+
         const marker = L.circleMarker([airport.lat, airport.lon], {
             radius: 2.5,
             fillColor: 'black',
@@ -920,7 +1027,7 @@ function drawPermanentAirportMarkers() {
             color: 'transparent',
             weight: 15,
             opacity: 0
-        }).bindPopup(`<div class="airport-popup"><b>${airport.oaci}</b><br>${airport.name}<div class="popup-buttons"><button class="${baseButtonClass}" onclick="window.setBaseAirport('${airport.oaci}')">${baseButtonText}</button></div></div>`);
+        }).bindPopup(`<div class="airport-popup"><b>${airport.oaci}</b><br>${airport.name}<div class="popup-buttons"><button class="${baseButtonClass}" onclick="window.setBaseAirport('${airport.oaci}')">${baseButtonText}</button><button class="${customPelicClass}" onclick="window.toggleCustomPelican('${airport.oaci}')">${customPelicText}</button></div></div>`);
         marker.addTo(permanentAirportLayer);
     });
 
@@ -944,55 +1051,29 @@ function drawPermanentAirportMarkers() {
 }
 
 async function loadDepartmentsLayerData() {
-    const byDepartment = new Map();
+    const DEPARTMENTS_GEOJSON_URL = 'https://etalab-datasets.geo.data.gouv.fr/contours-administratifs/latest/geojson/departements-1000m.geojson';
+    const response = await fetch(DEPARTMENTS_GEOJSON_URL, { cache: 'force-cache' });
+    if (!response.ok) {
+        throw new Error(`HTTP ${response.status}`);
+    }
 
-    allCommunes.forEach((commune) => {
-        const depCode = commune?.dep_code;
-        if (!depCode) return;
-
-        if (!byDepartment.has(depCode)) {
-            byDepartment.set(depCode, {
-                points: [],
-                latSum: 0,
-                lonSum: 0,
-                count: 0
-            });
-        }
-
-        const depData = byDepartment.get(depCode);
-
-        if (Number.isFinite(commune.latitude_centre) && Number.isFinite(commune.longitude_centre)) {
-            depData.points.push([commune.latitude_centre, commune.longitude_centre]);
-        }
-
-        if (Number.isFinite(commune.latitude_mairie) && Number.isFinite(commune.longitude_mairie)) {
-            depData.latSum += commune.latitude_mairie;
-            depData.lonSum += commune.longitude_mairie;
-            depData.count += 1;
-        }
-    });
-
-    byDepartment.forEach((depData, depCode) => {
-        if (!depData.points.length) return;
-
-        const sampleStep = Math.max(1, Math.floor(depData.points.length / 400));
-        const sampledPoints = depData.points.filter((_, idx) => idx % sampleStep === 0);
-        const hull = computeConvexHull(sampledPoints);
-        if (hull.length < 3) return;
-
-        const polygon = L.polygon(hull, {
+    const departmentsGeojson = await response.json();
+    const geoJsonLayer = L.geoJSON(departmentsGeojson, {
+        style: {
             color: '#111',
             weight: 1,
             opacity: 0.9,
             fillColor: '#ffffff',
             fillOpacity: 0.03
-        });
-        departmentsLayerGroup.addLayer(polygon);
+        }
+    });
 
-        const center = depData.count > 0
-            ? [depData.latSum / depData.count, depData.lonSum / depData.count]
-            : polygon.getBounds().getCenter();
-
+    geoJsonLayer.eachLayer((layer) => {
+        departmentsLayerGroup.addLayer(layer);
+        const properties = layer.feature?.properties || {};
+        const depCode = properties.code || properties.code_departement || properties.dep_code || '';
+        if (!depCode || !layer.getBounds) return;
+        const center = layer.getBounds().getCenter();
         departmentsLabelsLayer.addLayer(L.marker(center, {
             icon: L.divIcon({
                 className: 'department-code-label',
@@ -1041,6 +1122,8 @@ const loadState = () => {
     if (savedDisabled) disabledAirports = new Set(JSON.parse(savedDisabled));
     const savedWater = localStorage.getItem('water_airports');
     if (savedWater) waterAirports = new Set(JSON.parse(savedWater));
+    const savedCustomPelic = localStorage.getItem('custom_pelican_airports');
+    if (savedCustomPelic) customPelicanAirports = new Set(JSON.parse(savedCustomPelic));
     const savedBase = localStorage.getItem('selected_base_oaci');
     if (savedBase && getAirportByOaci(savedBase)) {
         selectedBaseOACI = savedBase;
@@ -1050,9 +1133,22 @@ const saveState = () => {
     localStorage.setItem('disabled_airports', JSON.stringify([...disabledAirports]));
     localStorage.setItem('water_airports', JSON.stringify([...waterAirports]));
     localStorage.setItem('selected_base_oaci', selectedBaseOACI);
+    localStorage.setItem('custom_pelican_airports', JSON.stringify([...customPelicanAirports]));
 };
 window.toggleAirport = oaci => { disabledAirports.has(oaci) ? disabledAirports.delete(oaci) : (disabledAirports.add(oaci), waterAirports.delete(oaci)), saveState(), refreshUI() };
 window.toggleWater = oaci => { waterAirports.has(oaci) ? waterAirports.delete(oaci) : (waterAirports.add(oaci), disabledAirports.delete(oaci)), saveState(), refreshUI() };
+window.toggleCustomPelican = oaci => {
+    if (customPelicanAirports.has(oaci)) {
+        customPelicanAirports.delete(oaci);
+        waterAirports.delete(oaci);
+        disabledAirports.delete(oaci);
+    } else {
+        customPelicanAirports.add(oaci);
+        disabledAirports.delete(oaci);
+    }
+    saveState();
+    refreshUI();
+};
 window.setBaseAirport = oaci => {
     if (!getAirportByOaci(oaci)) return;
     selectedBaseOACI = oaci;
@@ -1065,6 +1161,40 @@ window.setBaseAirport = oaci => {
     refreshUI();
     if (map) map.closePopup();
 };
+
+function centerMapOnCurrentPosition() {
+    if (!map) return;
+
+    if (!navigator.geolocation) {
+        if (userMarker && userMarker.getLatLng()) {
+            const pos = userMarker.getLatLng();
+            map.setView([pos.lat, pos.lng], Math.max(map.getZoom(), 11));
+            return;
+        }
+        alert("La géolocalisation n'est pas supportée par votre navigateur.");
+        return;
+    }
+
+    navigator.geolocation.getCurrentPosition(
+        (pos) => {
+            updateUserPosition(pos);
+            map.setView([pos.coords.latitude, pos.coords.longitude], Math.max(map.getZoom(), 11));
+        },
+        () => {
+            if (lastPosition && Number.isFinite(lastPosition.lat) && Number.isFinite(lastPosition.lng)) {
+                map.setView([lastPosition.lat, lastPosition.lng], Math.max(map.getZoom(), 11));
+                return;
+            }
+            if (userMarker && userMarker.getLatLng()) {
+                const pos = userMarker.getLatLng();
+                map.setView([pos.lat, pos.lng], Math.max(map.getZoom(), 11));
+                return;
+            }
+            alert("Impossible d'obtenir la position GPS. Vérifiez les autorisations.");
+        },
+        { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+    );
+}
 
 function toggleLiveGps() {
     const liveGpsButton = document.getElementById('live-gps-button');
@@ -1135,6 +1265,7 @@ function findClosestCommune(lat, lon, maxDistanceNm = null) {
 
 function updateUserPosition(pos) {
     const { latitude, longitude } = pos.coords;
+    lastPosition = { lat: latitude, lng: longitude };
 
     if (!userMarker) {
         // La classe 'user-marker' dans style.css définit déjà un rond rouge. 
@@ -1225,7 +1356,7 @@ function initDB() {
             reject(new Error('IndexedDB indisponible'));
             return;
         }
-        const request = indexedDB.open('OfflineTilesDB', 2);
+        const request = indexedDB.open('OfflineTilesDB', 3);
         request.onupgradeneeded = event => {
             const dbInstance = event.target.result;
             const transaction = event.target.transaction;
@@ -1233,10 +1364,18 @@ function initDB() {
             if (!dbInstance.objectStoreNames.contains('tiles')) {
                 const store = dbInstance.createObjectStore('tiles', { keyPath: 'url' });
                 store.createIndex('packName', 'packName', { unique: false });
+                store.createIndex('tileUrl', 'tileUrl', { unique: false });
             }
 
             if (!dbInstance.objectStoreNames.contains('settings')) {
                 dbInstance.createObjectStore('settings', { keyPath: 'key' });
+            }
+
+            if (dbInstance.objectStoreNames.contains('tiles')) {
+                const tilesStore = transaction.objectStore('tiles');
+                if (!tilesStore.indexNames.contains('tileUrl')) {
+                    tilesStore.createIndex('tileUrl', 'tileUrl', { unique: false });
+                }
             }
 
             if (transaction && dbInstance.objectStoreNames.contains('settings')) {
@@ -1284,25 +1423,25 @@ function getOfflineTilesEnabled() {
 }
 
 function setOfflineTilesEnabled(enabled) {
-    return new Promise((resolve, reject) => {
-        if (!db) {
-            offlineTilesMode = !!enabled;
-            localStorage.setItem(OFFLINE_TILES_ENABLED_KEY, String(offlineTilesMode));
-            notifyServiceWorkerOfflineTilesPreference(enabled);
-            resolve();
-            return;
-        }
+    offlineTilesMode = !!enabled;
+    localStorage.setItem(OFFLINE_TILES_ENABLED_KEY, String(offlineTilesMode));
+    notifyServiceWorkerOfflineTilesPreference(offlineTilesMode);
+
+    if (!db) {
+        return Promise.resolve();
+    }
+
+    try {
         const transaction = db.transaction('settings', 'readwrite');
         const store = transaction.objectStore('settings');
-        store.put({ key: OFFLINE_TILES_ENABLED_KEY, value: enabled });
-        transaction.oncomplete = () => {
-            offlineTilesMode = !!enabled;
-            localStorage.setItem(OFFLINE_TILES_ENABLED_KEY, String(offlineTilesMode));
-            notifyServiceWorkerOfflineTilesPreference(enabled);
-            resolve();
-        };
-        transaction.onerror = () => reject(transaction.error);
-    });
+        store.put({ key: OFFLINE_TILES_ENABLED_KEY, value: offlineTilesMode });
+        transaction.onerror = () => console.warn('[Offline] Impossible de persister la préférence offline:', transaction.error);
+        transaction.onabort = () => console.warn('[Offline] Transaction annulée lors de la persistance offline:', transaction.error);
+    } catch (error) {
+        console.warn('[Offline] IndexedDB indisponible, préférence conservée en localStorage uniquement:', error);
+    }
+
+    return Promise.resolve();
 }
 
 function notifyServiceWorkerOfflineTilesPreference(enabled) {
@@ -1342,6 +1481,7 @@ async function setOfflineActivePacks(packs) {
         } catch (_) {}
     }
     notifyServiceWorkerActivePacks(activeOfflinePacks);
+    await refreshOfflineTilesRendering();
 }
 
 function setOfflineOnlineFallbackMode(enabled) {
@@ -1383,11 +1523,7 @@ async function setMapSourceMode(mode) {
     updateMapSourceButtons();
     updateOfflineStatus();
     try {
-        await withTimeout(
-            setOfflineTilesEnabled(mapSourceMode === 'offline'),
-            4000,
-            "Changement de mode trop long (IndexedDB)."
-        );
+        await setOfflineTilesEnabled(mapSourceMode === 'offline');
         setOfflineOnlineFallbackMode(false);
         notifyServiceWorkerActivePacks(activeOfflinePacks);
         try {
@@ -1529,11 +1665,13 @@ async function handleZipImport(file) {
         for (let i = 0; i < zipEntries.length; i += 1) {
             const fileEntry = zipEntries[i];
             if (fileEntry.dir) continue;
-            const parsedTile = parseTilePathFromName(fileEntry.name);
-            if (!parsedTile) continue;
-            validEntries.push({ fileEntry, tilePath: parsedTile.tilePath });
-            importedMaxZoom = Math.max(importedMaxZoom, parsedTile.zoom);
-            importedMinZoom = Math.min(importedMinZoom, parsedTile.zoom);
+            const parsedTiles = parseTilePathFromName(fileEntry.name);
+            if (!parsedTiles.length) continue;
+            parsedTiles.forEach((parsedTile) => {
+                validEntries.push({ fileEntry, tilePath: parsedTile.tilePath });
+                importedMaxZoom = Math.max(importedMaxZoom, parsedTile.zoom);
+                importedMinZoom = Math.min(importedMinZoom, parsedTile.zoom);
+            });
 
             if (i % 1000 === 0) {
                 statusMessage.textContent = `Préparation des tuiles... ${i} / ${zipEntries.length}`;
@@ -1549,15 +1687,17 @@ async function handleZipImport(file) {
 
         statusMessage.textContent = `Préparation terminée. Importation de ${totalFiles} tuiles...`;
 
-        const batchSize = file.size > 300 * 1024 * 1024 ? 8 : 24;
+        const batchSize = file.size > 300 * 1024 * 1024 ? 16 : 48;
         let processedFiles = 0;
 
         for (let i = 0; i < validEntries.length; i += batchSize) {
             const batchEntries = validEntries.slice(i, i + batchSize);
             const batch = await Promise.all(batchEntries.map(async ({ fileEntry, tilePath }) => {
                 const blob = await fileEntry.async('blob');
+                const tileUrl = `https://a.tile.openstreetmap.org/${tilePath}`;
                 return {
-                    url: `https://a.tile.openstreetmap.org/${tilePath}`,
+                    url: buildStoredTileKey(tileUrl, packName),
+                    tileUrl,
                     tile: blob,
                     packName: packName
                 };
@@ -1576,6 +1716,17 @@ async function handleZipImport(file) {
                 transaction.onerror = () => reject(transaction.error);
             });
 
+            const batchIndex = Math.floor(i / batchSize);
+            const shouldPersistCacheBatch = (batchIndex % 6 === 0) || (i + batchSize >= validEntries.length);
+            if (shouldPersistCacheBatch) {
+                void withTimeout(
+                    persistTilesBatchToCache(batch),
+                    2500,
+                    'Persistance cache trop longue'
+                ).catch((cacheError) => {
+                    console.warn('Persistance Cache Storage non bloquante ignorée:', cacheError);
+                });
+            }
             await new Promise((resolve) => setTimeout(resolve, 0));
         }
 
@@ -1586,9 +1737,7 @@ async function handleZipImport(file) {
             installedPacks.push({ name: packName, date: new Date().toLocaleDateString() });
             localStorage.setItem('installedMapPacks', JSON.stringify(installedPacks));
         }
-        if (!activeOfflinePacks.includes(packName)) {
-            await setOfflineActivePacks([...activeOfflinePacks, packName]);
-        }
+        await setOfflineActivePacks([packName]);
         const currentOfflineMax = Number.parseInt(localStorage.getItem(OFFLINE_TILES_MAX_ZOOM_KEY) || '', 10);
         const currentOfflineMin = Number.parseInt(localStorage.getItem(OFFLINE_TILES_MIN_ZOOM_KEY) || '', 10);
         const nextOfflineMin = Number.isFinite(currentOfflineMin) ? Math.min(currentOfflineMin, importedMinZoom) : importedMinZoom;
@@ -1607,18 +1756,38 @@ async function handleZipImport(file) {
     }
 }
 
+function isPlausibleTileZoom(value) {
+    return Number.isFinite(value) && value >= 0 && value <= 22;
+}
+
 function parseTilePathFromName(name) {
     const normalizedName = String(name || '').replace(/\\/g, '/');
     const xyzMatch = normalizedName.match(/(?:^|\/)(\d+)\/(\d+)\/(\d+)\.(png|jpg|jpeg)$/i);
-    const flatMatch = xyzMatch ? null : normalizedName.match(/(?:^|\/)(\d+)[-_](\d+)[-_](\d+)\.(png|jpg|jpeg)$/i);
-    const parts = xyzMatch || flatMatch;
-    if (!parts) return null;
-    const zoom = Number.parseInt(parts[1], 10);
-    if (!Number.isFinite(zoom)) return null;
-    return {
-        tilePath: `${parts[1]}/${parts[2]}/${parts[3]}.png`,
-        zoom
-    };
+    if (xyzMatch) {
+        const zoom = Number.parseInt(xyzMatch[1], 10);
+        if (!isPlausibleTileZoom(zoom)) return [];
+        return [{ tilePath: `${xyzMatch[1]}/${xyzMatch[2]}/${xyzMatch[3]}.png`, zoom }];
+    }
+
+    const flatMatch = normalizedName.match(/(?:^|\/)(\d+)[-_](\d+)[-_](\d+)\.(png|jpg|jpeg)$/i);
+    if (!flatMatch) return [];
+
+    const a = Number.parseInt(flatMatch[1], 10);
+    const c = Number.parseInt(flatMatch[3], 10);
+    const candidates = [];
+
+    if (isPlausibleTileZoom(a)) {
+        candidates.push({ tilePath: `${flatMatch[1]}/${flatMatch[2]}/${flatMatch[3]}.png`, zoom: a });
+    }
+    // Compatibilité imports plats potentiellement en x_y_z : on ajoute aussi z/x/y.
+    if (isPlausibleTileZoom(c)) {
+        const altTilePath = `${flatMatch[3]}/${flatMatch[1]}/${flatMatch[2]}.png`;
+        if (!candidates.some((entry) => entry.tilePath === altTilePath)) {
+            candidates.push({ tilePath: altTilePath, zoom: c });
+        }
+    }
+
+    return candidates;
 }
 
 function displayInstalledMaps() {
@@ -1630,7 +1799,7 @@ function displayInstalledMaps() {
     list.innerHTML = '';
 
     if (activeOfflinePacks.length === 0 && installedPacks.length > 0) {
-        activeOfflinePacks = [...installedPackNames];
+        activeOfflinePacks = [installedPackNames[0]];
         localStorage.setItem(OFFLINE_ACTIVE_PACKS_KEY, JSON.stringify(activeOfflinePacks));
         notifyServiceWorkerActivePacks(activeOfflinePacks);
     } else {
@@ -1666,10 +1835,17 @@ function displayInstalledMaps() {
     list.querySelectorAll('.offline-pack-active-toggle').forEach((checkbox) => {
         checkbox.addEventListener('change', async () => {
             const toggles = Array.from(list.querySelectorAll('.offline-pack-active-toggle'));
-            const nextActive = toggles.filter((el) => el.checked).map((el) => el.dataset.packName).filter(Boolean);
+            if (checkbox.checked) {
+                toggles.forEach((el) => {
+                    if (el !== checkbox) el.checked = false;
+                });
+            }
+            const nextActive = checkbox.checked && checkbox.dataset.packName ? [checkbox.dataset.packName] : [];
             await setOfflineActivePacks(nextActive);
-            await updateBaseTileNativeZoomFromAvailability({ forceScan: true });
-            setupBaseTileLayer();
+            await updateBaseTileNativeZoomFromAvailability({ forceScan: false });
+            setTimeout(() => {
+                updateBaseTileNativeZoomFromAvailability({ forceScan: true }).catch(() => {});
+            }, 0);
             updateOfflineStatus();
         });
     });
@@ -1736,6 +1912,45 @@ window.deleteMapPack = async function(packName) {
         tx.onabort = () => reject(tx.error || new Error('Transaction lecture indexedDB annulée (scan)'));
     });
 
+
+    const deletePackChunkByIndex = (limit = 400) => new Promise((resolve, reject) => {
+        let deleted = 0;
+        let resolved = false;
+        const tx = db.transaction('tiles', 'readwrite');
+        const store = tx.objectStore('tiles');
+        const index = store.index('packName');
+        const req = index.openCursor(IDBKeyRange.only(packName));
+
+        const finish = (hasMore) => {
+            if (resolved) return;
+            resolved = true;
+            resolve({ deleted, hasMore });
+        };
+
+        req.onsuccess = () => {
+            const cursor = req.result;
+            if (!cursor) {
+                finish(false);
+                return;
+            }
+
+            const delReq = cursor.delete();
+            delReq.onsuccess = () => {
+                deleted += 1;
+                if (deleted >= limit) {
+                    finish(true);
+                    return;
+                }
+                cursor.continue();
+            };
+            delReq.onerror = () => reject(delReq.error || new Error('Erreur suppression clé pack (index)'));
+        };
+
+        req.onerror = () => reject(req.error || new Error('Erreur lecture pack (index+delete)'));
+        tx.onerror = () => reject(tx.error || new Error('Erreur transaction suppression pack (index+delete)'));
+        tx.onabort = () => reject(tx.error || new Error('Transaction suppression pack annulée (index+delete)'));
+    });
+
     const deleteKeysBatch = (keys) => new Promise((resolve, reject) => {
         if (!keys.length) {
             resolve(0);
@@ -1799,9 +2014,19 @@ window.deleteMapPack = async function(packName) {
             await withTimeout(initDB(), 15000, 'Initialisation indexedDB trop longue');
         }
 
-        let deletedCount = await purgeByCollector(collectPackKeysByIndex, 200);
-        if (deletedCount === 0) {
-            deletedCount = await purgeByCollector(collectPackKeysByScan, 100);
+        let deletedCount = 0;
+        try {
+            while (true) {
+                const { deleted, hasMore } = await withTimeout(deletePackChunkByIndex(500), 45000, 'Suppression indexée du pack trop longue');
+                deletedCount += deleted;
+                if (!hasMore) break;
+            }
+        } catch (fastDeleteError) {
+            console.warn('Suppression indexée rapide indisponible, fallback sur collecte:', fastDeleteError);
+            deletedCount = await purgeByCollector(collectPackKeysByIndex, 200);
+            if (deletedCount === 0) {
+                deletedCount = await purgeByCollector(collectPackKeysByScan, 100);
+            }
         }
 
         alert(`${deletedCount} tuiles du pack "${packName}" ont été supprimées.`);
@@ -1911,7 +2136,7 @@ Calcul : ((${formatTime(params.csFeuTime) || 'N/A'} - ${formatTime(current.time)
 
     // Si une limite temporelle est la première limite atteinte,
     // toute valeur suivante (plus élevée) est impossible et passe en rouge.
-    const shouldForceTimeConstraint = minTimeLimit !== Infinity && minTimeLimit <= minFuelLimit;
+    const shouldForceTimeConstraint = minTimeLimit !== Infinity;
 
     // --- Deuxième passe : Appliquer les styles et mettre à jour le DOM ---
     resultsData.forEach(result => {
@@ -2030,7 +2255,7 @@ function updatePreviTab() {
     const bingoBase = calculateBingo(CALCULATOR_DATA.distBaseFeu);
     const bingoPelic = calculateBingo(CALCULATOR_DATA.distPelicFeu);
     const bingoBaseDisplay = document.getElementById('previ-bingo-base');
-    if (bingoBase === 700) { bingoBaseDisplay.innerHTML = '-- kg'; } else { bingoBaseDisplay.innerHTML = `${CALCULATOR_DATA.distBaseFeu} Nm /&nbsp;<b>${bingoBase} kg</b>`; }
+    if (bingoBase === 700) { bingoBaseDisplay.innerHTML = '-- kg'; } else { bingoBaseDisplay.innerHTML = `${selectedBaseOACI} / ${CALCULATOR_DATA.distBaseFeu} Nm /&nbsp;<b>${bingoBase} kg</b>`; }
     const bingoPelicDisplay = document.getElementById('previ-bingo-pelic');
     if (bingoPelic === 700 || !selectedPelicanOACI) { bingoPelicDisplay.innerHTML = '-- kg'; } else { bingoPelicDisplay.innerHTML = `${selectedPelicanOACI} / ${CALCULATOR_DATA.distPelicFeu} Nm /&nbsp;<b>${bingoPelic} kg</b>`; }
 
@@ -2094,7 +2319,7 @@ function updateSuiviTab() {
     const bingoBase = calculateBingo(CALCULATOR_DATA.distBaseFeu);
     const bingoPelic = calculateBingo(CALCULATOR_DATA.distPelicFeu);
     const bingoBaseDisplay = document.getElementById('suivi-bingo-base');
-    if (bingoBase === 700) { bingoBaseDisplay.innerHTML = '-- kg'; } else { bingoBaseDisplay.innerHTML = `${CALCULATOR_DATA.distBaseFeu} Nm /&nbsp;<b>${bingoBase} kg</b>`; }
+    if (bingoBase === 700) { bingoBaseDisplay.innerHTML = '-- kg'; } else { bingoBaseDisplay.innerHTML = `${selectedBaseOACI} / ${CALCULATOR_DATA.distBaseFeu} Nm /&nbsp;<b>${bingoBase} kg</b>`; }
     const bingoPelicDisplay = document.getElementById('suivi-bingo-pelic');
     if (bingoPelic === 700 || !selectedPelicanOACI) { bingoPelicDisplay.innerHTML = '-- kg'; } else { bingoPelicDisplay.innerHTML = `${selectedPelicanOACI} / ${CALCULATOR_DATA.distPelicFeu} Nm /&nbsp;<b>${bingoPelic} kg</b>`; }
 
@@ -2148,6 +2373,13 @@ function updateDeroutementTab() {
         if (icon) { icon.onclick = () => alert(formula || "Données insuffisantes pour le calcul."); }
     };
 
+    const deroutFuelMiniPelicLabel = document.getElementById('derout-fuel-mini-pelic-label');
+    if (deroutFuelMiniPelicLabel) {
+        const selectedPelic = selectedPelicanOACI ? getAirportByOaci(selectedPelicanOACI) : null;
+        const pelicCode = selectedPelic ? selectedPelic.oaci : 'PÉLIC';
+        deroutFuelMiniPelicLabel.textContent = `Fuel mini 1 largage / Pélic (${pelicCode}) :`;
+    }
+
     if (!currentCommune) {
         document.getElementById('derout-bingo-base').innerHTML = '-- kg';
         document.getElementById('derout-bingo-pelic').innerHTML = '-- kg';
@@ -2176,7 +2408,7 @@ function updateDeroutementTab() {
     const consoTransitFromGps = distGpsFeu !== null ? calculateFuelToGo(distGpsFeu) : null;
 
     const bingoBaseDisplay = document.getElementById('derout-bingo-base');
-    if (bingoBase === 700) { bingoBaseDisplay.innerHTML = '-- kg'; } else { bingoBaseDisplay.innerHTML = `${CALCULATOR_DATA.distBaseFeu} Nm /&nbsp;<b>${bingoBase} kg</b>`; }
+    if (bingoBase === 700) { bingoBaseDisplay.innerHTML = '-- kg'; } else { bingoBaseDisplay.innerHTML = `${selectedBaseOACI} / ${CALCULATOR_DATA.distBaseFeu} Nm /&nbsp;<b>${bingoBase} kg</b>`; }
     const bingoPelicDisplay = document.getElementById('derout-bingo-pelic');
     if (bingoPelic === 700 || !selectedPelicanOACI) { bingoPelicDisplay.innerHTML = '-- kg'; } else { bingoPelicDisplay.innerHTML = `${selectedPelicanOACI} / ${CALCULATOR_DATA.distPelicFeu} Nm /&nbsp;<b>${bingoPelic} kg</b>`; }
 
@@ -2832,7 +3064,14 @@ function initializeCalculator() {
     updateLftwSunset();
     setInterval(updateLftwSunset, 60000);
 
-    onglets.forEach(onglet => { onglet.addEventListener('click', () => { document.querySelectorAll('.onglet-bouton').forEach(btn => btn.classList.remove('active')); document.querySelectorAll('.onglet-panneau').forEach(p => p.classList.remove('active')); onglet.classList.add('active'); document.getElementById(onglet.dataset.onglet).classList.add('active'); resetButton.style.display = (onglet.dataset.onglet === 'bloc-fuel') ? 'flex' : 'none'; }); });
+    const activateTab = (onglet) => { document.querySelectorAll('.onglet-bouton').forEach(btn => btn.classList.remove('active')); document.querySelectorAll('.onglet-panneau').forEach(p => p.classList.remove('active')); onglet.classList.add('active'); document.getElementById(onglet.dataset.onglet).classList.add('active'); resetButton.style.display = (onglet.dataset.onglet === 'bloc-fuel') ? 'flex' : 'none'; };
+    onglets.forEach(onglet => {
+        onglet.addEventListener('click', () => activateTab(onglet));
+        onglet.addEventListener('pointerup', (event) => {
+            event.preventDefault();
+            activateTab(onglet);
+        });
+    });
 
     function saveCalculatorState() {
         const state = {};
@@ -2868,25 +3107,110 @@ function initializeCalculator() {
             }
         };
 
-        setTimeValue(initialValue);
 
-        displayInput.addEventListener('dblclick', (e) => {
-            e.preventDefault();
-            let timeString;
-            if (wrapper.id === 'tmd') {
-                timeString = '21:30';
-            } else if (wrapper.id === 'limite-hdv') {
-                timeString = '08:00';
-            } else {
-                const now = new Date();
-                timeString = `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}`;
+        displayInput.readOnly = false;
+        displayInput.inputMode = 'numeric';
+        displayInput.placeholder = '--:--';
+
+        const normalizeTypedTime = (raw) => {
+            const digits = String(raw || '').replace(/\D/g, '').slice(0, 4);
+            if (digits.length === 0) return '';
+            if (digits.length <= 2) return digits;
+            return `${digits.slice(0, 2)}:${digits.slice(2)}`;
+        };
+
+        const commitTypedTime = () => {
+            const m = /^([0-1]?\d|2[0-3]):?([0-5]?\d)$/.exec(displayInput.value.trim());
+            if (!m) {
+                setTimeValue('');
+                masterRecalculate();
+                saveCalculatorState();
+                return;
             }
+            const hh = m[1].padStart(2, '0');
+            const mm = m[2].padStart(2, '0');
+            setTimeValue(`${hh}:${mm}`);
+            masterRecalculate();
+            saveCalculatorState();
+        };
+
+        let lastDisplayTapTs = 0;
+        const applyNowTime = () => {
+            const now = new Date();
+            const timeString = `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}`;
             setTimeValue(timeString);
             masterRecalculate();
             saveCalculatorState();
+        };
+
+        setTimeValue(initialValue);
+
+        displayInput.addEventListener('input', () => {
+            displayInput.value = normalizeTypedTime(displayInput.value);
+        });
+        displayInput.addEventListener('blur', commitTypedTime);
+        displayInput.addEventListener('keydown', (event) => {
+            if (event.key === 'Enter') {
+                event.preventDefault();
+                commitTypedTime();
+                displayInput.blur();
+            }
         });
 
+        displayInput.addEventListener('dblclick', (e) => {
+            e.preventDefault();
+            if (wrapper.id === 'tmd') {
+                setTimeValue('21:30');
+                masterRecalculate();
+                saveCalculatorState();
+                return;
+            }
+            if (wrapper.id === 'limite-hdv') {
+                setTimeValue('08:00');
+                masterRecalculate();
+                saveCalculatorState();
+                return;
+            }
+            applyNowTime();
+        });
+        displayInput.addEventListener('touchend', (event) => {
+            const ts = Date.now();
+            if (ts - lastDisplayTapTs <= 350) {
+                event.preventDefault();
+                applyNowTime();
+                lastDisplayTapTs = 0;
+                return;
+            }
+            lastDisplayTapTs = ts;
+        }, { passive: false });
+
         if (engineInput) {
+            const openTimePicker = () => {
+                if (typeof engineInput.showPicker === 'function') {
+                    engineInput.showPicker();
+                    return;
+                }
+                engineInput.focus();
+                setTimeout(() => {
+                    try {
+                        engineInput.click();
+                    } catch (_) {
+                        // iOS fallback: focus is usually enough to open the picker
+                    }
+                }, 0);
+            };
+
+            const clockIcon = wrapper.querySelector('.clock-icon');
+            if (clockIcon) {
+                clockIcon.addEventListener('click', openTimePicker);
+                clockIcon.addEventListener('touchend', (event) => { event.preventDefault(); openTimePicker(); }, { passive: false });
+            }
+            wrapper.addEventListener('click', (event) => {
+                if (event.target === clearBtn) return;
+                if (event.target === engineInput) return;
+                if (event.target === displayInput) return;
+                openTimePicker();
+            });
             engineInput.addEventListener('change', () => {
                 if (engineInput.value) {
                     displayInput.value = engineInput.value;
