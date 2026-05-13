@@ -3098,9 +3098,10 @@ function initializeCalculator() {
     const clockIcon = wrapper.querySelector('.clock-icon');
 
     const setTimeValue = (time) => {
-        displayInput.value = time;
+        displayInput.value = time || '';
+
         if (engineInput) {
-            if (String(time).match(/^\d{2}:\d{2}$/)) {
+            if (String(time || '').match(/^\d{2}:\d{2}$/)) {
                 engineInput.value = time;
             } else {
                 engineInput.value = '';
@@ -3108,7 +3109,7 @@ function initializeCalculator() {
         }
     };
 
-    const getDefaultOrCurrentTime = () => {
+    const getAutoTimeValue = () => {
         if (wrapper.id === 'tmd') {
             return '21:30';
         }
@@ -3121,21 +3122,45 @@ function initializeCalculator() {
         return `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}`;
     };
 
-    const applyDoubleTapTime = () => {
-        setTimeValue(getDefaultOrCurrentTime());
+    const getClearTimeValue = () => {
+        if (wrapper.id === 'tmd') {
+            return '21:30';
+        }
+
+        if (wrapper.id === 'limite-hdv') {
+            return '08:00';
+        }
+
+        return '';
+    };
+
+    const applyAutoTime = () => {
+        setTimeValue(getAutoTimeValue());
         masterRecalculate();
         saveCalculatorState();
     };
 
-    const clearTimeValue = () => {
-        const defaultValue = wrapper.id === 'tmd' ? '21:30' : wrapper.id === 'limite-hdv' ? '08:00' : '';
-        setTimeValue(defaultValue);
+    const clearTime = () => {
+        setTimeValue(getClearTimeValue());
         masterRecalculate();
         saveCalculatorState();
     };
 
-    const openTimePicker = () => {
-        if (!engineInput) return;
+    const stopEvent = (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+
+        if (typeof event.stopImmediatePropagation === 'function') {
+            event.stopImmediatePropagation();
+        }
+    };
+
+    const openTimePickerFromClockOnly = (event) => {
+        stopEvent(event);
+
+        if (!engineInput) {
+            return;
+        }
 
         if (typeof engineInput.showPicker === 'function') {
             engineInput.showPicker();
@@ -3148,7 +3173,7 @@ function initializeCalculator() {
             try {
                 engineInput.click();
             } catch (_) {
-                // iOS fallback : le focus suffit généralement à ouvrir le sélecteur.
+                // Fallback iOS : le focus suffit parfois.
             }
         }, 0);
     };
@@ -3158,27 +3183,16 @@ function initializeCalculator() {
     displayInput.readOnly = true;
     displayInput.removeAttribute('inputmode');
 
-    displayInput.addEventListener('dblclick', (event) => {
-        event.preventDefault();
-        applyDoubleTapTime();
-    });
-
-    let lastDisplayTapTs = 0;
-
-    displayInput.addEventListener('touchend', (event) => {
-        const ts = Date.now();
-
-        if (ts - lastDisplayTapTs <= 350) {
-            event.preventDefault();
-            applyDoubleTapTime();
-            lastDisplayTapTs = 0;
-            return;
-        }
-
-        lastDisplayTapTs = ts;
-    }, { passive: false });
-
     if (engineInput) {
+        engineInput.tabIndex = -1;
+
+        /*
+         * Important iPad :
+         * on empêche l'input type="time" invisible de capter les taps.
+         * Le sélecteur d'heure ne doit s'ouvrir que via l'icône horloge.
+         */
+        engineInput.style.pointerEvents = 'none';
+
         engineInput.addEventListener('change', () => {
             if (engineInput.value) {
                 setTimeValue(engineInput.value);
@@ -3188,35 +3202,69 @@ function initializeCalculator() {
         });
     }
 
-    if (clockIcon) {
-        clockIcon.addEventListener('click', (event) => {
-            event.preventDefault();
-            event.stopPropagation();
-            openTimePicker();
-        });
-
-        clockIcon.addEventListener('touchend', (event) => {
-            event.preventDefault();
-            event.stopPropagation();
-            openTimePicker();
-        }, { passive: false });
-    }
-
+    /*
+     * X : doit toujours effacer / remettre la valeur par défaut.
+     * On écoute en capture pour passer avant les autres handlers éventuels.
+     */
     if (clearBtn) {
+        clearBtn.addEventListener('pointerdown', stopEvent, true);
+
         clearBtn.addEventListener('click', (event) => {
-            event.preventDefault();
-            event.stopPropagation();
-            clearTimeValue();
-        });
+            stopEvent(event);
+            clearTime();
+        }, true);
 
         clearBtn.addEventListener('touchend', (event) => {
-            event.preventDefault();
-            event.stopPropagation();
-            clearTimeValue();
-        }, { passive: false });
+            stopEvent(event);
+            clearTime();
+        }, { passive: false, capture: true });
     }
-}
-    function initializeNumericInput(wrapper, initialValue = '') {
+
+    /*
+     * Cellule visible :
+     * - simple tap : rien
+     * - double tap / double clic : heure automatique
+     * - ne doit jamais ouvrir le sélecteur d'heure
+     */
+    let lastTapTs = 0;
+
+    displayInput.addEventListener('pointerdown', (event) => {
+        event.stopPropagation();
+    }, true);
+
+    displayInput.addEventListener('click', (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+    }, true);
+
+    displayInput.addEventListener('dblclick', (event) => {
+        stopEvent(event);
+        applyAutoTime();
+    }, true);
+
+    displayInput.addEventListener('touchend', (event) => {
+        const nowTs = Date.now();
+
+        if (nowTs - lastTapTs <= 350) {
+            stopEvent(event);
+            applyAutoTime();
+            lastTapTs = 0;
+            return;
+        }
+
+        event.stopPropagation();
+        lastTapTs = nowTs;
+    }, { passive: false, capture: true });
+
+    /*
+     * Horloge : seul endroit autorisé à ouvrir le sélecteur d'heure.
+     */
+    if (clockIcon) {
+        clockIcon.addEventListener('pointerdown', stopEvent, true);
+        clockIcon.addEventListener('click', openTimePickerFromClockOnly, true);
+        clockIcon.addEventListener('touchend', openTimePickerFromClockOnly, { passive: false, capture: true });
+    }
+}    function initializeNumericInput(wrapper, initialValue = '') {
         const displayInput = wrapper.querySelector('.display-input');
         const clearBtn = wrapper.querySelector('.clear-btn');
         const unit = wrapper.dataset.unit || '';
