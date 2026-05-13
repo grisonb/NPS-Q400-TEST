@@ -3095,58 +3095,181 @@ function initializeCalculator() {
     const displayInput = wrapper.querySelector('.display-input');
     const engineInput = wrapper.querySelector('.engine-input');
     const clearBtn = wrapper.querySelector('.clear-btn');
+    const clockIcon = wrapper.querySelector('.clock-icon');
 
     const setTimeValue = (time) => {
-        displayInput.value = time;
+        const safeTime = time || '';
+        displayInput.value = safeTime;
+
         if (engineInput) {
-            if (String(time).match(/^\d{2}:\d{2}$/)) {
-                engineInput.value = time;
+            if (/^\d{2}:\d{2}$/.test(safeTime)) {
+                engineInput.value = safeTime;
             } else {
                 engineInput.value = '';
             }
         }
     };
 
-    setTimeValue(initialValue);
-
-    displayInput.addEventListener('dblclick', (e) => {
-        e.preventDefault();
-        let timeString;
-
+    const getAutoTimeValue = () => {
         if (wrapper.id === 'tmd') {
-            timeString = '21:30';
-        } else if (wrapper.id === 'limite-hdv') {
-            timeString = '08:00';
-        } else {
-            const now = new Date();
-            timeString = `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}`;
+            return '21:30';
         }
 
-        setTimeValue(timeString);
+        if (wrapper.id === 'limite-hdv') {
+            return '08:00';
+        }
+
+        const now = new Date();
+        return `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}`;
+    };
+
+    const getClearTimeValue = () => {
+        if (wrapper.id === 'tmd') {
+            return '21:30';
+        }
+
+        if (wrapper.id === 'limite-hdv') {
+            return '08:00';
+        }
+
+        return '';
+    };
+
+    const applyAutoTime = () => {
+        setTimeValue(getAutoTimeValue());
         masterRecalculate();
         saveCalculatorState();
-    });
+    };
+
+    const clearTime = () => {
+        setTimeValue(getClearTimeValue());
+        masterRecalculate();
+        saveCalculatorState();
+    };
+
+    const stopOnly = (event) => {
+        event.stopPropagation();
+
+        if (typeof event.stopImmediatePropagation === 'function') {
+            event.stopImmediatePropagation();
+        }
+    };
+
+    const stopAndPrevent = (event) => {
+        event.preventDefault();
+        stopOnly(event);
+    };
+
+    setTimeValue(initialValue);
+
+    /*
+     * Important :
+     * La cellule visible ne doit pas ouvrir l'heure au simple clic.
+     * Le double clic / double tap doit toujours remplacer l'heure existante.
+     */
+    displayInput.readOnly = true;
+    displayInput.removeAttribute('inputmode');
+
+    displayInput.addEventListener('click', (event) => {
+        stopAndPrevent(event);
+    }, true);
+
+    displayInput.addEventListener('dblclick', (event) => {
+        stopAndPrevent(event);
+        applyAutoTime();
+    }, true);
+
+    let lastTapTs = 0;
+
+    displayInput.addEventListener('touchend', (event) => {
+        const nowTs = Date.now();
+
+        if (nowTs - lastTapTs <= 350) {
+            stopAndPrevent(event);
+            applyAutoTime();
+            lastTapTs = 0;
+            return;
+        }
+
+        stopOnly(event);
+        lastTapTs = nowTs;
+    }, { passive: false, capture: true });
+
+    /*
+     * X :
+     * - cellule normale : vide
+     * - TMD : 21:30
+     * - LIMITE HDV : 08:00
+     *
+     * On traite pointerup + touchend + click pour iPad.
+     */
+    if (clearBtn) {
+        clearBtn.addEventListener('pointerdown', stopAndPrevent, true);
+
+        clearBtn.addEventListener('pointerup', (event) => {
+            stopAndPrevent(event);
+            clearTime();
+        }, true);
+
+        clearBtn.addEventListener('touchend', (event) => {
+            stopAndPrevent(event);
+            clearTime();
+        }, { passive: false, capture: true });
+
+        clearBtn.addEventListener('click', (event) => {
+            stopAndPrevent(event);
+            clearTime();
+        }, true);
+    }
+
+    /*
+     * Pendule :
+     * On laisse l'input type="time" fonctionner nativement.
+     * On ne change pas sa position, sa taille, son opacity, ni le layout.
+     */
+    if (clockIcon && engineInput) {
+    const openTimePicker = (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+
+        if (typeof engineInput.showPicker === 'function') {
+            engineInput.showPicker();
+            return;
+        }
+
+        engineInput.focus();
+
+        setTimeout(() => {
+            try {
+                engineInput.click();
+            } catch (_) {
+                // Fallback iPad : le focus suffit parfois.
+            }
+        }, 0);
+    };
+
+    clockIcon.addEventListener('click', openTimePicker);
+    clockIcon.addEventListener('touchend', openTimePicker, { passive: false });
+}
 
     if (engineInput) {
+        engineInput.addEventListener('click', (event) => {
+            stopOnly(event);
+        }, true);
+
+        engineInput.addEventListener('touchend', (event) => {
+            stopOnly(event);
+        }, { passive: true, capture: true });
+
         engineInput.addEventListener('change', () => {
             if (engineInput.value) {
-                displayInput.value = engineInput.value;
+                setTimeValue(engineInput.value);
                 masterRecalculate();
                 saveCalculatorState();
             }
         });
     }
-
-    if (clearBtn) {
-        clearBtn.addEventListener('click', () => {
-            const defaultValue = wrapper.id === 'tmd' ? '21:30' : wrapper.id === 'limite-hdv' ? '08:00' : '';
-            setTimeValue(defaultValue);
-            masterRecalculate();
-            saveCalculatorState();
-        });
-    }
-}
-  
+}  
 function initializeNumericInput(wrapper, initialValue = '') {
         const displayInput = wrapper.querySelector('.display-input');
         const clearBtn = wrapper.querySelector('.clear-btn');
