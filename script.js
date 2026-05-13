@@ -3091,63 +3091,44 @@ function initializeCalculator() {
         localStorage.setItem('calculator_state', JSON.stringify(state));
     }
 
-    function ensureTimeInputHitZonesFix() {
-    if (document.getElementById('time-input-hit-zones-fix')) {
-        return;
-    }
-
-    const style = document.createElement('style');
-    style.id = 'time-input-hit-zones-fix';
-    style.textContent = `
-#calculator-modal .time-input-wrapper {
-    position: relative;
-}
-
-#calculator-modal .time-input-wrapper .display-input {
-    position: relative;
-    z-index: 1;
-}
-
-#calculator-modal .time-input-wrapper .clear-btn {
-    position: relative;
-    z-index: 40;
-    pointer-events: auto;
-}
-
-#calculator-modal .time-input-wrapper .clock-icon {
-    position: relative;
-    z-index: 30;
-    pointer-events: auto;
-}
-
-#calculator-modal .time-input-wrapper .engine-input {
-    position: absolute !important;
-    left: auto !important;
-    right: 0 !important;
-    top: 0 !important;
-    bottom: 0 !important;
-    width: 34px !important;
-    height: 100% !important;
-    margin: 0 !important;
-    padding: 0 !important;
-    border: 0 !important;
-    opacity: 0 !important;
-    background: transparent !important;
-    color: transparent !important;
-    z-index: 25;
-    pointer-events: auto;
-}
-`;
-    document.head.appendChild(style);
-}
-
-function initializeTimeInput(wrapper, initialValue = '') {
-    ensureTimeInputHitZonesFix();
-
+    function initializeTimeInput(wrapper, initialValue = '') {
     const displayInput = wrapper.querySelector('.display-input');
     const engineInput = wrapper.querySelector('.engine-input');
     const clearBtn = wrapper.querySelector('.clear-btn');
     const clockIcon = wrapper.querySelector('.clock-icon');
+
+    const resetInlineLayoutChanges = () => {
+        if (engineInput) {
+            [
+                'position',
+                'right',
+                'top',
+                'bottom',
+                'left',
+                'transform',
+                'width',
+                'height',
+                'opacity',
+                'zIndex',
+                'border',
+                'margin',
+                'padding',
+                'background',
+                'color',
+                'pointerEvents',
+                'webkitAppearance',
+                'appearance'
+            ].forEach((propertyName) => {
+                engineInput.style[propertyName] = '';
+            });
+        }
+
+        if (clockIcon) {
+            ['pointerEvents', 'position', 'zIndex'].forEach((propertyName) => {
+                clockIcon.style[propertyName] = '';
+            });
+        }
+    };
 
     const setTimeValue = (time) => {
         const safeTime = time || '';
@@ -3162,7 +3143,20 @@ function initializeTimeInput(wrapper, initialValue = '') {
         }
     };
 
-    const getDefaultTimeValue = () => {
+    const getAutoTimeValue = () => {
+        if (wrapper.id === 'tmd') {
+            return '21:30';
+        }
+
+        if (wrapper.id === 'limite-hdv') {
+            return '08:00';
+        }
+
+        const now = new Date();
+        return `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}`;
+    };
+
+    const getClearTimeValue = () => {
         if (wrapper.id === 'tmd') {
             return '21:30';
         }
@@ -3172,17 +3166,6 @@ function initializeTimeInput(wrapper, initialValue = '') {
         }
 
         return '';
-    };
-
-    const getAutoTimeValue = () => {
-        const defaultValue = getDefaultTimeValue();
-
-        if (defaultValue) {
-            return defaultValue;
-        }
-
-        const now = new Date();
-        return `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}`;
     };
 
     const recalculateAndSave = () => {
@@ -3196,7 +3179,7 @@ function initializeTimeInput(wrapper, initialValue = '') {
     };
 
     const clearTime = () => {
-        setTimeValue(getDefaultTimeValue());
+        setTimeValue(getClearTimeValue());
         recalculateAndSave();
     };
 
@@ -3209,109 +3192,192 @@ function initializeTimeInput(wrapper, initialValue = '') {
         }
     };
 
-    const openTimePicker = (event) => {
-        stopEvent(event);
-
-        if (!engineInput) {
-            return;
+    const getPointFromEvent = (event) => {
+        if (typeof event.clientX === 'number' && typeof event.clientY === 'number') {
+            return { x: event.clientX, y: event.clientY };
         }
 
-        if (typeof engineInput.showPicker === 'function') {
-            engineInput.showPicker();
-            return;
+        if (event.changedTouches && event.changedTouches.length) {
+            return {
+                x: event.changedTouches[0].clientX,
+                y: event.changedTouches[0].clientY
+            };
         }
 
-        engineInput.focus();
+        if (event.touches && event.touches.length) {
+            return {
+                x: event.touches[0].clientX,
+                y: event.touches[0].clientY
+            };
+        }
 
-        setTimeout(() => {
-            try {
-                engineInput.click();
-            } catch (_) {
-                // Fallback iPad : le focus suffit parfois.
-            }
-        }, 0);
+        return null;
     };
 
+    const isPointInElement = (event, element, margin = 8) => {
+        const point = getPointFromEvent(event);
+
+        if (!point || !element) {
+            return false;
+        }
+
+        const rect = element.getBoundingClientRect();
+
+        return (
+            point.x >= rect.left - margin &&
+            point.x <= rect.right + margin &&
+            point.y >= rect.top - margin &&
+            point.y <= rect.bottom + margin
+        );
+    };
+
+    const getTouchedZone = (event) => {
+        /*
+         * Ordre volontaire :
+         * - le X est prioritaire ;
+         * - la pendule est ensuite laissée au contrôle horaire natif ;
+         * - le reste de la cellule visible est traité comme zone double-clic.
+         */
+        if (isPointInElement(event, clearBtn, 12)) {
+            return 'clear';
+        }
+
+        if (isPointInElement(event, clockIcon, 12)) {
+            return 'clock';
+        }
+
+        if (isPointInElement(event, displayInput, 4) || isPointInElement(event, wrapper, 0)) {
+            return 'display';
+        }
+
+        return 'other';
+    };
+
+    let lastDisplayTapTs = 0;
+    let lastActionTs = 0;
+
+    const handleDisplayTap = (event) => {
+        const nowTs = Date.now();
+
+        stopEvent(event);
+
+        if (nowTs - lastDisplayTapTs <= 450) {
+            applyAutoTime();
+            lastDisplayTapTs = 0;
+            lastActionTs = nowTs;
+            return;
+        }
+
+        lastDisplayTapTs = nowTs;
+        lastActionTs = nowTs;
+    };
+
+    const handleClearTap = (event) => {
+        stopEvent(event);
+        clearTime();
+        lastDisplayTapTs = 0;
+        lastActionTs = Date.now();
+    };
+
+    const handlePointerDown = (event) => {
+        const zone = getTouchedZone(event);
+
+        /*
+         * Il faut bloquer dès pointerdown pour empêcher l'input type="time"
+         * d'ouvrir le sélecteur quand on touche la cellule ou le X.
+         * On laisse la zone pendule intacte pour conserver le comportement natif.
+         */
+        if (zone === 'clear' || zone === 'display') {
+            stopEvent(event);
+        }
+    };
+
+    const handlePointerUp = (event) => {
+        const zone = getTouchedZone(event);
+
+        if (zone === 'clear') {
+            handleClearTap(event);
+            return;
+        }
+
+        if (zone === 'display') {
+            handleDisplayTap(event);
+        }
+    };
+
+    const handleClickFallback = (event) => {
+        const nowTs = Date.now();
+
+        if (nowTs - lastActionTs < 300) {
+            stopEvent(event);
+            return;
+        }
+
+        const zone = getTouchedZone(event);
+
+        if (zone === 'clear') {
+            handleClearTap(event);
+            return;
+        }
+
+        if (zone === 'display') {
+            stopEvent(event);
+            lastActionTs = nowTs;
+        }
+
+        /*
+         * Zone pendule : ne rien bloquer.
+         */
+    };
+
+    const handleTouchEndFallback = (event) => {
+        const nowTs = Date.now();
+
+        if (nowTs - lastActionTs < 300) {
+            return;
+        }
+
+        const zone = getTouchedZone(event);
+
+        if (zone === 'clear') {
+            handleClearTap(event);
+            return;
+        }
+
+        if (zone === 'display') {
+            handleDisplayTap(event);
+        }
+    };
+
+    resetInlineLayoutChanges();
     setTimeValue(initialValue);
 
     displayInput.readOnly = true;
     displayInput.removeAttribute('inputmode');
 
-    let lastDisplayTapTs = 0;
-    let lastClearTs = 0;
-
     /*
-     * Cellule visible :
-     * - simple clic / simple tap : rien
-     * - double clic / double tap : remplace toujours l'heure existante
+     * Handlers sur le wrapper + sur l'input natif :
+     * si l'input type="time" recouvre la cellule, on intercepte quand même
+     * les zones X / cellule avant l'ouverture du sélecteur horaire.
      */
-    displayInput.addEventListener('click', (event) => {
-        stopEvent(event);
-    }, true);
+    [wrapper, engineInput].filter(Boolean).forEach((element) => {
+        element.addEventListener('pointerdown', handlePointerDown, true);
+        element.addEventListener('pointerup', handlePointerUp, true);
+        element.addEventListener('click', handleClickFallback, true);
+        element.addEventListener('touchend', handleTouchEndFallback, { passive: false, capture: true });
+    });
 
     displayInput.addEventListener('dblclick', (event) => {
         stopEvent(event);
         applyAutoTime();
     }, true);
 
-    displayInput.addEventListener('touchend', (event) => {
-        const nowTs = Date.now();
-
-        if (nowTs - lastDisplayTapTs <= 450) {
-            stopEvent(event);
-            applyAutoTime();
-            lastDisplayTapTs = 0;
-            return;
-        }
-
-        event.stopPropagation();
-        lastDisplayTapTs = nowTs;
-    }, { passive: false, capture: true });
-
-    /*
-     * X :
-     * - cellule normale : vide
-     * - TMD : 21:30
-     * - LIMITE HDV : 08:00
-     */
     if (clearBtn) {
-        const handleClear = (event) => {
-            const nowTs = Date.now();
-
-            stopEvent(event);
-
-            if (nowTs - lastClearTs < 180) {
-                return;
-            }
-
-            lastClearTs = nowTs;
-            clearTime();
-        };
-
-        clearBtn.addEventListener('pointerdown', stopEvent, true);
-        clearBtn.addEventListener('pointerup', handleClear, true);
-        clearBtn.addEventListener('click', handleClear, true);
-        clearBtn.addEventListener('touchend', handleClear, { passive: false, capture: true });
-    }
-
-    /*
-     * Pendule :
-     * seule cette zone ouvre le sélecteur horaire.
-     */
-    if (clockIcon && engineInput) {
-        clockIcon.addEventListener('click', openTimePicker, true);
-        clockIcon.addEventListener('touchend', openTimePicker, { passive: false, capture: true });
+        clearBtn.addEventListener('click', handleClearTap, true);
+        clearBtn.addEventListener('touchend', handleClearTap, { passive: false, capture: true });
     }
 
     if (engineInput) {
-        engineInput.addEventListener('click', (event) => {
-            event.stopPropagation();
-        }, true);
-
-        engineInput.addEventListener('touchend', (event) => {
-            event.stopPropagation();
-        }, { passive: true, capture: true });
-
         engineInput.addEventListener('change', () => {
             if (engineInput.value) {
                 setTimeValue(engineInput.value);
