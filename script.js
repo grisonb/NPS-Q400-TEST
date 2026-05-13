@@ -3092,144 +3092,130 @@ function initializeCalculator() {
     }
 
     function initializeTimeInput(wrapper, initialValue = '') {
-        const displayInput = wrapper.querySelector('.display-input');
-        const engineInput = wrapper.querySelector('.engine-input');
-        const clearBtn = wrapper.querySelector('.clear-btn');
+    const displayInput = wrapper.querySelector('.display-input');
+    const engineInput = wrapper.querySelector('.engine-input');
+    const clearBtn = wrapper.querySelector('.clear-btn');
+    const clockIcon = wrapper.querySelector('.clock-icon');
 
-        const setTimeValue = (time) => {
-            displayInput.value = time;
-            if (engineInput) {
-                if (String(time).match(/^\d{2}:\d{2}$/)) {
-                    engineInput.value = time;
-                } else {
-                    engineInput.value = '';
-                }
-            }
-        };
-
-
-        displayInput.readOnly = false;
-        displayInput.inputMode = 'numeric';
-        displayInput.placeholder = '--:--';
-
-        const normalizeTypedTime = (raw) => {
-            const digits = String(raw || '').replace(/\D/g, '').slice(0, 4);
-            if (digits.length === 0) return '';
-            if (digits.length <= 2) return digits;
-            return `${digits.slice(0, 2)}:${digits.slice(2)}`;
-        };
-
-        const commitTypedTime = () => {
-            const m = /^([0-1]?\d|2[0-3]):?([0-5]?\d)$/.exec(displayInput.value.trim());
-            if (!m) {
-                setTimeValue('');
-                masterRecalculate();
-                saveCalculatorState();
-                return;
-            }
-            const hh = m[1].padStart(2, '0');
-            const mm = m[2].padStart(2, '0');
-            setTimeValue(`${hh}:${mm}`);
-            masterRecalculate();
-            saveCalculatorState();
-        };
-
-        let lastDisplayTapTs = 0;
-        const applyNowTime = () => {
-            const now = new Date();
-            const timeString = `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}`;
-            setTimeValue(timeString);
-            masterRecalculate();
-            saveCalculatorState();
-        };
-
-        setTimeValue(initialValue);
-
-        displayInput.addEventListener('input', () => {
-            displayInput.value = normalizeTypedTime(displayInput.value);
-        });
-        displayInput.addEventListener('blur', commitTypedTime);
-        displayInput.addEventListener('keydown', (event) => {
-            if (event.key === 'Enter') {
-                event.preventDefault();
-                commitTypedTime();
-                displayInput.blur();
-            }
-        });
-
-        displayInput.addEventListener('dblclick', (e) => {
-            e.preventDefault();
-            if (wrapper.id === 'tmd') {
-                setTimeValue('21:30');
-                masterRecalculate();
-                saveCalculatorState();
-                return;
-            }
-            if (wrapper.id === 'limite-hdv') {
-                setTimeValue('08:00');
-                masterRecalculate();
-                saveCalculatorState();
-                return;
-            }
-            applyNowTime();
-        });
-        displayInput.addEventListener('touchend', (event) => {
-            const ts = Date.now();
-            if (ts - lastDisplayTapTs <= 350) {
-                event.preventDefault();
-                applyNowTime();
-                lastDisplayTapTs = 0;
-                return;
-            }
-            lastDisplayTapTs = ts;
-        }, { passive: false });
-
+    const setTimeValue = (time) => {
+        displayInput.value = time;
         if (engineInput) {
-            const openTimePicker = () => {
-                if (typeof engineInput.showPicker === 'function') {
-                    engineInput.showPicker();
-                    return;
-                }
-                engineInput.focus();
-                setTimeout(() => {
-                    try {
-                        engineInput.click();
-                    } catch (_) {
-                        // iOS fallback: focus is usually enough to open the picker
-                    }
-                }, 0);
-            };
-
-            const clockIcon = wrapper.querySelector('.clock-icon');
-            if (clockIcon) {
-                clockIcon.addEventListener('click', openTimePicker);
-                clockIcon.addEventListener('touchend', (event) => { event.preventDefault(); openTimePicker(); }, { passive: false });
+            if (String(time).match(/^\d{2}:\d{2}$/)) {
+                engineInput.value = time;
+            } else {
+                engineInput.value = '';
             }
-            wrapper.addEventListener('click', (event) => {
-                if (event.target === clearBtn) return;
-                if (event.target === engineInput) return;
-                if (event.target === displayInput) return;
-                openTimePicker();
-            });
-            engineInput.addEventListener('change', () => {
-                if (engineInput.value) {
-                    displayInput.value = engineInput.value;
-                    masterRecalculate();
-                    saveCalculatorState();
-                }
-            });
+        }
+    };
+
+    const getDefaultOrCurrentTime = () => {
+        if (wrapper.id === 'tmd') {
+            return '21:30';
         }
 
-        if (clearBtn) {
-            clearBtn.addEventListener('click', () => {
-                const defaultValue = wrapper.id === 'tmd' ? '21:30' : wrapper.id === 'limite-hdv' ? '08:00' : '';
-                setTimeValue(defaultValue);
+        if (wrapper.id === 'limite-hdv') {
+            return '08:00';
+        }
+
+        const now = new Date();
+        return `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}`;
+    };
+
+    const applyDoubleTapTime = () => {
+        setTimeValue(getDefaultOrCurrentTime());
+        masterRecalculate();
+        saveCalculatorState();
+    };
+
+    const clearTimeValue = () => {
+        const defaultValue = wrapper.id === 'tmd' ? '21:30' : wrapper.id === 'limite-hdv' ? '08:00' : '';
+        setTimeValue(defaultValue);
+        masterRecalculate();
+        saveCalculatorState();
+    };
+
+    const openTimePicker = () => {
+        if (!engineInput) return;
+
+        if (typeof engineInput.showPicker === 'function') {
+            engineInput.showPicker();
+            return;
+        }
+
+        engineInput.focus();
+
+        setTimeout(() => {
+            try {
+                engineInput.click();
+            } catch (_) {
+                // iOS fallback : le focus suffit généralement à ouvrir le sélecteur.
+            }
+        }, 0);
+    };
+
+    setTimeValue(initialValue);
+
+    displayInput.readOnly = true;
+    displayInput.removeAttribute('inputmode');
+
+    displayInput.addEventListener('dblclick', (event) => {
+        event.preventDefault();
+        applyDoubleTapTime();
+    });
+
+    let lastDisplayTapTs = 0;
+
+    displayInput.addEventListener('touchend', (event) => {
+        const ts = Date.now();
+
+        if (ts - lastDisplayTapTs <= 350) {
+            event.preventDefault();
+            applyDoubleTapTime();
+            lastDisplayTapTs = 0;
+            return;
+        }
+
+        lastDisplayTapTs = ts;
+    }, { passive: false });
+
+    if (engineInput) {
+        engineInput.addEventListener('change', () => {
+            if (engineInput.value) {
+                setTimeValue(engineInput.value);
                 masterRecalculate();
                 saveCalculatorState();
-            });
-        }
+            }
+        });
     }
 
+    if (clockIcon) {
+        clockIcon.addEventListener('click', (event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            openTimePicker();
+        });
+
+        clockIcon.addEventListener('touchend', (event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            openTimePicker();
+        }, { passive: false });
+    }
+
+    if (clearBtn) {
+        clearBtn.addEventListener('click', (event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            clearTimeValue();
+        });
+
+        clearBtn.addEventListener('touchend', (event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            clearTimeValue();
+        }, { passive: false });
+    }
+}
     function initializeNumericInput(wrapper, initialValue = '') {
         const displayInput = wrapper.querySelector('.display-input');
         const clearBtn = wrapper.querySelector('.clear-btn');
