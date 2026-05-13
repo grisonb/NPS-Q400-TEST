@@ -3095,13 +3095,11 @@ function initializeCalculator() {
     const displayInput = wrapper.querySelector('.display-input');
     const engineInput = wrapper.querySelector('.engine-input');
     const clearBtn = wrapper.querySelector('.clear-btn');
-    const clockIcon = wrapper.querySelector('.clock-icon');
 
     const setTimeValue = (time) => {
-        displayInput.value = time || '';
-
+        displayInput.value = time;
         if (engineInput) {
-            if (String(time || '').match(/^\d{2}:\d{2}$/)) {
+            if (String(time).match(/^\d{2}:\d{2}$/)) {
                 engineInput.value = time;
             } else {
                 engineInput.value = '';
@@ -3109,157 +3107,46 @@ function initializeCalculator() {
         }
     };
 
-    const getAutoTimeValue = () => {
-        if (wrapper.id === 'tmd') {
-            return '21:30';
-        }
-
-        if (wrapper.id === 'limite-hdv') {
-            return '08:00';
-        }
-
-        const now = new Date();
-        return `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}`;
-    };
-
-    const getClearTimeValue = () => {
-        if (wrapper.id === 'tmd') {
-            return '21:30';
-        }
-
-        if (wrapper.id === 'limite-hdv') {
-            return '08:00';
-        }
-
-        return '';
-    };
-
-    const applyAutoTime = () => {
-        setTimeValue(getAutoTimeValue());
-        masterRecalculate();
-        saveCalculatorState();
-    };
-
-    const clearTime = () => {
-        setTimeValue(getClearTimeValue());
-        masterRecalculate();
-        saveCalculatorState();
-    };
-
-    const stopEvent = (event) => {
-        event.preventDefault();
-        event.stopPropagation();
-
-        if (typeof event.stopImmediatePropagation === 'function') {
-            event.stopImmediatePropagation();
-        }
-    };
-
     setTimeValue(initialValue);
 
-    /*
-     * Cellule visible :
-     * - pas de saisie clavier directe
-     * - double clic / double tap = heure automatique
-     */
-    displayInput.readOnly = true;
-    displayInput.removeAttribute('inputmode');
+    displayInput.addEventListener('dblclick', (e) => {
+        e.preventDefault();
+        let timeString;
 
-    displayInput.addEventListener('click', (event) => {
-        event.preventDefault();
-        event.stopPropagation();
-    }, true);
-
-    displayInput.addEventListener('dblclick', (event) => {
-        stopEvent(event);
-        applyAutoTime();
-    }, true);
-
-    let lastTapTs = 0;
-
-    displayInput.addEventListener('touchend', (event) => {
-        const nowTs = Date.now();
-
-        if (nowTs - lastTapTs <= 350) {
-            stopEvent(event);
-            applyAutoTime();
-            lastTapTs = 0;
-            return;
+        if (wrapper.id === 'tmd') {
+            timeString = '21:30';
+        } else if (wrapper.id === 'limite-hdv') {
+            timeString = '08:00';
+        } else {
+            const now = new Date();
+            timeString = `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}`;
         }
 
-        event.stopPropagation();
-        lastTapTs = nowTs;
-    }, { passive: false, capture: true });
+        setTimeValue(timeString);
+        masterRecalculate();
+        saveCalculatorState();
+    });
 
-    /*
-     * X :
-     * - cellule normale : vide
-     * - TMD : 21:30
-     * - LIMITE HDV : 08:00
-     */
-    if (clearBtn) {
-        clearBtn.addEventListener('pointerdown', stopEvent, true);
-
-        clearBtn.addEventListener('click', (event) => {
-            stopEvent(event);
-            clearTime();
-        }, true);
-
-        clearBtn.addEventListener('touchend', (event) => {
-            stopEvent(event);
-            clearTime();
-        }, { passive: false, capture: true });
-    }
-
-    /*
-     * Pendule :
-     * Sur iPad, il faut que le tap soit directement sur l'input type="time".
-     * On place donc l'input natif transparent au-dessus de l'icône horloge.
-     */
     if (engineInput) {
-        wrapper.style.position = 'relative';
-
-        engineInput.tabIndex = -1;
-        engineInput.style.position = 'absolute';
-        engineInput.style.right = '6px';
-        engineInput.style.top = '50%';
-        engineInput.style.transform = 'translateY(-50%)';
-        engineInput.style.width = '44px';
-        engineInput.style.height = '44px';
-        engineInput.style.opacity = '0.01';
-        engineInput.style.zIndex = '10';
-        engineInput.style.border = '0';
-        engineInput.style.margin = '0';
-        engineInput.style.padding = '0';
-        engineInput.style.background = 'transparent';
-        engineInput.style.color = 'transparent';
-        engineInput.style.pointerEvents = 'auto';
-        engineInput.style.webkitAppearance = 'none';
-        engineInput.style.appearance = 'none';
-
-        engineInput.addEventListener('click', (event) => {
-            event.stopPropagation();
-        }, true);
-
-        engineInput.addEventListener('touchend', (event) => {
-            event.stopPropagation();
-        }, { passive: true, capture: true });
-
         engineInput.addEventListener('change', () => {
             if (engineInput.value) {
-                setTimeValue(engineInput.value);
+                displayInput.value = engineInput.value;
                 masterRecalculate();
                 saveCalculatorState();
             }
         });
     }
 
-    if (clockIcon) {
-        clockIcon.style.pointerEvents = 'none';
-        clockIcon.style.position = 'relative';
-        clockIcon.style.zIndex = '9';
+    if (clearBtn) {
+        clearBtn.addEventListener('click', () => {
+            const defaultValue = wrapper.id === 'tmd' ? '21:30' : wrapper.id === 'limite-hdv' ? '08:00' : '';
+            setTimeValue(defaultValue);
+            masterRecalculate();
+            saveCalculatorState();
+        });
     }
-}    
+}
+  
 function initializeNumericInput(wrapper, initialValue = '') {
         const displayInput = wrapper.querySelector('.display-input');
         const clearBtn = wrapper.querySelector('.clear-btn');
