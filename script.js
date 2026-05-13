@@ -3091,7 +3091,59 @@ function initializeCalculator() {
         localStorage.setItem('calculator_state', JSON.stringify(state));
     }
 
-    function initializeTimeInput(wrapper, initialValue = '') {
+    function ensureTimeInputHitZonesFix() {
+    if (document.getElementById('time-input-hit-zones-fix')) {
+        return;
+    }
+
+    const style = document.createElement('style');
+    style.id = 'time-input-hit-zones-fix';
+    style.textContent = `
+#calculator-modal .time-input-wrapper {
+    position: relative;
+}
+
+#calculator-modal .time-input-wrapper .display-input {
+    position: relative;
+    z-index: 1;
+}
+
+#calculator-modal .time-input-wrapper .clear-btn {
+    position: relative;
+    z-index: 40;
+    pointer-events: auto;
+}
+
+#calculator-modal .time-input-wrapper .clock-icon {
+    position: relative;
+    z-index: 30;
+    pointer-events: auto;
+}
+
+#calculator-modal .time-input-wrapper .engine-input {
+    position: absolute !important;
+    left: auto !important;
+    right: 0 !important;
+    top: 0 !important;
+    bottom: 0 !important;
+    width: 34px !important;
+    height: 100% !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    border: 0 !important;
+    opacity: 0 !important;
+    background: transparent !important;
+    color: transparent !important;
+    z-index: 25;
+    pointer-events: auto;
+}
+`;
+    document.head.appendChild(style);
+}
+
+function initializeTimeInput(wrapper, initialValue = '') {
+    ensureTimeInputHitZonesFix();
+
     const displayInput = wrapper.querySelector('.display-input');
     const engineInput = wrapper.querySelector('.engine-input');
     const clearBtn = wrapper.querySelector('.clear-btn');
@@ -3110,20 +3162,7 @@ function initializeCalculator() {
         }
     };
 
-    const getAutoTimeValue = () => {
-        if (wrapper.id === 'tmd') {
-            return '21:30';
-        }
-
-        if (wrapper.id === 'limite-hdv') {
-            return '08:00';
-        }
-
-        const now = new Date();
-        return `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}`;
-    };
-
-    const getClearTimeValue = () => {
+    const getDefaultTimeValue = () => {
         if (wrapper.id === 'tmd') {
             return '21:30';
         }
@@ -3133,6 +3172,17 @@ function initializeCalculator() {
         }
 
         return '';
+    };
+
+    const getAutoTimeValue = () => {
+        const defaultValue = getDefaultTimeValue();
+
+        if (defaultValue) {
+            return defaultValue;
+        }
+
+        const now = new Date();
+        return `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}`;
     };
 
     const recalculateAndSave = () => {
@@ -3146,7 +3196,7 @@ function initializeCalculator() {
     };
 
     const clearTime = () => {
-        setTimeValue(getClearTimeValue());
+        setTimeValue(getDefaultTimeValue());
         recalculateAndSave();
     };
 
@@ -3159,123 +3209,27 @@ function initializeCalculator() {
         }
     };
 
-    const getEventClientX = (event) => {
-        if (typeof event.clientX === 'number') {
-            return event.clientX;
-        }
-
-        if (event.changedTouches && event.changedTouches.length) {
-            return event.changedTouches[0].clientX;
-        }
-
-        if (event.touches && event.touches.length) {
-            return event.touches[0].clientX;
-        }
-
-        return null;
-    };
-
-    const isInElementZone = (event, element, margin = 8) => {
-        if (!element) {
-            return false;
-        }
-
-        const x = getEventClientX(event);
-
-        if (x === null) {
-            return false;
-        }
-
-        const rect = element.getBoundingClientRect();
-        return x >= rect.left - margin && x <= rect.right + margin;
-    };
-
-    const getTouchedZone = (event) => {
-        if (isInElementZone(event, clearBtn, 12)) {
-            return 'clear';
-        }
-
-        if (isInElementZone(event, clockIcon, 12)) {
-            return 'clock';
-        }
-
-        if (isInElementZone(event, displayInput, 4)) {
-            return 'display';
-        }
-
-        return 'other';
-    };
-
-    let lastDisplayTapTs = 0;
-    let lastHandledTs = 0;
-
-    const handleWrapperPointerDown = (event) => {
-        const zone = getTouchedZone(event);
-
-        if (zone === 'clear' || zone === 'display') {
-            stopEvent(event);
-        }
-    };
-
-    const handleWrapperPointerUp = (event) => {
-        const nowTs = Date.now();
-        const zone = getTouchedZone(event);
-
-        if (zone === 'clear') {
-            stopEvent(event);
-            clearTime();
-            lastHandledTs = nowTs;
-            return;
-        }
-
-        if (zone === 'display') {
-            stopEvent(event);
-
-            if (nowTs - lastDisplayTapTs <= 450) {
-                applyAutoTime();
-                lastDisplayTapTs = 0;
-                lastHandledTs = nowTs;
-                return;
-            }
-
-            lastDisplayTapTs = nowTs;
-            lastHandledTs = nowTs;
-            return;
-        }
-
-        /*
-         * Zone pendule :
-         * on ne bloque pas, pour laisser l'input type="time" fonctionner nativement.
-         */
-    };
-
-    const handleWrapperClick = (event) => {
-        const nowTs = Date.now();
-
-        if (nowTs - lastHandledTs < 250) {
-            stopEvent(event);
-            return;
-        }
-
-        const zone = getTouchedZone(event);
-
-        if (zone === 'clear') {
-            stopEvent(event);
-            clearTime();
-            lastHandledTs = nowTs;
-            return;
-        }
-
-        if (zone === 'display') {
-            stopEvent(event);
-            lastHandledTs = nowTs;
-            return;
-        }
-    };
-
-    const handleDisplayDoubleClick = (event) => {
+    const openTimePicker = (event) => {
         stopEvent(event);
-        applyAutoTime();
+
+        if (!engineInput) {
+            return;
+        }
+
+        if (typeof engineInput.showPicker === 'function') {
+            engineInput.showPicker();
+            return;
+        }
+
+        engineInput.focus();
+
+        setTimeout(() => {
+            try {
+                engineInput.click();
+            } catch (_) {
+                // Fallback iPad : le focus suffit parfois.
+            }
+        }, 0);
     };
 
     setTimeValue(initialValue);
@@ -3283,54 +3237,81 @@ function initializeCalculator() {
     displayInput.readOnly = true;
     displayInput.removeAttribute('inputmode');
 
-    /*
-     * Gestion principale au niveau du wrapper :
-     * cela fonctionne même si l'input type="time" invisible intercepte la cible réelle.
-     */
-    wrapper.addEventListener('pointerdown', handleWrapperPointerDown, true);
-    wrapper.addEventListener('pointerup', handleWrapperPointerUp, true);
-    wrapper.addEventListener('click', handleWrapperClick, true);
+    let lastDisplayTapTs = 0;
+    let lastClearTs = 0;
 
     /*
-     * Fallback ordinateur : double-clic natif.
+     * Cellule visible :
+     * - simple clic / simple tap : rien
+     * - double clic / double tap : remplace toujours l'heure existante
      */
-    displayInput.addEventListener('dblclick', handleDisplayDoubleClick, true);
+    displayInput.addEventListener('click', (event) => {
+        stopEvent(event);
+    }, true);
 
-    /*
-     * Fallback si le navigateur ne gère pas pointer events.
-     */
-    wrapper.addEventListener('touchend', (event) => {
+    displayInput.addEventListener('dblclick', (event) => {
+        stopEvent(event);
+        applyAutoTime();
+    }, true);
+
+    displayInput.addEventListener('touchend', (event) => {
         const nowTs = Date.now();
 
-        if (nowTs - lastHandledTs < 250) {
+        if (nowTs - lastDisplayTapTs <= 450) {
+            stopEvent(event);
+            applyAutoTime();
+            lastDisplayTapTs = 0;
             return;
         }
 
-        const zone = getTouchedZone(event);
+        event.stopPropagation();
+        lastDisplayTapTs = nowTs;
+    }, { passive: false, capture: true });
 
-        if (zone === 'clear') {
+    /*
+     * X :
+     * - cellule normale : vide
+     * - TMD : 21:30
+     * - LIMITE HDV : 08:00
+     */
+    if (clearBtn) {
+        const handleClear = (event) => {
+            const nowTs = Date.now();
+
             stopEvent(event);
-            clearTime();
-            lastHandledTs = nowTs;
-            return;
-        }
 
-        if (zone === 'display') {
-            stopEvent(event);
-
-            if (nowTs - lastDisplayTapTs <= 450) {
-                applyAutoTime();
-                lastDisplayTapTs = 0;
-                lastHandledTs = nowTs;
+            if (nowTs - lastClearTs < 180) {
                 return;
             }
 
-            lastDisplayTapTs = nowTs;
-            lastHandledTs = nowTs;
-        }
-    }, { passive: false, capture: true });
+            lastClearTs = nowTs;
+            clearTime();
+        };
+
+        clearBtn.addEventListener('pointerdown', stopEvent, true);
+        clearBtn.addEventListener('pointerup', handleClear, true);
+        clearBtn.addEventListener('click', handleClear, true);
+        clearBtn.addEventListener('touchend', handleClear, { passive: false, capture: true });
+    }
+
+    /*
+     * Pendule :
+     * seule cette zone ouvre le sélecteur horaire.
+     */
+    if (clockIcon && engineInput) {
+        clockIcon.addEventListener('click', openTimePicker, true);
+        clockIcon.addEventListener('touchend', openTimePicker, { passive: false, capture: true });
+    }
 
     if (engineInput) {
+        engineInput.addEventListener('click', (event) => {
+            event.stopPropagation();
+        }, true);
+
+        engineInput.addEventListener('touchend', (event) => {
+            event.stopPropagation();
+        }, { passive: true, capture: true });
+
         engineInput.addEventListener('change', () => {
             if (engineInput.value) {
                 setTimeValue(engineInput.value);
@@ -3339,6 +3320,7 @@ function initializeCalculator() {
         });
     }
 }
+
 function initializeNumericInput(wrapper, initialValue = '') {
         const displayInput = wrapper.querySelector('.display-input');
         const clearBtn = wrapper.querySelector('.clear-btn');
