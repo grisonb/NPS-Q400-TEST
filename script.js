@@ -3238,21 +3238,54 @@ function initializeCalculator() {
         }
 
         if (clockIcon && engineInput) {
-            clockIcon.addEventListener('click', (event) => {
-                stopPropagationOnly(event);
+            let lastClockOpenTs = 0;
 
-                if (typeof engineInput.showPicker === 'function') {
-                    try {
+            const openTimePickerFromClock = (event) => {
+                if (event) {
+                    event.preventDefault();
+                    event.stopPropagation();
+                }
+
+                const nowTs = Date.now();
+                if (nowTs - lastClockOpenTs < 250) {
+                    return;
+                }
+                lastClockOpenTs = nowTs;
+
+                /*
+                 * Important iPad :
+                 * - l'input type="time" reste non cliquable dans la cellule pour préserver le X
+                 *   et empêcher le simple clic cellule d'ouvrir le sélecteur ;
+                 * - uniquement pendant le tap sur la pendule, on le rend cliquable et on tente
+                 *   l'ouverture native.
+                 */
+                const previousPointerEvents = engineInput.style.pointerEvents;
+                engineInput.style.pointerEvents = 'auto';
+
+                try {
+                    if (typeof engineInput.showPicker === 'function') {
                         engineInput.showPicker();
+                    } else {
+                        engineInput.focus({ preventScroll: true });
+                        engineInput.click();
+                    }
+                } catch (_) {
+                    try {
+                        engineInput.focus({ preventScroll: true });
+                        engineInput.click();
                     } catch (_) {
-                        // Sur iPad/Safari, le comportement natif du label prend le relais.
+                        // Dernier fallback : Safari/iPad peut refuser l'ouverture programmée.
                     }
                 }
-            });
 
-            clockIcon.addEventListener('touchend', (event) => {
-                stopPropagationOnly(event);
-            }, { passive: true });
+                setTimeout(() => {
+                    engineInput.style.pointerEvents = previousPointerEvents || 'none';
+                }, 700);
+            };
+
+            clockIcon.addEventListener('pointerup', openTimePickerFromClock, true);
+            clockIcon.addEventListener('click', openTimePickerFromClock, true);
+            clockIcon.addEventListener('touchend', openTimePickerFromClock, { passive: false, capture: true });
         }
 
         /*
