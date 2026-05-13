@@ -3159,39 +3159,8 @@ function initializeCalculator() {
             }
         };
 
-        const openTimePicker = (event) => {
-            if (event) {
-                event.preventDefault();
-                event.stopPropagation();
-            }
-
-            if (!engineInput) {
-                return;
-            }
-
-            /*
-             * On garde l'input type="time" non cliquable dans la cellule
-             * pour éviter qu'un simple clic ouvre le sélecteur d'heure.
-             * La pendule ouvre le sélecteur explicitement.
-             */
-            if (typeof engineInput.showPicker === 'function') {
-                try {
-                    engineInput.showPicker();
-                    return;
-                } catch (_) {
-                    // Certains Safari/iPadOS n'autorisent pas showPicker().
-                }
-            }
-
-            engineInput.focus();
-
-            setTimeout(() => {
-                try {
-                    engineInput.click();
-                } catch (_) {
-                    // Fallback iPad : le focus suffit parfois.
-                }
-            }, 0);
+        const stopPropagationOnly = (event) => {
+            event.stopPropagation();
         };
 
         setTimeValue(initialValue);
@@ -3253,8 +3222,8 @@ function initializeCalculator() {
         /*
          * Pendule :
          * On remplace seulement le SPAN par un LABEL visuellement identique.
-         * Cela ne change pas l'apparence mais permet d'associer la pendule
-         * au vrai input type="time".
+         * Important : on ne fait PAS preventDefault sur la pendule,
+         * sinon iPad/Safari peut bloquer l'ouverture native de l'input type="time".
          */
         if (clockIcon && engineInput && clockIcon.tagName.toLowerCase() !== 'label') {
             const clockLabel = document.createElement('label');
@@ -3269,8 +3238,21 @@ function initializeCalculator() {
         }
 
         if (clockIcon && engineInput) {
-            clockIcon.addEventListener('click', openTimePicker);
-            clockIcon.addEventListener('touchend', openTimePicker, { passive: false });
+            clockIcon.addEventListener('click', (event) => {
+                stopPropagationOnly(event);
+
+                if (typeof engineInput.showPicker === 'function') {
+                    try {
+                        engineInput.showPicker();
+                    } catch (_) {
+                        // Sur iPad/Safari, le comportement natif du label prend le relais.
+                    }
+                }
+            });
+
+            clockIcon.addEventListener('touchend', (event) => {
+                stopPropagationOnly(event);
+            }, { passive: true });
         }
 
         /*
@@ -3295,7 +3277,8 @@ function initializeCalculator() {
         }
     }
 
-    function initializeNumericInput(wrapper, initialValue = '') {
+    
+function initializeNumericInput(wrapper, initialValue = '') {
         const displayInput = wrapper.querySelector('.display-input');
         const clearBtn = wrapper.querySelector('.clear-btn');
         const unit = wrapper.dataset.unit || '';
