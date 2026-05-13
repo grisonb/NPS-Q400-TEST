@@ -3135,19 +3135,23 @@ function initializeCalculator() {
         return '';
     };
 
-    const applyAutoTime = () => {
-        setTimeValue(getAutoTimeValue());
+    const recalculateAndSave = () => {
         masterRecalculate();
         saveCalculatorState();
+    };
+
+    const applyAutoTime = () => {
+        setTimeValue(getAutoTimeValue());
+        recalculateAndSave();
     };
 
     const clearTime = () => {
         setTimeValue(getClearTimeValue());
-        masterRecalculate();
-        saveCalculatorState();
+        recalculateAndSave();
     };
 
-    const stopOnly = (event) => {
+    const stopEvent = (event) => {
+        event.preventDefault();
         event.stopPropagation();
 
         if (typeof event.stopImmediatePropagation === 'function') {
@@ -3155,121 +3159,186 @@ function initializeCalculator() {
         }
     };
 
-    const stopAndPrevent = (event) => {
-        event.preventDefault();
-        stopOnly(event);
+    const getEventClientX = (event) => {
+        if (typeof event.clientX === 'number') {
+            return event.clientX;
+        }
+
+        if (event.changedTouches && event.changedTouches.length) {
+            return event.changedTouches[0].clientX;
+        }
+
+        if (event.touches && event.touches.length) {
+            return event.touches[0].clientX;
+        }
+
+        return null;
+    };
+
+    const isInElementZone = (event, element, margin = 8) => {
+        if (!element) {
+            return false;
+        }
+
+        const x = getEventClientX(event);
+
+        if (x === null) {
+            return false;
+        }
+
+        const rect = element.getBoundingClientRect();
+        return x >= rect.left - margin && x <= rect.right + margin;
+    };
+
+    const getTouchedZone = (event) => {
+        if (isInElementZone(event, clearBtn, 12)) {
+            return 'clear';
+        }
+
+        if (isInElementZone(event, clockIcon, 12)) {
+            return 'clock';
+        }
+
+        if (isInElementZone(event, displayInput, 4)) {
+            return 'display';
+        }
+
+        return 'other';
+    };
+
+    let lastDisplayTapTs = 0;
+    let lastHandledTs = 0;
+
+    const handleWrapperPointerDown = (event) => {
+        const zone = getTouchedZone(event);
+
+        if (zone === 'clear' || zone === 'display') {
+            stopEvent(event);
+        }
+    };
+
+    const handleWrapperPointerUp = (event) => {
+        const nowTs = Date.now();
+        const zone = getTouchedZone(event);
+
+        if (zone === 'clear') {
+            stopEvent(event);
+            clearTime();
+            lastHandledTs = nowTs;
+            return;
+        }
+
+        if (zone === 'display') {
+            stopEvent(event);
+
+            if (nowTs - lastDisplayTapTs <= 450) {
+                applyAutoTime();
+                lastDisplayTapTs = 0;
+                lastHandledTs = nowTs;
+                return;
+            }
+
+            lastDisplayTapTs = nowTs;
+            lastHandledTs = nowTs;
+            return;
+        }
+
+        /*
+         * Zone pendule :
+         * on ne bloque pas, pour laisser l'input type="time" fonctionner nativement.
+         */
+    };
+
+    const handleWrapperClick = (event) => {
+        const nowTs = Date.now();
+
+        if (nowTs - lastHandledTs < 250) {
+            stopEvent(event);
+            return;
+        }
+
+        const zone = getTouchedZone(event);
+
+        if (zone === 'clear') {
+            stopEvent(event);
+            clearTime();
+            lastHandledTs = nowTs;
+            return;
+        }
+
+        if (zone === 'display') {
+            stopEvent(event);
+            lastHandledTs = nowTs;
+            return;
+        }
+    };
+
+    const handleDisplayDoubleClick = (event) => {
+        stopEvent(event);
+        applyAutoTime();
     };
 
     setTimeValue(initialValue);
 
-    /*
-     * Important :
-     * La cellule visible ne doit pas ouvrir l'heure au simple clic.
-     * Le double clic / double tap doit toujours remplacer l'heure existante.
-     */
     displayInput.readOnly = true;
     displayInput.removeAttribute('inputmode');
 
-    displayInput.addEventListener('click', (event) => {
-        stopAndPrevent(event);
-    }, true);
+    /*
+     * Gestion principale au niveau du wrapper :
+     * cela fonctionne même si l'input type="time" invisible intercepte la cible réelle.
+     */
+    wrapper.addEventListener('pointerdown', handleWrapperPointerDown, true);
+    wrapper.addEventListener('pointerup', handleWrapperPointerUp, true);
+    wrapper.addEventListener('click', handleWrapperClick, true);
 
-    displayInput.addEventListener('dblclick', (event) => {
-        stopAndPrevent(event);
-        applyAutoTime();
-    }, true);
+    /*
+     * Fallback ordinateur : double-clic natif.
+     */
+    displayInput.addEventListener('dblclick', handleDisplayDoubleClick, true);
 
-    let lastTapTs = 0;
-
-    displayInput.addEventListener('touchend', (event) => {
+    /*
+     * Fallback si le navigateur ne gère pas pointer events.
+     */
+    wrapper.addEventListener('touchend', (event) => {
         const nowTs = Date.now();
 
-        if (nowTs - lastTapTs <= 350) {
-            stopAndPrevent(event);
-            applyAutoTime();
-            lastTapTs = 0;
+        if (nowTs - lastHandledTs < 250) {
             return;
         }
 
-        stopOnly(event);
-        lastTapTs = nowTs;
+        const zone = getTouchedZone(event);
+
+        if (zone === 'clear') {
+            stopEvent(event);
+            clearTime();
+            lastHandledTs = nowTs;
+            return;
+        }
+
+        if (zone === 'display') {
+            stopEvent(event);
+
+            if (nowTs - lastDisplayTapTs <= 450) {
+                applyAutoTime();
+                lastDisplayTapTs = 0;
+                lastHandledTs = nowTs;
+                return;
+            }
+
+            lastDisplayTapTs = nowTs;
+            lastHandledTs = nowTs;
+        }
     }, { passive: false, capture: true });
 
-    /*
-     * X :
-     * - cellule normale : vide
-     * - TMD : 21:30
-     * - LIMITE HDV : 08:00
-     *
-     * On traite pointerup + touchend + click pour iPad.
-     */
-    if (clearBtn) {
-        clearBtn.addEventListener('pointerdown', stopAndPrevent, true);
-
-        clearBtn.addEventListener('pointerup', (event) => {
-            stopAndPrevent(event);
-            clearTime();
-        }, true);
-
-        clearBtn.addEventListener('touchend', (event) => {
-            stopAndPrevent(event);
-            clearTime();
-        }, { passive: false, capture: true });
-
-        clearBtn.addEventListener('click', (event) => {
-            stopAndPrevent(event);
-            clearTime();
-        }, true);
-    }
-
-    /*
-     * Pendule :
-     * On laisse l'input type="time" fonctionner nativement.
-     * On ne change pas sa position, sa taille, son opacity, ni le layout.
-     */
-    if (clockIcon && engineInput) {
-    const openTimePicker = (event) => {
-        event.preventDefault();
-        event.stopPropagation();
-
-        if (typeof engineInput.showPicker === 'function') {
-            engineInput.showPicker();
-            return;
-        }
-
-        engineInput.focus();
-
-        setTimeout(() => {
-            try {
-                engineInput.click();
-            } catch (_) {
-                // Fallback iPad : le focus suffit parfois.
-            }
-        }, 0);
-    };
-
-    clockIcon.addEventListener('click', openTimePicker);
-    clockIcon.addEventListener('touchend', openTimePicker, { passive: false });
-}
-
     if (engineInput) {
-        engineInput.addEventListener('click', (event) => {
-            stopOnly(event);
-        }, true);
-
-        engineInput.addEventListener('touchend', (event) => {
-            stopOnly(event);
-        }, { passive: true, capture: true });
-
         engineInput.addEventListener('change', () => {
             if (engineInput.value) {
                 setTimeValue(engineInput.value);
-                masterRecalculate();
-                saveCalculatorState();
+                recalculateAndSave();
             }
         });
     }
-}  
+}
 function initializeNumericInput(wrapper, initialValue = '') {
         const displayInput = wrapper.querySelector('.display-input');
         const clearBtn = wrapper.querySelector('.clear-btn');
