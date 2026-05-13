@@ -3155,82 +3155,15 @@ function initializeCalculator() {
         }
     };
 
-    const openTimePickerFromClockOnly = (event) => {
-        stopEvent(event);
-
-        if (!engineInput) {
-            return;
-        }
-
-        if (typeof engineInput.showPicker === 'function') {
-            engineInput.showPicker();
-            return;
-        }
-
-        engineInput.focus();
-
-        setTimeout(() => {
-            try {
-                engineInput.click();
-            } catch (_) {
-                // Fallback iOS : le focus suffit parfois.
-            }
-        }, 0);
-    };
-
     setTimeValue(initialValue);
-
-    displayInput.readOnly = true;
-    displayInput.removeAttribute('inputmode');
-
-    if (engineInput) {
-        engineInput.tabIndex = -1;
-
-        /*
-         * Important iPad :
-         * on empêche l'input type="time" invisible de capter les taps.
-         * Le sélecteur d'heure ne doit s'ouvrir que via l'icône horloge.
-         */
-        engineInput.style.pointerEvents = 'none';
-
-        engineInput.addEventListener('change', () => {
-            if (engineInput.value) {
-                setTimeValue(engineInput.value);
-                masterRecalculate();
-                saveCalculatorState();
-            }
-        });
-    }
-
-    /*
-     * X : doit toujours effacer / remettre la valeur par défaut.
-     * On écoute en capture pour passer avant les autres handlers éventuels.
-     */
-    if (clearBtn) {
-        clearBtn.addEventListener('pointerdown', stopEvent, true);
-
-        clearBtn.addEventListener('click', (event) => {
-            stopEvent(event);
-            clearTime();
-        }, true);
-
-        clearBtn.addEventListener('touchend', (event) => {
-            stopEvent(event);
-            clearTime();
-        }, { passive: false, capture: true });
-    }
 
     /*
      * Cellule visible :
-     * - simple tap : rien
-     * - double tap / double clic : heure automatique
-     * - ne doit jamais ouvrir le sélecteur d'heure
+     * - pas de saisie clavier directe
+     * - double clic / double tap = heure automatique
      */
-    let lastTapTs = 0;
-
-    displayInput.addEventListener('pointerdown', (event) => {
-        event.stopPropagation();
-    }, true);
+    displayInput.readOnly = true;
+    displayInput.removeAttribute('inputmode');
 
     displayInput.addEventListener('click', (event) => {
         event.preventDefault();
@@ -3241,6 +3174,8 @@ function initializeCalculator() {
         stopEvent(event);
         applyAutoTime();
     }, true);
+
+    let lastTapTs = 0;
 
     displayInput.addEventListener('touchend', (event) => {
         const nowTs = Date.now();
@@ -3257,14 +3192,75 @@ function initializeCalculator() {
     }, { passive: false, capture: true });
 
     /*
-     * Horloge : seul endroit autorisé à ouvrir le sélecteur d'heure.
+     * X :
+     * - cellule normale : vide
+     * - TMD : 21:30
+     * - LIMITE HDV : 08:00
      */
-    if (clockIcon) {
-        clockIcon.addEventListener('pointerdown', stopEvent, true);
-        clockIcon.addEventListener('click', openTimePickerFromClockOnly, true);
-        clockIcon.addEventListener('touchend', openTimePickerFromClockOnly, { passive: false, capture: true });
+    if (clearBtn) {
+        clearBtn.addEventListener('pointerdown', stopEvent, true);
+
+        clearBtn.addEventListener('click', (event) => {
+            stopEvent(event);
+            clearTime();
+        }, true);
+
+        clearBtn.addEventListener('touchend', (event) => {
+            stopEvent(event);
+            clearTime();
+        }, { passive: false, capture: true });
     }
-}    function initializeNumericInput(wrapper, initialValue = '') {
+
+    /*
+     * Pendule :
+     * Sur iPad, il faut que le tap soit directement sur l'input type="time".
+     * On place donc l'input natif transparent au-dessus de l'icône horloge.
+     */
+    if (engineInput) {
+        wrapper.style.position = 'relative';
+
+        engineInput.tabIndex = -1;
+        engineInput.style.position = 'absolute';
+        engineInput.style.right = '6px';
+        engineInput.style.top = '50%';
+        engineInput.style.transform = 'translateY(-50%)';
+        engineInput.style.width = '44px';
+        engineInput.style.height = '44px';
+        engineInput.style.opacity = '0.01';
+        engineInput.style.zIndex = '10';
+        engineInput.style.border = '0';
+        engineInput.style.margin = '0';
+        engineInput.style.padding = '0';
+        engineInput.style.background = 'transparent';
+        engineInput.style.color = 'transparent';
+        engineInput.style.pointerEvents = 'auto';
+        engineInput.style.webkitAppearance = 'none';
+        engineInput.style.appearance = 'none';
+
+        engineInput.addEventListener('click', (event) => {
+            event.stopPropagation();
+        }, true);
+
+        engineInput.addEventListener('touchend', (event) => {
+            event.stopPropagation();
+        }, { passive: true, capture: true });
+
+        engineInput.addEventListener('change', () => {
+            if (engineInput.value) {
+                setTimeValue(engineInput.value);
+                masterRecalculate();
+                saveCalculatorState();
+            }
+        });
+    }
+
+    if (clockIcon) {
+        clockIcon.style.pointerEvents = 'none';
+        clockIcon.style.position = 'relative';
+        clockIcon.style.zIndex = '9';
+    }
+}    
+function initializeNumericInput(wrapper, initialValue = '') {
         const displayInput = wrapper.querySelector('.display-input');
         const clearBtn = wrapper.querySelector('.clear-btn');
         const unit = wrapper.dataset.unit || '';
