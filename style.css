@@ -550,13 +550,20 @@ html, body {
 
 @media (hover: none) and (pointer: coarse) {
     .time-input-wrapper .engine-input {
-        left: 0;
+        left: auto;
         right: 0;
-        width: 100%;
-        z-index: 5;
+        width: 48px;
+        z-index: 3;
     }
+
     .time-input-wrapper .clock-icon {
-        pointer-events: none;
+        pointer-events: auto;
+        z-index: 4;
+    }
+
+    .time-input-wrapper .clear-btn {
+        z-index: 6;
+        pointer-events: auto;
     }
 }
 
@@ -888,6 +895,3 @@ html, body {
 .clear-commune-btn:hover {
     color: var(--secondary-color);
 }
-
-
-
