@@ -2,6 +2,7 @@
 // INITIALISATION DE L'APPLICATION
 // =========================================================================
 document.addEventListener('DOMContentLoaded', () => {
+    alert('SCRIPT DEBUG PUSH RESUBSCRIBE chargé - 10.13');
     if (typeof L === 'undefined') { document.getElementById('status-message').textContent = "❌ ERREUR : leaflet.min.js non chargé."; return; }
     initializeApp();
 });
