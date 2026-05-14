@@ -67,6 +67,7 @@ const MQTT_SCRIPT_URL = 'https://unpkg.com/mqtt/dist/mqtt.min.js';
 // À REMPLIR quand le serveur push sera en place.
 // Exemple: const CHAT_PUSH_API_URL = 'https://ton-domaine.fr/api/chat-push';
 // Exemple: const CHAT_PUSH_VAPID_PUBLIC_KEY = 'BGG6-HDRHDKDfcT0EjXwg4X5R6u24sKe3IMfWMjWeeSRAxgmcHnocHX0ZzxtBGbkjKOWVWNYwe1vNoKcLGkwaCM';
+alert('TEST PUSH SCRIPT 14-05-2026 - nouvelle version chargée');
 const CHAT_PUSH_API_URL = 'https://grisonb.synology.me:8443';
 const CHAT_PUSH_VAPID_PUBLIC_KEY = 'BGG6-HDRHDKDfCTOEjXwg4X5R6u24sKe3IMfWMjWeeSRAxgmcHnocHX0ZzxtBGbkjKOWVWNYwe1vNoKcLGkwaCM';
 let mqttLoaderPromise = null;
