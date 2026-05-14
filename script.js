@@ -2597,29 +2597,33 @@ function initializeTeamChat() {
     };
 
     const urlBase64ToArrayBuffer = (base64String) => {
-        const cleaned = String(base64String || '').trim();
-        const padding = '='.repeat((4 - cleaned.length % 4) % 4);
-        const base64 = (cleaned + padding)
-            .replace(/-/g, '+')
-            .replace(/_/g, '/');
+    const cleaned = String(base64String || '').trim();
 
-        const rawData = window.atob(base64);
-        const outputArray = new Uint8Array(rawData.length);
+    const padding = '='.repeat((4 - cleaned.length % 4) % 4);
+    const base64 = (cleaned + padding)
+        .replace(/-/g, '+')
+        .replace(/_/g, '/');
 
-        for (let i = 0; i < rawData.length; i += 1) {
-            outputArray[i] = rawData.charCodeAt(i);
-        }
+    const rawData = window.atob(base64);
+    const outputArray = new Uint8Array(rawData.length);
 
-        console.log('[PUSH] VAPID string length:', cleaned.length);
-        console.log('[PUSH] VAPID decoded bytes:', outputArray.length);
-        console.log('[PUSH] VAPID first byte:', outputArray[0]);
+    for (let i = 0; i < rawData.length; i += 1) {
+        outputArray[i] = rawData.charCodeAt(i);
+    }
 
-        if (outputArray.length !== 65 || outputArray[0] !== 4) {
-            throw new Error(`VAPID public key invalid: ${outputArray.length} bytes, first byte ${outputArray[0]}`);
-        }
+    appendChatMessage(
+        'Système',
+        `DEBUG PUSH VAPID: longueur=${cleaned.length}, octets=${outputArray.length}, premier=${outputArray[0]}`,
+        new Date().toISOString(),
+        true
+    );
 
-        return outputArray.buffer;
-    };
+    if (outputArray.length !== 65 || outputArray[0] !== 4) {
+        throw new Error(`VAPID invalide après décodage: longueur=${cleaned.length}, octets=${outputArray.length}, premier=${outputArray[0]}`);
+    }
+
+    return outputArray.buffer;
+};
 
     const ensureChatPushSubscription = async () => {
         if (chatPushSubscriptionPromise) return chatPushSubscriptionPromise;
