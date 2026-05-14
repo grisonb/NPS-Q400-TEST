@@ -68,7 +68,7 @@ const MQTT_SCRIPT_URL = 'https://unpkg.com/mqtt/dist/mqtt.min.js';
 // Exemple: const CHAT_PUSH_API_URL = 'https://ton-domaine.fr/api/chat-push';
 // Exemple: const CHAT_PUSH_VAPID_PUBLIC_KEY = 'BGG6-HDRHDKDfcT0EjXwg4X5R6u24sKe3IMfWMjWeeSRAxgmcHnocHX0ZzxtBGbkjKOWVWNYwe1vNoKcLGkwaCM';
 const CHAT_PUSH_API_URL = 'https://grisonb.synology.me:8443';
-const CHAT_PUSH_VAPID_PUBLIC_KEY = 'BC1eZyKX49MClpB75gBDUVVsPcnGOUe91SEcQLEo7a3fUSyqZGCbw5qh1AXDINO7KGRLjKojesGcK-Ms_PO5jzg';
+const CHAT_PUSH_VAPID_PUBLIC_KEY = 'BAsbIFcRk_p8emWTwx9RzLJdrvUGqYvkS9rvcCF12Ch7RGIdIV_06mnWSMzLqp6ekydWCXsmwAzySLsAP6vyhQQ';
 let mqttLoaderPromise = null;
 
 const pelicanAirports = [
@@ -2648,9 +2648,66 @@ function initializeTeamChat() {
 
             const registration = await navigator.serviceWorker.ready;
             let subscription = await registration.pushManager.getSubscription();
-            if (!subscription) {
-                const vapidKeyArray = urlBase64ToUint8Array(CHAT_PUSH_VAPID_PUBLIC_KEY);
+            const vapidKeyArray = urlBase64ToUint8Array(CHAT_PUSH_VAPID_PUBLIC_KEY);
 
+            /*
+             * Important : si la clé VAPID a changé, Safari/iPad peut conserver
+             * un ancien abonnement Push. Dans ce cas le serveur reçoit bien
+             * l'abonnement, mais Apple refuse l'envoi avec un 403.
+             * On compare donc la clé de l'abonnement existant avec la clé actuelle.
+             */
+            let mustCreateNewSubscription = !subscription;
+
+            if (subscription && subscription.options && subscription.options.applicationServerKey) {
+                try {
+                    const existingKey = new Uint8Array(subscription.options.applicationServerKey);
+                    const sameKey = existingKey.length === vapidKeyArray.length
+                        && existingKey.every((value, index) => value === vapidKeyArray[index]);
+
+                    appendChatMessage(
+                        'Système',
+                        `DEBUG PUSH EXISTANT: bytes=${existingKey.length}, sameKey=${sameKey}`,
+                        new Date().toISOString(),
+                        true
+                    );
+
+                    if (!sameKey) {
+                        await subscription.unsubscribe();
+                        subscription = null;
+                        mustCreateNewSubscription = true;
+                    }
+                } catch (compareError) {
+                    appendChatMessage(
+                        'Système',
+                        `DEBUG PUSH EXISTANT: comparaison impossible (${compareError.message || compareError}), réabonnement forcé`,
+                        new Date().toISOString(),
+                        true
+                    );
+
+                    try {
+                        await subscription.unsubscribe();
+                    } catch (_) {}
+
+                    subscription = null;
+                    mustCreateNewSubscription = true;
+                }
+            } else if (subscription) {
+                appendChatMessage(
+                    'Système',
+                    'DEBUG PUSH EXISTANT: clé non lisible, réabonnement forcé',
+                    new Date().toISOString(),
+                    true
+                );
+
+                try {
+                    await subscription.unsubscribe();
+                } catch (_) {}
+
+                subscription = null;
+                mustCreateNewSubscription = true;
+            }
+
+            if (mustCreateNewSubscription) {
                 appendChatMessage(
                     'Système',
                     `DEBUG AVANT SUBSCRIBE STRING: keyLength=${CHAT_PUSH_VAPID_PUBLIC_KEY.length}, bytes=${vapidKeyArray.byteLength}, firstByte=${vapidKeyArray[0]}, keyType=string`,
