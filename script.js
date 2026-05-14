@@ -2651,13 +2651,15 @@ function initializeTeamChat() {
             const vapidKeyArray = urlBase64ToUint8Array(CHAT_PUSH_VAPID_PUBLIC_KEY);
 
             /*
-             * Important : si la clé VAPID a changé, Safari/iPad peut conserver
-             * un ancien abonnement Push. Dans ce cas le serveur reçoit bien
-             * l'abonnement, mais Apple refuse l'envoi avec un 403.
-             * On compare donc la clé de l'abonnement existant avec la clé actuelle.
+             * Safari/iPad peut conserver un ancien abonnement Push créé avec une ancienne clé VAPID.
+             * Si la clé de l'abonnement existant ne correspond pas à la clé actuelle :
+             * 1) on supprime l'ancien abonnement ;
+             * 2) on force un rechargement ;
+             * 3) l'abonnement propre sera recréé au prochain lancement.
+             *
+             * Important : on ne recrée pas immédiatement l'abonnement dans le même cycle,
+             * car Safari peut encore rejeter applicationServerKey juste après unsubscribe().
              */
-            let mustCreateNewSubscription = !subscription;
-
             if (subscription && subscription.options && subscription.options.applicationServerKey) {
                 try {
                     const existingKey = new Uint8Array(subscription.options.applicationServerKey);
@@ -2673,13 +2675,29 @@ function initializeTeamChat() {
 
                     if (!sameKey) {
                         await subscription.unsubscribe();
-                        subscription = null;
-                        mustCreateNewSubscription = true;
+                        localStorage.removeItem('teamChatPushEnabled');
+
+                        appendChatMessage(
+                            'Système',
+                            'Ancien abonnement Push supprimé. Rechargement nécessaire pour recréer un abonnement propre.',
+                            new Date().toISOString(),
+                            true
+                        );
+
+                        setTimeout(() => {
+                            if (typeof window.forceRecoveryReload === 'function') {
+                                window.forceRecoveryReload();
+                            } else {
+                                window.location.reload();
+                            }
+                        }, 1200);
+
+                        return false;
                     }
                 } catch (compareError) {
                     appendChatMessage(
                         'Système',
-                        `DEBUG PUSH EXISTANT: comparaison impossible (${compareError.message || compareError}), réabonnement forcé`,
+                        `DEBUG PUSH EXISTANT: comparaison impossible (${compareError.message || compareError}), réinitialisation`,
                         new Date().toISOString(),
                         true
                     );
@@ -2688,13 +2706,22 @@ function initializeTeamChat() {
                         await subscription.unsubscribe();
                     } catch (_) {}
 
-                    subscription = null;
-                    mustCreateNewSubscription = true;
+                    localStorage.removeItem('teamChatPushEnabled');
+
+                    setTimeout(() => {
+                        if (typeof window.forceRecoveryReload === 'function') {
+                            window.forceRecoveryReload();
+                        } else {
+                            window.location.reload();
+                        }
+                    }, 1200);
+
+                    return false;
                 }
             } else if (subscription) {
                 appendChatMessage(
                     'Système',
-                    'DEBUG PUSH EXISTANT: clé non lisible, réabonnement forcé',
+                    'DEBUG PUSH EXISTANT: clé non lisible, réinitialisation',
                     new Date().toISOString(),
                     true
                 );
@@ -2703,21 +2730,30 @@ function initializeTeamChat() {
                     await subscription.unsubscribe();
                 } catch (_) {}
 
-                subscription = null;
-                mustCreateNewSubscription = true;
+                localStorage.removeItem('teamChatPushEnabled');
+
+                setTimeout(() => {
+                    if (typeof window.forceRecoveryReload === 'function') {
+                        window.forceRecoveryReload();
+                    } else {
+                        window.location.reload();
+                    }
+                }, 1200);
+
+                return false;
             }
 
-            if (mustCreateNewSubscription) {
+            if (!subscription) {
                 appendChatMessage(
                     'Système',
-                    `DEBUG AVANT SUBSCRIBE UINT8 FINAL: keyLength=${CHAT_PUSH_VAPID_PUBLIC_KEY.length}, bytes=${vapidKeyArray.byteLength}, firstByte=${vapidKeyArray[0]}, isUint8Array=${vapidKeyArray instanceof Uint8Array}`,
+                    `DEBUG AVANT SUBSCRIBE STRING FINAL: keyLength=${CHAT_PUSH_VAPID_PUBLIC_KEY.length}, bytes=${vapidKeyArray.byteLength}, firstByte=${vapidKeyArray[0]}, keyType=string`,
                     new Date().toISOString(),
                     true
                 );
 
                 subscription = await registration.pushManager.subscribe({
                     userVisibleOnly: true,
-                    applicationServerKey: vapidKeyArray
+                    applicationServerKey: CHAT_PUSH_VAPID_PUBLIC_KEY
                 });
             }
 
@@ -2744,7 +2780,7 @@ function initializeTeamChat() {
             let vapidDebug = 'debug VAPID indisponible';
             try {
                 const vapidKeyArray = urlBase64ToUint8Array(CHAT_PUSH_VAPID_PUBLIC_KEY);
-                vapidDebug = `mode=uint8array-final, keyLength=${CHAT_PUSH_VAPID_PUBLIC_KEY.length}, bytes=${vapidKeyArray.byteLength}, firstByte=${vapidKeyArray[0]}, isUint8Array=${vapidKeyArray instanceof Uint8Array}`;
+                vapidDebug = `mode=string-final-reload, keyLength=${CHAT_PUSH_VAPID_PUBLIC_KEY.length}, bytes=${vapidKeyArray.byteLength}, firstByte=${vapidKeyArray[0]}, keyType=${typeof CHAT_PUSH_VAPID_PUBLIC_KEY}`;
             } catch (debugError) {
                 vapidDebug = `debug VAPID erreur=${debugError.message || debugError}`;
             }
