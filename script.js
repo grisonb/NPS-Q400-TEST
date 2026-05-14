@@ -60,6 +60,15 @@ let chatPresenceTopic = null;
 let chatConnected = false;
 const CHAT_BROKER_URL = 'wss://broker.emqx.io:8084/mqtt';
 const MQTT_SCRIPT_URL = 'https://unpkg.com/mqtt/dist/mqtt.min.js';
+
+// =========================================================================
+// CHAT - NOTIFICATIONS PUSH PWA
+// =========================================================================
+// À REMPLIR quand le serveur push sera en place.
+// Exemple: const CHAT_PUSH_API_URL = 'https://ton-domaine.fr/api/chat-push';
+// Exemple: const CHAT_PUSH_VAPID_PUBLIC_KEY = 'BExxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx';
+const CHAT_PUSH_API_URL = '';
+const CHAT_PUSH_VAPID_PUBLIC_KEY = '';
 let mqttLoaderPromise = null;
 
 const pelicanAirports = [
@@ -2575,6 +2584,105 @@ function initializeTeamChat() {
         } catch (_) {}
     };
 
+    const isChatPushConfigured = () => {
+        return typeof CHAT_PUSH_API_URL === 'string'
+            && CHAT_PUSH_API_URL.trim()
+            && typeof CHAT_PUSH_VAPID_PUBLIC_KEY === 'string'
+            && CHAT_PUSH_VAPID_PUBLIC_KEY.trim();
+    };
+
+    const getChatPushApiUrl = (path) => {
+        return `${CHAT_PUSH_API_URL.replace(/\/$/, '')}/${path.replace(/^\//, '')}`;
+    };
+
+    const urlBase64ToUint8Array = (base64String) => {
+        const padding = '='.repeat((4 - base64String.length % 4) % 4);
+        const base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/');
+        const rawData = window.atob(base64);
+        const outputArray = new Uint8Array(rawData.length);
+        for (let i = 0; i < rawData.length; i += 1) {
+            outputArray[i] = rawData.charCodeAt(i);
+        }
+        return outputArray;
+    };
+
+    const ensureChatPushSubscription = async () => {
+        if (!isChatPushConfigured()) return false;
+        if (!('serviceWorker' in navigator) || !('PushManager' in window) || typeof Notification === 'undefined') {
+            appendChatMessage('Système', 'Notifications push non supportées par ce navigateur.', new Date().toISOString(), true);
+            return false;
+        }
+
+        const roomName = (roomInput.value || '').trim().replace(/[^a-zA-Z0-9-_]/g, '');
+        const userName = (userInput.value || '').trim().slice(0, 24);
+        if (!roomName || !userName) return false;
+
+        try {
+            let permission = Notification.permission;
+            if (permission === 'default') {
+                permission = await Notification.requestPermission();
+            }
+            if (permission !== 'granted') {
+                appendChatMessage('Système', 'Notifications non autorisées sur cet appareil.', new Date().toISOString(), true);
+                return false;
+            }
+
+            const registration = await navigator.serviceWorker.ready;
+            let subscription = await registration.pushManager.getSubscription();
+            if (!subscription) {
+                subscription = await registration.pushManager.subscribe({
+                    userVisibleOnly: true,
+                    applicationServerKey: urlBase64ToUint8Array(CHAT_PUSH_VAPID_PUBLIC_KEY.trim())
+                });
+            }
+
+            const response = await fetch(getChatPushApiUrl('subscribe'), {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    room: roomName,
+                    user: userName,
+                    clientId: myClientId,
+                    subscription
+                })
+            });
+
+            if (!response.ok) {
+                throw new Error(`HTTP ${response.status}`);
+            }
+
+            localStorage.setItem('teamChatPushEnabled', 'true');
+            return true;
+        } catch (error) {
+            console.warn('Activation Web Push impossible:', error);
+            appendChatMessage('Système', `Push arrière-plan indisponible (${error.message || error}).`, new Date().toISOString(), true);
+            return false;
+        }
+    };
+
+    const sendChatPushNotification = async (payload) => {
+        if (!isChatPushConfigured() || !payload || payload.type !== 'chat') return;
+        const roomName = (roomInput.value || '').trim().replace(/[^a-zA-Z0-9-_]/g, '');
+        if (!roomName) return;
+
+        try {
+            await fetch(getChatPushApiUrl('message'), {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    room: roomName,
+                    senderClientId: myClientId,
+                    user: payload.user,
+                    text: payload.text,
+                    time: payload.time,
+                    id: payload.id
+                })
+            });
+        } catch (error) {
+            console.warn('Envoi push arrière-plan impossible:', error);
+        }
+    };
+
     const refreshOnlineUsersLabel = () => {
         const users = Array.from(activeUsers.values())
             .filter((name) => typeof name === 'string' && name.trim())
@@ -2632,6 +2740,10 @@ function initializeTeamChat() {
             if (!err && typeof onLiveAck === 'function') onLiveAck();
         });
         chatClient.publish(`${chatHistoryTopic}/${payload.id}`, JSON.stringify(payload), { qos: 1, retain: true });
+
+        // Push Web pour les appareils où la PWA est en arrière-plan/suspendue.
+        // Cette ligne ne fait rien tant que CHAT_PUSH_API_URL et CHAT_PUSH_VAPID_PUBLIC_KEY ne sont pas configurés.
+        sendChatPushNotification(payload);
     };
 
     const flushOutbox = () => {
@@ -2770,6 +2882,7 @@ function initializeTeamChat() {
                 if (typeof Notification !== 'undefined' && Notification.permission === 'default') {
                     Notification.requestPermission().catch(() => {});
                 }
+                ensureChatPushSubscription().catch(() => {});
 
                 chatClient.subscribe(`${chatHistoryTopic}/#`, { qos: 1 }, (historyErr) => {
                     if (historyErr) {
