@@ -1,9 +1,8 @@
-const APP_CACHE_NAME = 'test-communes-app-cache-v1018'; 
-const DATA_CACHE_NAME = 'test-communes-data-cache-v1018';
-const TILE_CACHE_NAME = 'test-communes-tile-cache-v1018';
+const APP_CACHE_NAME = 'test-communes-app-cache-v1019'; 
+const DATA_CACHE_NAME = 'test-communes-data-cache-v1019';
+const TILE_CACHE_NAME = 'test-communes-tile-cache-v1019';
 const APP_SHELL_URLS = [
     './style.css',
-    './script.js',
     './leaflet.min.js',
     './leaflet.css',
     './manifest.json',
