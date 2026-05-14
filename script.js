@@ -2717,7 +2717,7 @@ function initializeTeamChat() {
 
                 subscription = await registration.pushManager.subscribe({
                     userVisibleOnly: true,
-                    applicationServerKey: vapidKeyArray.buffer.buffer
+                    applicationServerKey: vapidKeyArray.buffer
                 });
             }
 
