@@ -2598,6 +2598,11 @@ function initializeTeamChat() {
 
     const urlBase64ToArrayBuffer = (base64String) => {
         const cleaned = String(base64String || '').trim();
+
+        console.log('[PUSH] VAPID key length:', cleaned.length);
+        console.log('[PUSH] VAPID key start:', cleaned.slice(0, 8));
+        console.log('[PUSH] VAPID key end:', cleaned.slice(-8));
+
         const padding = '='.repeat((4 - cleaned.length % 4) % 4);
         const base64 = (cleaned + padding).replace(/-/g, '+').replace(/_/g, '/');
         const rawData = window.atob(base64);
@@ -2607,16 +2612,10 @@ function initializeTeamChat() {
             outputArray[i] = rawData.charCodeAt(i);
         }
 
-        /*
-         * Une clé VAPID publique doit être une clé P-256 non compressée :
-         * 65 octets, premier octet = 0x04.
-         * On renvoie l'ArrayBuffer natif, plus compatible iPad/Safari que le Uint8Array direct.
-         */
-        if (outputArray.length !== 65 || outputArray[0] !== 4) {
-            throw new Error('VAPID public key invalid');
-        }
+        console.log('[PUSH] VAPID decoded bytes:', outputArray.length);
+        console.log('[PUSH] VAPID first byte:', outputArray.length ? outputArray[0] : null);
 
-        return outputArray.buffer;
+        return outputArray;
     };
 
     const ensureChatPushSubscription = async () => {
