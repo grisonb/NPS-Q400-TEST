@@ -3097,81 +3097,109 @@ function initializeCalculator() {
         const clearBtn = wrapper.querySelector('.clear-btn');
 
         const setTimeValue = (time) => {
-            displayInput.value = time;
+            const safeTime = time || '';
+            displayInput.value = safeTime;
             if (engineInput) {
-                if (String(time).match(/^\d{2}:\d{2}$/)) {
-                    engineInput.value = time;
+                if (String(safeTime).match(/^\d{2}:\d{2}$/)) {
+                    engineInput.value = safeTime;
                 } else {
                     engineInput.value = '';
                 }
             }
         };
 
+        const recalculateAndSave = () => {
+            masterRecalculate();
+            saveCalculatorState();
+        };
+
+        const getAutoTimeValue = () => {
+            if (wrapper.id === 'tmd') {
+                return '21:30';
+            }
+
+            if (wrapper.id === 'limite-hdv') {
+                return '08:00';
+            }
+
+            const now = new Date();
+            return `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}`;
+        };
+
+        const getClearTimeValue = () => {
+            if (wrapper.id === 'tmd') {
+                return '21:30';
+            }
+
+            if (wrapper.id === 'limite-hdv') {
+                return '08:00';
+            }
+
+            return '';
+        };
+
         setTimeValue(initialValue);
 
         /*
          * Saisie manuelle PC uniquement.
-         * Ne pas activer sur iPad : cela perturberait le X, le double tap et l'input type="time" natif.
+         * Important : ne rien changer au comportement iPad.
          */
         const isPcKeyboardDevice = window.matchMedia('(hover: hover) and (pointer: fine)').matches
             && navigator.maxTouchPoints === 0;
 
         if (isPcKeyboardDevice) {
             displayInput.readOnly = false;
+            displayInput.removeAttribute('readonly');
             displayInput.inputMode = 'numeric';
             displayInput.placeholder = '--:--';
-
-            const normalizeTypedTime = (raw) => {
-                const digits = String(raw || '').replace(/\D/g, '').slice(0, 4);
-
-                if (digits.length === 0) {
-                    return '';
-                }
-
-                if (digits.length <= 2) {
-                    return digits;
-                }
-
-                return `${digits.slice(0, 2)}:${digits.slice(2)}`;
-            };
+            displayInput.autocomplete = 'off';
+            displayInput.maxLength = 5;
 
             const commitTypedTime = () => {
                 const rawValue = String(displayInput.value || '').trim();
 
                 if (rawValue === '') {
                     setTimeValue('');
-                    masterRecalculate();
-                    saveCalculatorState();
+                    recalculateAndSave();
                     return;
                 }
 
-                const match = /^([0-1]?\d|2[0-3]):?([0-5]\d)$/.exec(rawValue);
+                const compactValue = rawValue.replace(/\D/g, '');
+                let hh = '';
+                let mm = '';
 
-                if (!match) {
+                if (/^\d{3,4}$/.test(compactValue)) {
+                    const padded = compactValue.padStart(4, '0');
+                    hh = padded.slice(0, 2);
+                    mm = padded.slice(2, 4);
+                } else {
+                    const match = /^(\d{1,2}):(\d{1,2})$/.exec(rawValue);
+                    if (match) {
+                        hh = match[1].padStart(2, '0');
+                        mm = match[2].padStart(2, '0');
+                    }
+                }
+
+                const hourNumber = Number(hh);
+                const minuteNumber = Number(mm);
+
+                if (!Number.isInteger(hourNumber) || !Number.isInteger(minuteNumber) || hourNumber < 0 || hourNumber > 23 || minuteNumber < 0 || minuteNumber > 59) {
                     setTimeValue('');
-                    masterRecalculate();
-                    saveCalculatorState();
+                    recalculateAndSave();
                     return;
                 }
-
-                const hh = match[1].padStart(2, '0');
-                const mm = match[2].padStart(2, '0');
 
                 setTimeValue(`${hh}:${mm}`);
-                masterRecalculate();
-                saveCalculatorState();
+                recalculateAndSave();
             };
 
             displayInput.addEventListener('focus', () => {
                 displayInput.select();
             });
 
-            displayInput.addEventListener('input', () => {
-                displayInput.value = normalizeTypedTime(displayInput.value);
-            });
-
-            displayInput.addEventListener('blur', () => {
-                commitTypedTime();
+            displayInput.addEventListener('click', (event) => {
+                event.stopPropagation();
+                displayInput.focus();
             });
 
             displayInput.addEventListener('keydown', (event) => {
@@ -3180,6 +3208,16 @@ function initializeCalculator() {
                     commitTypedTime();
                     displayInput.blur();
                 }
+
+                if (event.key === 'Escape') {
+                    event.preventDefault();
+                    setTimeValue(engineInput && engineInput.value ? engineInput.value : displayInput.value);
+                    displayInput.blur();
+                }
+            });
+
+            displayInput.addEventListener('blur', () => {
+                commitTypedTime();
             });
         }
 
@@ -3191,30 +3229,25 @@ function initializeCalculator() {
             } else if (wrapper.id === 'limite-hdv') {
                 timeString = '08:00';
             } else {
-                const now = new Date();
-                timeString = `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}`;
+                timeString = getAutoTimeValue();
             }
             setTimeValue(timeString);
-            masterRecalculate();
-            saveCalculatorState();
+            recalculateAndSave();
         });
 
         if (engineInput) {
             engineInput.addEventListener('change', () => {
                 if (engineInput.value) {
-                    displayInput.value = engineInput.value;
-                    masterRecalculate();
-                    saveCalculatorState();
+                    setTimeValue(engineInput.value);
+                    recalculateAndSave();
                 }
             });
         }
 
         if (clearBtn) {
             clearBtn.addEventListener('click', () => {
-                const defaultValue = wrapper.id === 'tmd' ? '21:30' : wrapper.id === 'limite-hdv' ? '08:00' : '';
-                setTimeValue(defaultValue);
-                masterRecalculate();
-                saveCalculatorState();
+                setTimeValue(getClearTimeValue());
+                recalculateAndSave();
             });
         }
     }
