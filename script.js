@@ -2518,6 +2518,7 @@ function initializeTeamChat() {
     const renderedMessageIds = new Set();
     const sentMessageElements = new Map();
     const activeUsers = new Map();
+    let chatPushSubscriptionPromise = null;
     const myClientId = getOrCreateClientId();
     minimizeButton.textContent = '—';
 
@@ -2595,23 +2596,38 @@ function initializeTeamChat() {
         return `${CHAT_PUSH_API_URL.replace(/\/$/, '')}/${path.replace(/^\//, '')}`;
     };
 
-    const urlBase64ToUint8Array = (base64String) => {
-        const padding = '='.repeat((4 - base64String.length % 4) % 4);
-        const base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/');
+    const urlBase64ToArrayBuffer = (base64String) => {
+        const cleaned = String(base64String || '').trim();
+        const padding = '='.repeat((4 - cleaned.length % 4) % 4);
+        const base64 = (cleaned + padding).replace(/-/g, '+').replace(/_/g, '/');
         const rawData = window.atob(base64);
         const outputArray = new Uint8Array(rawData.length);
+
         for (let i = 0; i < rawData.length; i += 1) {
             outputArray[i] = rawData.charCodeAt(i);
         }
-        return outputArray;
+
+        /*
+         * Une clé VAPID publique doit être une clé P-256 non compressée :
+         * 65 octets, premier octet = 0x04.
+         * On renvoie l'ArrayBuffer natif, plus compatible iPad/Safari que le Uint8Array direct.
+         */
+        if (outputArray.length !== 65 || outputArray[0] !== 4) {
+            throw new Error('VAPID public key invalid');
+        }
+
+        return outputArray.buffer;
     };
 
     const ensureChatPushSubscription = async () => {
-        if (!isChatPushConfigured()) return false;
-        if (!('serviceWorker' in navigator) || !('PushManager' in window) || typeof Notification === 'undefined') {
-            appendChatMessage('Système', 'Notifications push non supportées par ce navigateur.', new Date().toISOString(), true);
-            return false;
-        }
+        if (chatPushSubscriptionPromise) return chatPushSubscriptionPromise;
+
+        chatPushSubscriptionPromise = (async () => {
+            if (!isChatPushConfigured()) return false;
+            if (!('serviceWorker' in navigator) || !('PushManager' in window) || typeof Notification === 'undefined') {
+                appendChatMessage('Système', 'Notifications push non supportées par ce navigateur.', new Date().toISOString(), true);
+                return false;
+            }
 
         const roomName = (roomInput.value || '').trim().replace(/[^a-zA-Z0-9-_]/g, '');
         const userName = (userInput.value || '').trim().slice(0, 24);
@@ -2632,7 +2648,7 @@ function initializeTeamChat() {
             if (!subscription) {
                 subscription = await registration.pushManager.subscribe({
                     userVisibleOnly: true,
-                    applicationServerKey: urlBase64ToUint8Array(CHAT_PUSH_VAPID_PUBLIC_KEY.trim())
+                    applicationServerKey: urlBase64ToArrayBuffer(CHAT_PUSH_VAPID_PUBLIC_KEY)
                 });
             }
 
@@ -2657,6 +2673,13 @@ function initializeTeamChat() {
             console.warn('Activation Web Push impossible:', error);
             appendChatMessage('Système', `Push arrière-plan indisponible (${error.message || error}).`, new Date().toISOString(), true);
             return false;
+        }
+        })();
+
+        try {
+            return await chatPushSubscriptionPromise;
+        } finally {
+            chatPushSubscriptionPromise = null;
         }
     };
 
@@ -2817,6 +2840,14 @@ function initializeTeamChat() {
             isChatConnecting = false;
             return;
         }
+
+        const desiredChatTopic = `pelic/chat/${roomName}`;
+        if (chatClient && chatConnected && chatTopic === desiredChatTopic) {
+            isChatConnecting = false;
+            ensureChatPushSubscription().catch(() => {});
+            return;
+        }
+
         persistConfig();
         const previousUser = activeUsers.get(myClientId) || (userInput.value || '').trim();
         publishPresence('offline', previousUser);
