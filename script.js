@@ -68,7 +68,7 @@ const MQTT_SCRIPT_URL = 'https://unpkg.com/mqtt/dist/mqtt.min.js';
 // Exemple: const CHAT_PUSH_API_URL = 'https://ton-domaine.fr/api/chat-push';
 // Exemple: const CHAT_PUSH_VAPID_PUBLIC_KEY = 'BGG6-HDRHDKDfcT0EjXwg4X5R6u24sKe3IMfWMjWeeSRAxgmcHnocHX0ZzxtBGbkjKOWVWNYwe1vNoKcLGkwaCM';
 const CHAT_PUSH_API_URL = 'https://grisonb.synology.me:8443';
-const CHAT_PUSH_VAPID_PUBLIC_KEY = 'BGG6-HDRHDKDfCTOEjXwg4X5R6u24sKe3IMfWMjWeeSRAxgmcHnocHX0ZzxtBGbkjKOWVWNYwe1vNoKcLGkwaCM';
+const CHAT_PUSH_VAPID_PUBLIC_KEY = 'BAsbIFcRk_p8emWTwx9RzLJdrvUGqYvkS9rvcCF12Ch7RGIdIV_06mnWSMzLqp6ekydWCXsmwAzySLsAP6vyhQQ';
 let mqttLoaderPromise = null;
 
 const pelicanAirports = [
