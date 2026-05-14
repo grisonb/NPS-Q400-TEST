@@ -2683,7 +2683,23 @@ function initializeTeamChat() {
             return true;
         } catch (error) {
             console.warn('Activation Web Push impossible:', error);
-            appendChatMessage('Système', `Push arrière-plan indisponible (${error.message || error}).`, new Date().toISOString(), true);
+
+            let vapidDebug = 'debug VAPID indisponible';
+            try {
+                const vapidKeyBuffer = urlBase64ToArrayBuffer(CHAT_PUSH_VAPID_PUBLIC_KEY);
+                const vapidKeyView = new Uint8Array(vapidKeyBuffer);
+                vapidDebug = `keyLength=${CHAT_PUSH_VAPID_PUBLIC_KEY.length}, bufferBytes=${vapidKeyBuffer.byteLength}, firstByte=${vapidKeyView[0]}, isArrayBuffer=${vapidKeyBuffer instanceof ArrayBuffer}`;
+            } catch (debugError) {
+                vapidDebug = `debug VAPID erreur=${debugError.message || debugError}`;
+            }
+
+            appendChatMessage(
+                'Système',
+                `Push arrière-plan indisponible (${error.message || error}) — ${vapidDebug}.`,
+                new Date().toISOString(),
+                true
+            );
+
             return false;
         }
         })();
