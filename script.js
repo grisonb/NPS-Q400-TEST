@@ -2596,7 +2596,7 @@ function initializeTeamChat() {
         return `${CHAT_PUSH_API_URL.replace(/\/$/, '')}/${path.replace(/^\//, '')}`;
     };
 
-    const urlBase64ToArrayBuffer = (base64String) => {
+    const urlBase64ToUint8Array = (base64String) => {
         const cleaned = String(base64String || '').trim();
         const padding = '='.repeat((4 - cleaned.length % 4) % 4);
         const base64 = (cleaned + padding)
@@ -2620,6 +2620,7 @@ function initializeTeamChat() {
 
         return outputArray;
     };
+
 
     const ensureChatPushSubscription = async () => {
         if (chatPushSubscriptionPromise) return chatPushSubscriptionPromise;
@@ -2648,18 +2649,18 @@ function initializeTeamChat() {
             const registration = await navigator.serviceWorker.ready;
             let subscription = await registration.pushManager.getSubscription();
             if (!subscription) {
-                const vapidKeyView = urlBase64ToArrayBuffer(CHAT_PUSH_VAPID_PUBLIC_KEY);
+                const vapidKeyArray = urlBase64ToUint8Array(CHAT_PUSH_VAPID_PUBLIC_KEY);
 
                 appendChatMessage(
                     'Système',
-                    `DEBUG AVANT SUBSCRIBE: keyLength=${CHAT_PUSH_VAPID_PUBLIC_KEY.length}, bytes=${vapidKeyView.byteLength}, firstByte=${vapidKeyView[0]}, isUint8Array=${vapidKeyView instanceof Uint8Array}`,
+                    `DEBUG AVANT SUBSCRIBE UINT8: keyLength=${CHAT_PUSH_VAPID_PUBLIC_KEY.length}, bytes=${vapidKeyArray.byteLength}, firstByte=${vapidKeyArray[0]}, isUint8Array=${vapidKeyArray instanceof Uint8Array}`,
                     new Date().toISOString(),
                     true
                 );
 
                 subscription = await registration.pushManager.subscribe({
                     userVisibleOnly: true,
-                    applicationServerKey: vapidKeyView
+                    applicationServerKey: vapidKeyArray
                 });
             }
 
@@ -2685,8 +2686,8 @@ function initializeTeamChat() {
 
             let vapidDebug = 'debug VAPID indisponible';
             try {
-                const vapidKeyView = urlBase64ToArrayBuffer(CHAT_PUSH_VAPID_PUBLIC_KEY);
-                vapidDebug = `keyLength=${CHAT_PUSH_VAPID_PUBLIC_KEY.length}, bytes=${vapidKeyView.byteLength}, firstByte=${vapidKeyView[0]}, isUint8Array=${vapidKeyView instanceof Uint8Array}`;
+                const vapidKeyArray = urlBase64ToUint8Array(CHAT_PUSH_VAPID_PUBLIC_KEY);
+                vapidDebug = `keyLength=${CHAT_PUSH_VAPID_PUBLIC_KEY.length}, bytes=${vapidKeyArray.byteLength}, firstByte=${vapidKeyArray[0]}, isUint8Array=${vapidKeyArray instanceof Uint8Array}`;
             } catch (debugError) {
                 vapidDebug = `debug VAPID erreur=${debugError.message || debugError}`;
             }
