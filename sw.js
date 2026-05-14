@@ -518,3 +518,69 @@ self.addEventListener('fetch', event => {
             })
     );
 });
+/* =====================================================
+   CHAT PWA - WEB PUSH POUR IPAD / PWA
+   À intégrer dans ton sw.js existant.
+
+   IMPORTANT :
+   - Ne remplace pas tout ton sw.js si tu as déjà une logique de cache/offline.
+   - Colle ce bloc à la fin de ton sw.js.
+   - Ce bloc affiche une notification quand le serveur push envoie un message.
+   ===================================================== */
+
+self.addEventListener('push', (event) => {
+    let data = {};
+
+    try {
+        data = event.data ? event.data.json() : {};
+    } catch (_) {
+        data = {
+            title: 'Pelic Chat',
+            body: event.data ? event.data.text() : 'Nouveau message',
+            url: './'
+        };
+    }
+
+    const title = data.title || 'Pelic Chat';
+    const options = {
+        body: data.body || 'Nouveau message',
+        tag: data.tag || 'pelic-chat-message',
+        renotify: true,
+        data: {
+            url: data.url || './',
+            room: data.room || '',
+            messageId: data.messageId || ''
+        }
+    };
+
+    event.waitUntil(self.registration.showNotification(title, options));
+});
+
+self.addEventListener('notificationclick', (event) => {
+    event.notification.close();
+
+    const targetUrl = event.notification?.data?.url || './';
+
+    event.waitUntil((async () => {
+        const allClients = await clients.matchAll({
+            type: 'window',
+            includeUncontrolled: true
+        });
+
+        for (const client of allClients) {
+            if ('focus' in client) {
+                try {
+                    await client.focus();
+                    if ('navigate' in client) {
+                        await client.navigate(targetUrl);
+                    }
+                    return;
+                } catch (_) {}
+            }
+        }
+
+        if (clients.openWindow) {
+            await clients.openWindow(targetUrl);
+        }
+    })());
+});
