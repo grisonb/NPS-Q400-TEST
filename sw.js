@@ -1,16 +1,14 @@
-const APP_CACHE_NAME = 'test-communes-app-cache-v1013'; 
-const DATA_CACHE_NAME = 'test-communes-data-cache-v1013';
-const TILE_CACHE_NAME = 'test-communes-tile-cache-v1013';
+const APP_CACHE_NAME = 'test-communes-app-cache-v1014'; 
+const DATA_CACHE_NAME = 'test-communes-data-cache-v1014';
+const TILE_CACHE_NAME = 'test-communes-tile-cache-v1014';
 const APP_SHELL_URLS = [
-    './',
-    './index.html',
     './style.css',
     './script.js',
     './leaflet.min.js',
     './leaflet.css',
     './manifest.json',
     './suncalc.js',
-    './jszip.min.js' // <-- LIGNE AJOUTÉE
+    './jszip.min.js'
 ];
 
 const DATA_URLS = [
