@@ -2597,33 +2597,29 @@ function initializeTeamChat() {
     };
 
     const urlBase64ToArrayBuffer = (base64String) => {
-    const cleaned = String(base64String || '').trim();
+        const cleaned = String(base64String || '').trim();
+        const padding = '='.repeat((4 - cleaned.length % 4) % 4);
+        const base64 = (cleaned + padding)
+            .replace(/-/g, '+')
+            .replace(/_/g, '/');
 
-    const padding = '='.repeat((4 - cleaned.length % 4) % 4);
-    const base64 = (cleaned + padding)
-        .replace(/-/g, '+')
-        .replace(/_/g, '/');
+        const rawData = window.atob(base64);
+        const outputArray = new Uint8Array(rawData.length);
 
-    const rawData = window.atob(base64);
-    const outputArray = new Uint8Array(rawData.length);
+        for (let i = 0; i < rawData.length; i += 1) {
+            outputArray[i] = rawData.charCodeAt(i);
+        }
 
-    for (let i = 0; i < rawData.length; i += 1) {
-        outputArray[i] = rawData.charCodeAt(i);
-    }
+        console.log('[PUSH] VAPID string length:', cleaned.length);
+        console.log('[PUSH] VAPID decoded bytes:', outputArray.length);
+        console.log('[PUSH] VAPID first byte:', outputArray[0]);
 
-    appendChatMessage(
-        'Système',
-        `DEBUG PUSH VAPID: longueur=${cleaned.length}, octets=${outputArray.length}, premier=${outputArray[0]}`,
-        new Date().toISOString(),
-        true
-    );
+        if (outputArray.length !== 65 || outputArray[0] !== 4) {
+            throw new Error(`VAPID public key invalid: ${outputArray.length} bytes, first byte ${outputArray[0]}`);
+        }
 
-    if (outputArray.length !== 65 || outputArray[0] !== 4) {
-        throw new Error(`VAPID invalide après décodage: longueur=${cleaned.length}, octets=${outputArray.length}, premier=${outputArray[0]}`);
-    }
-
-    return outputArray.buffer;
-};
+        return outputArray.buffer;
+    };
 
     const ensureChatPushSubscription = async () => {
         if (chatPushSubscriptionPromise) return chatPushSubscriptionPromise;
@@ -2652,9 +2648,19 @@ function initializeTeamChat() {
             const registration = await navigator.serviceWorker.ready;
             let subscription = await registration.pushManager.getSubscription();
             if (!subscription) {
+                const vapidKeyBuffer = urlBase64ToArrayBuffer(CHAT_PUSH_VAPID_PUBLIC_KEY);
+                const vapidKeyView = new Uint8Array(vapidKeyBuffer);
+
+                appendChatMessage(
+                    'Système',
+                    `DEBUG AVANT SUBSCRIBE: keyLength=${CHAT_PUSH_VAPID_PUBLIC_KEY.length}, bufferBytes=${vapidKeyBuffer.byteLength}, firstByte=${vapidKeyView[0]}`,
+                    new Date().toISOString(),
+                    true
+                );
+
                 subscription = await registration.pushManager.subscribe({
                     userVisibleOnly: true,
-                    applicationServerKey: urlBase64ToArrayBuffer(CHAT_PUSH_VAPID_PUBLIC_KEY)
+                    applicationServerKey: vapidKeyBuffer
                 });
             }
 
