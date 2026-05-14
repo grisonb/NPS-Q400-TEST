@@ -2710,14 +2710,14 @@ function initializeTeamChat() {
             if (mustCreateNewSubscription) {
                 appendChatMessage(
                     'Système',
-                    `DEBUG AVANT SUBSCRIBE STRING WEBPUSH: keyLength=${CHAT_PUSH_VAPID_PUBLIC_KEY.length}, bytes=${vapidKeyArray.byteLength}, firstByte=${vapidKeyArray[0]}, keyType=string`,
+                    `DEBUG AVANT SUBSCRIBE ARRAYBUFFER WEBPUSH: keyLength=${CHAT_PUSH_VAPID_PUBLIC_KEY.length}, bytes=${vapidKeyArray.byteLength}, firstByte=${vapidKeyArray[0]}, isArrayBuffer=${vapidKeyArray.buffer instanceof ArrayBuffer}`,
                     new Date().toISOString(),
                     true
                 );
 
                 subscription = await registration.pushManager.subscribe({
                     userVisibleOnly: true,
-                    applicationServerKey: CHAT_PUSH_VAPID_PUBLIC_KEY
+                    applicationServerKey: vapidKeyArray.buffer.buffer
                 });
             }
 
@@ -2744,7 +2744,7 @@ function initializeTeamChat() {
             let vapidDebug = 'debug VAPID indisponible';
             try {
                 const vapidKeyArray = urlBase64ToUint8Array(CHAT_PUSH_VAPID_PUBLIC_KEY);
-                vapidDebug = `mode=string-webpush, keyLength=${CHAT_PUSH_VAPID_PUBLIC_KEY.length}, bytes=${vapidKeyArray.byteLength}, firstByte=${vapidKeyArray[0]}, keyType=${typeof CHAT_PUSH_VAPID_PUBLIC_KEY}`;
+                vapidDebug = `mode=arraybuffer-webpush, keyLength=${CHAT_PUSH_VAPID_PUBLIC_KEY.length}, bytes=${vapidKeyArray.byteLength}, firstByte=${vapidKeyArray[0]}, isArrayBuffer=${vapidKeyArray.buffer instanceof ArrayBuffer}`;
             } catch (debugError) {
                 vapidDebug = `debug VAPID erreur=${debugError.message || debugError}`;
             }
