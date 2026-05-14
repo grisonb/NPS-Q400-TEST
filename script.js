@@ -3095,223 +3095,131 @@ function initializeCalculator() {
         const displayInput = wrapper.querySelector('.display-input');
         const engineInput = wrapper.querySelector('.engine-input');
         const clearBtn = wrapper.querySelector('.clear-btn');
-        let clockIcon = wrapper.querySelector('.clock-icon');
 
         const setTimeValue = (time) => {
-            const safeTime = time || '';
-            displayInput.value = safeTime;
-
+            displayInput.value = time;
             if (engineInput) {
-                if (/^\d{2}:\d{2}$/.test(safeTime)) {
-                    engineInput.value = safeTime;
+                if (String(time).match(/^\d{2}:\d{2}$/)) {
+                    engineInput.value = time;
                 } else {
                     engineInput.value = '';
                 }
             }
         };
 
-        const getAutoTimeValue = () => {
-            if (wrapper.id === 'tmd') {
-                return '21:30';
-            }
-
-            if (wrapper.id === 'limite-hdv') {
-                return '08:00';
-            }
-
-            const now = new Date();
-            return `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}`;
-        };
-
-        const getClearTimeValue = () => {
-            if (wrapper.id === 'tmd') {
-                return '21:30';
-            }
-
-            if (wrapper.id === 'limite-hdv') {
-                return '08:00';
-            }
-
-            return '';
-        };
-
-        const recalculateAndSave = () => {
-            masterRecalculate();
-            saveCalculatorState();
-        };
-
-        const applyAutoTime = () => {
-            setTimeValue(getAutoTimeValue());
-            recalculateAndSave();
-        };
-
-        const clearTime = () => {
-            setTimeValue(getClearTimeValue());
-            recalculateAndSave();
-        };
-
-        const stopEvent = (event) => {
-            event.preventDefault();
-            event.stopPropagation();
-
-            if (typeof event.stopImmediatePropagation === 'function') {
-                event.stopImmediatePropagation();
-            }
-        };
-
-        const stopPropagationOnly = (event) => {
-            event.stopPropagation();
-        };
-
         setTimeValue(initialValue);
 
         /*
-         * La cellule visible reste une zone d'affichage.
-         * - simple clic : aucun effet
-         * - double clic / double tap : remplace l'heure existante
+         * Saisie manuelle PC uniquement.
+         * Ne pas activer sur iPad : cela perturberait le X, le double tap et l'input type="time" natif.
          */
-        displayInput.readOnly = true;
-        displayInput.removeAttribute('inputmode');
+        const isPcKeyboardDevice = window.matchMedia('(hover: hover) and (pointer: fine)').matches
+            && navigator.maxTouchPoints === 0;
 
-        displayInput.addEventListener('click', (event) => {
-            stopEvent(event);
-        }, true);
+        if (isPcKeyboardDevice) {
+            displayInput.readOnly = false;
+            displayInput.inputMode = 'numeric';
+            displayInput.placeholder = '--:--';
 
-        displayInput.addEventListener('dblclick', (event) => {
-            stopEvent(event);
-            applyAutoTime();
-        }, true);
+            const normalizeTypedTime = (raw) => {
+                const digits = String(raw || '').replace(/\D/g, '').slice(0, 4);
 
-        let lastDisplayTapTs = 0;
+                if (digits.length === 0) {
+                    return '';
+                }
 
-        displayInput.addEventListener('touchend', (event) => {
-            const nowTs = Date.now();
+                if (digits.length <= 2) {
+                    return digits;
+                }
 
-            if (nowTs - lastDisplayTapTs <= 350) {
-                stopEvent(event);
-                applyAutoTime();
-                lastDisplayTapTs = 0;
-                return;
-            }
+                return `${digits.slice(0, 2)}:${digits.slice(2)}`;
+            };
 
-            event.preventDefault();
-            event.stopPropagation();
-            lastDisplayTapTs = nowTs;
-        }, { passive: false, capture: true });
+            const commitTypedTime = () => {
+                const rawValue = String(displayInput.value || '').trim();
 
-        /*
-         * On empêche l'input type="time" de recouvrir la cellule et le X.
-         * Ne pas modifier ici position/width/height/opacity : la mise en page reste celle du CSS.
-         */
-        if (engineInput) {
-            engineInput.tabIndex = -1;
-            engineInput.style.pointerEvents = 'none';
+                if (rawValue === '') {
+                    setTimeValue('');
+                    masterRecalculate();
+                    saveCalculatorState();
+                    return;
+                }
 
-            if (!engineInput.id) {
-                engineInput.id = `time-engine-${Math.random().toString(36).slice(2)}`;
-            }
+                const match = /^([0-1]?\d|2[0-3]):?([0-5]\d)$/.exec(rawValue);
 
-            engineInput.addEventListener('change', () => {
-                if (engineInput.value) {
-                    setTimeValue(engineInput.value);
-                    recalculateAndSave();
+                if (!match) {
+                    setTimeValue('');
+                    masterRecalculate();
+                    saveCalculatorState();
+                    return;
+                }
+
+                const hh = match[1].padStart(2, '0');
+                const mm = match[2].padStart(2, '0');
+
+                setTimeValue(`${hh}:${mm}`);
+                masterRecalculate();
+                saveCalculatorState();
+            };
+
+            displayInput.addEventListener('focus', () => {
+                displayInput.select();
+            });
+
+            displayInput.addEventListener('input', () => {
+                displayInput.value = normalizeTypedTime(displayInput.value);
+            });
+
+            displayInput.addEventListener('blur', () => {
+                commitTypedTime();
+            });
+
+            displayInput.addEventListener('keydown', (event) => {
+                if (event.key === 'Enter') {
+                    event.preventDefault();
+                    commitTypedTime();
+                    displayInput.blur();
                 }
             });
         }
 
-        /*
-         * Pendule :
-         * On remplace seulement le SPAN par un LABEL visuellement identique.
-         * Important : on ne fait PAS preventDefault sur la pendule,
-         * sinon iPad/Safari peut bloquer l'ouverture native de l'input type="time".
-         */
-        if (clockIcon && engineInput && clockIcon.tagName.toLowerCase() !== 'label') {
-            const clockLabel = document.createElement('label');
-            clockLabel.className = clockIcon.className;
-            clockLabel.innerHTML = clockIcon.innerHTML;
-            clockLabel.title = clockIcon.title || 'Choisir une heure';
-            clockLabel.setAttribute('for', engineInput.id);
-            clockIcon.replaceWith(clockLabel);
-            clockIcon = clockLabel;
-        } else if (clockIcon && engineInput) {
-            clockIcon.setAttribute('for', engineInput.id);
+        displayInput.addEventListener('dblclick', (e) => {
+            e.preventDefault();
+            let timeString;
+            if (wrapper.id === 'tmd') {
+                timeString = '21:30';
+            } else if (wrapper.id === 'limite-hdv') {
+                timeString = '08:00';
+            } else {
+                const now = new Date();
+                timeString = `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}`;
+            }
+            setTimeValue(timeString);
+            masterRecalculate();
+            saveCalculatorState();
+        });
+
+        if (engineInput) {
+            engineInput.addEventListener('change', () => {
+                if (engineInput.value) {
+                    displayInput.value = engineInput.value;
+                    masterRecalculate();
+                    saveCalculatorState();
+                }
+            });
         }
 
-        if (clockIcon && engineInput) {
-            let lastClockOpenTs = 0;
-
-            const openTimePickerFromClock = (event) => {
-                if (event) {
-                    event.preventDefault();
-                    event.stopPropagation();
-                }
-
-                const nowTs = Date.now();
-                if (nowTs - lastClockOpenTs < 250) {
-                    return;
-                }
-                lastClockOpenTs = nowTs;
-
-                /*
-                 * Important iPad :
-                 * - l'input type="time" reste non cliquable dans la cellule pour préserver le X
-                 *   et empêcher le simple clic cellule d'ouvrir le sélecteur ;
-                 * - uniquement pendant le tap sur la pendule, on le rend cliquable et on tente
-                 *   l'ouverture native.
-                 */
-                const previousPointerEvents = engineInput.style.pointerEvents;
-                engineInput.style.pointerEvents = 'auto';
-
-                try {
-                    if (typeof engineInput.showPicker === 'function') {
-                        engineInput.showPicker();
-                    } else {
-                        engineInput.focus({ preventScroll: true });
-                        engineInput.click();
-                    }
-                } catch (_) {
-                    try {
-                        engineInput.focus({ preventScroll: true });
-                        engineInput.click();
-                    } catch (_) {
-                        // Dernier fallback : Safari/iPad peut refuser l'ouverture programmée.
-                    }
-                }
-
-                setTimeout(() => {
-                    engineInput.style.pointerEvents = previousPointerEvents || 'none';
-                }, 700);
-            };
-
-            clockIcon.addEventListener('pointerup', openTimePickerFromClock, true);
-            clockIcon.addEventListener('click', openTimePickerFromClock, true);
-            clockIcon.addEventListener('touchend', openTimePickerFromClock, { passive: false, capture: true });
-        }
-
-        /*
-         * X :
-         * - cellule normale : vide
-         * - TMD : 21:30
-         * - LIMITE HDV : 08:00
-         */
         if (clearBtn) {
-            const handleClear = (event) => {
-                stopEvent(event);
-                clearTime();
-            };
-
-            clearBtn.addEventListener('pointerdown', (event) => {
-                event.stopPropagation();
-            }, true);
-
-            clearBtn.addEventListener('pointerup', handleClear, true);
-            clearBtn.addEventListener('click', handleClear, true);
-            clearBtn.addEventListener('touchend', handleClear, { passive: false, capture: true });
+            clearBtn.addEventListener('click', () => {
+                const defaultValue = wrapper.id === 'tmd' ? '21:30' : wrapper.id === 'limite-hdv' ? '08:00' : '';
+                setTimeValue(defaultValue);
+                masterRecalculate();
+                saveCalculatorState();
+            });
         }
     }
 
-    
-function initializeNumericInput(wrapper, initialValue = '') {
+    function initializeNumericInput(wrapper, initialValue = '') {
         const displayInput = wrapper.querySelector('.display-input');
         const clearBtn = wrapper.querySelector('.clear-btn');
         const unit = wrapper.dataset.unit || '';
