@@ -3062,7 +3062,7 @@ function initializeTeamChat() {
             },
             (error) => {
                 console.warn('Position GPS chat indisponible:', error);
-                appendChatMessage('Système', `Position GPS indisponible (${error.message || error}).`, new Date().toISOString(), true);
+                console.warn('[Chat] Position GPS indisponible:', error);
             },
             { enableHighAccuracy: true, timeout: 10000, maximumAge: 5000 }
         );
@@ -3070,7 +3070,7 @@ function initializeTeamChat() {
 
     const startLocationSharing = (silent = false) => {
         if (!navigator.geolocation) {
-            appendChatMessage('Système', 'Partage position impossible: GPS non supporté.', new Date().toISOString(), true);
+            console.warn('[Chat] Partage position impossible: GPS non supporté.');
             return;
         }
         if (!chatClient || !chatConnected || !chatLocationTopic) {
