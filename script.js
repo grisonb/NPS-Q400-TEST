@@ -67,9 +67,9 @@ const MQTT_SCRIPT_URL = 'https://unpkg.com/mqtt/dist/mqtt.min.js';
 // =========================================================================
 // À REMPLIR quand le serveur push sera en place.
 // Exemple: const CHAT_PUSH_API_URL = 'https://ton-domaine.fr/api/chat-push';
-// Exemple: const CHAT_PUSH_VAPID_PUBLIC_KEY = 'BGG6-HDRHDKDfcT0EjXwg4X5R6u24sKe3IMfWMjWeeSRAxgmcHnocHX0ZzxtBGbkjKOWVWNYwe1vNoKcLGkwaCM';
+// Exemple: const CHAT_PUSH_VAPID_PUBLIC_KEY = 'BAB6UkrM0OzfJPCKYux_BdLfQJbMo7qKoXPhIoTB99J93yCS69c5qk2VWYBz0aftsKwdpVrVm0JMmkdwrNRfBpY';
 const CHAT_PUSH_API_URL = 'https://grisonb.synology.me:8443';
-const CHAT_PUSH_VAPID_PUBLIC_KEY = 'BAsbIFcRk_p8emWTwx9RzLJdrvUGqYvkS9rvcCF12Ch7RGIdIV_06mnWSMzLqp6ekydWCXsmwAzySLsAP6vyhQQ';
+const CHAT_PUSH_VAPID_PUBLIC_KEY = 'BAB6UkrM0OzfJPCKYux_BdLfQJbMo7qKoXPhIoTB99J93yCS69c5qk2VWYBz0aftsKwdpVrVm0JMmkdwrNRfBpY';
 let mqttLoaderPromise = null;
 
 const pelicanAirports = [
@@ -2641,7 +2641,7 @@ function initializeTeamChat() {
         return `${CHAT_PUSH_API_URL.replace(/\/$/, '')}/${path.replace(/^\//, '')}`;
     };
 
-    const urlBase64ToArrayBuffer = (base64String) => {
+    const urlBase64ToUint8Array = (base64String) => {
         const cleaned = String(base64String || '').trim();
         const padding = '='.repeat((4 - cleaned.length % 4) % 4);
         const base64 = (cleaned + padding)
@@ -2655,15 +2655,11 @@ function initializeTeamChat() {
             outputArray[i] = rawData.charCodeAt(i);
         }
 
-        console.log('[PUSH] VAPID string length:', cleaned.length);
-        console.log('[PUSH] VAPID decoded bytes:', outputArray.length);
-        console.log('[PUSH] VAPID first byte:', outputArray[0]);
-
         if (outputArray.length !== 65 || outputArray[0] !== 4) {
             throw new Error(`VAPID public key invalid: ${outputArray.length} bytes, first byte ${outputArray[0]}`);
         }
 
-        return outputArray.buffer;
+        return outputArray;
     };
 
     const ensureChatPushSubscription = async () => {
@@ -2692,20 +2688,40 @@ function initializeTeamChat() {
 
             const registration = await navigator.serviceWorker.ready;
             let subscription = await registration.pushManager.getSubscription();
-            if (!subscription) {
-                const vapidKeyBuffer = urlBase64ToArrayBuffer(CHAT_PUSH_VAPID_PUBLIC_KEY);
-                const vapidKeyView = new Uint8Array(vapidKeyBuffer);
+            const vapidKeyArray = urlBase64ToUint8Array(CHAT_PUSH_VAPID_PUBLIC_KEY);
+            let mustCreateNewSubscription = !subscription;
 
-                appendChatMessage(
-                    'Système',
-                    `DEBUG AVANT SUBSCRIBE: keyLength=${CHAT_PUSH_VAPID_PUBLIC_KEY.length}, bufferBytes=${vapidKeyBuffer.byteLength}, firstByte=${vapidKeyView[0]}`,
-                    new Date().toISOString(),
-                    true
-                );
+            if (subscription && subscription.options && subscription.options.applicationServerKey) {
+                try {
+                    const existingKey = new Uint8Array(subscription.options.applicationServerKey);
+                    const sameKey = existingKey.length === vapidKeyArray.length
+                        && existingKey.every((value, index) => value === vapidKeyArray[index]);
 
+                    if (!sameKey) {
+                        await subscription.unsubscribe();
+                        subscription = null;
+                        mustCreateNewSubscription = true;
+                    }
+                } catch (compareError) {
+                    console.warn('Comparaison abonnement Push impossible, réabonnement forcé:', compareError);
+                    try {
+                        await subscription.unsubscribe();
+                    } catch (_) {}
+                    subscription = null;
+                    mustCreateNewSubscription = true;
+                }
+            } else if (subscription) {
+                try {
+                    await subscription.unsubscribe();
+                } catch (_) {}
+                subscription = null;
+                mustCreateNewSubscription = true;
+            }
+
+            if (mustCreateNewSubscription) {
                 subscription = await registration.pushManager.subscribe({
                     userVisibleOnly: true,
-                    applicationServerKey: vapidKeyBuffer
+                    applicationServerKey: vapidKeyArray
                 });
             }
 
@@ -2966,7 +2982,7 @@ function initializeTeamChat() {
             },
             (error) => {
                 console.warn('Position GPS chat indisponible:', error);
-                console.warn('[Chat]', `Position GPS indisponible (${error.message || error}).`);
+                appendChatMessage('Système', `Position GPS indisponible (${error.message || error}).`, new Date().toISOString(), true);
             },
             { enableHighAccuracy: true, timeout: 10000, maximumAge: 5000 }
         );
@@ -3460,7 +3476,37 @@ function initializeTeamChat() {
         publishPresence('offline');
     });
 
-    function appendChatMessage(user, text, isoTime, isSystemMessage = false, meta = null) {
+    function getChatSenderStyle(user, isSystemMessage = false) {
+    if (isSystemMessage) {
+        return {
+            color: '#6b7280',
+            background: '#f3f4f6',
+            border: '#9ca3af'
+        };
+    }
+
+    const palette = [
+        { color: '#1d4ed8', background: '#eff6ff', border: '#3b82f6' },
+        { color: '#047857', background: '#ecfdf5', border: '#10b981' },
+        { color: '#b45309', background: '#fffbeb', border: '#f59e0b' },
+        { color: '#be123c', background: '#fff1f2', border: '#f43f5e' },
+        { color: '#6d28d9', background: '#f5f3ff', border: '#8b5cf6' },
+        { color: '#0f766e', background: '#f0fdfa', border: '#14b8a6' },
+        { color: '#c2410c', background: '#fff7ed', border: '#fb923c' },
+        { color: '#0369a1', background: '#f0f9ff', border: '#38bdf8' }
+    ];
+
+    const key = String(user || 'inconnu');
+    let hash = 0;
+    for (let i = 0; i < key.length; i += 1) {
+        hash = ((hash << 5) - hash) + key.charCodeAt(i);
+        hash |= 0;
+    }
+
+    return palette[Math.abs(hash) % palette.length];
+}
+
+function appendChatMessage(user, text, isoTime, isSystemMessage = false, meta = null) {
         const row = document.createElement('div');
         row.className = 'chat-message';
         const time = new Date(isoTime || Date.now());
@@ -3471,10 +3517,19 @@ function initializeTeamChat() {
         const statusSymbol = baseStatus === 'read' ? '✓✓' : (baseStatus === 'sent' ? '✓' : '⏳');
         const statusClass = baseStatus === 'read' ? 'chat-message-status read' : 'chat-message-status';
         const statusMarkup = (!isSystemMessage && isOwnMessage) ? `<span class="${statusClass}" data-message-status="${meta?.id || ''}">${statusSymbol}</span>` : '';
+        const senderStyle = getChatSenderStyle(user, isSystemMessage);
+        const senderLabel = isSystemMessage ? 'Système' : escapeHtml(user);
+
         if (!isSystemMessage) {
             row.classList.add(isOwnMessage ? 'chat-message-own' : 'chat-message-remote');
         }
-        row.innerHTML = `<b>${isSystemMessage ? 'Système' : escapeHtml(user)}</b> <span style="color:#7a7a7a">(${hh}:${mm})</span>${statusMarkup}<br>${escapeHtml(text)}`;
+
+        row.style.borderLeft = `4px solid ${senderStyle.border}`;
+        row.style.backgroundColor = senderStyle.background;
+        row.style.borderRadius = '8px';
+        row.style.paddingLeft = '8px';
+
+        row.innerHTML = `<b style="color:${senderStyle.color}">${senderLabel}</b> <span style="color:#7a7a7a">(${hh}:${mm})</span>${statusMarkup}<br>${escapeHtml(text)}`;
         messagesBox.appendChild(row);
         messagesBox.scrollTop = messagesBox.scrollHeight;
         if (meta?.id && isOwnMessage) {
