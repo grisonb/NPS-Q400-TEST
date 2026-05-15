@@ -57,6 +57,7 @@ let chatClient = null;
 let chatTopic = null;
 let chatHistoryTopic = null;
 let chatPresenceTopic = null;
+let chatLocationTopic = null;
 let chatConnected = false;
 const CHAT_BROKER_URL = 'wss://broker.emqx.io:8084/mqtt';
 const MQTT_SCRIPT_URL = 'https://unpkg.com/mqtt/dist/mqtt.min.js';
@@ -66,9 +67,9 @@ const MQTT_SCRIPT_URL = 'https://unpkg.com/mqtt/dist/mqtt.min.js';
 // =========================================================================
 // À REMPLIR quand le serveur push sera en place.
 // Exemple: const CHAT_PUSH_API_URL = 'https://ton-domaine.fr/api/chat-push';
-// Exemple: const CHAT_PUSH_VAPID_PUBLIC_KEY = 'BAB6UkrM0OzfJPCKYux_BdLfQJbMo7qKoXPhIoTB99J93yCS69c5qk2VWYBz0aftsKwdpVrVm0JMmkdwrNRfBpY';
+// Exemple: const CHAT_PUSH_VAPID_PUBLIC_KEY = 'BGG6-HDRHDKDfcT0EjXwg4X5R6u24sKe3IMfWMjWeeSRAxgmcHnocHX0ZzxtBGbkjKOWVWNYwe1vNoKcLGkwaCM';
 const CHAT_PUSH_API_URL = 'https://grisonb.synology.me:8443';
-const CHAT_PUSH_VAPID_PUBLIC_KEY = 'BAB6UkrM0OzfJPCKYux_BdLfQJbMo7qKoXPhIoTB99J93yCS69c5qk2VWYBz0aftsKwdpVrVm0JMmkdwrNRfBpY';
+const CHAT_PUSH_VAPID_PUBLIC_KEY = 'BAsbIFcRk_p8emWTwx9RzLJdrvUGqYvkS9rvcCF12Ch7RGIdIV_06mnWSMzLqp6ekydWCXsmwAzySLsAP6vyhQQ';
 let mqttLoaderPromise = null;
 
 const pelicanAirports = [
@@ -2507,6 +2508,18 @@ function initializeTeamChat() {
     const clearCancelButton = document.getElementById('chat-clear-cancel-button');
     if (!panel || !toggleButton || !minimizeButton || !clearButton || !alertBadge || !offlineBadge || !roomInput || !userInput || !connectButton || !sendButton || !messageInput || !messagesBox || !connectionState || !onlineUsersLabel || !clearModal || !clearLocalButton || !clearChannelButton || !clearCancelButton) return;
 
+    const locationShareButton = document.createElement('button');
+    locationShareButton.id = 'chat-location-share-button';
+    locationShareButton.type = 'button';
+    locationShareButton.title = 'Partager ma position GPS avec les autres utilisateurs du canal';
+    locationShareButton.style.border = '0';
+    locationShareButton.style.borderRadius = '8px';
+    locationShareButton.style.padding = '4px 7px';
+    locationShareButton.style.fontWeight = '700';
+    locationShareButton.style.cursor = 'pointer';
+    locationShareButton.style.whiteSpace = 'nowrap';
+    clearButton.parentNode.insertBefore(locationShareButton, clearButton);
+
     const CHAT_CLIENT_ID_KEY = 'teamChatClientId';
     const CHAT_OUTBOX_KEY = 'teamChatOutbox';
     const CHAT_SEEN_IDS_KEY = 'teamChatSeenIds';
@@ -2520,6 +2533,14 @@ function initializeTeamChat() {
     const activeUsers = new Map();
     let chatPushSubscriptionPromise = null;
     const myClientId = getOrCreateClientId();
+    const CHAT_LOCATION_SHARING_KEY = 'teamChatLocationSharing';
+    const CHAT_LOCATION_PUBLISH_INTERVAL_MS = 10000;
+    const CHAT_LOCATION_STALE_MS = 60000;
+    const CHAT_LOCATION_REMOVE_MS = 300000;
+    let locationSharingEnabled = localStorage.getItem(CHAT_LOCATION_SHARING_KEY) === 'true';
+    let locationPublishTimer = null;
+    let lastLocationPublishAt = 0;
+    const remoteLocationMarkers = new Map();
     minimizeButton.textContent = '—';
 
     const defaultConfig = { room: 'Milan', user: '' };
@@ -2596,7 +2617,7 @@ function initializeTeamChat() {
         return `${CHAT_PUSH_API_URL.replace(/\/$/, '')}/${path.replace(/^\//, '')}`;
     };
 
-    const urlBase64ToUint8Array = (base64String) => {
+    const urlBase64ToArrayBuffer = (base64String) => {
         const cleaned = String(base64String || '').trim();
         const padding = '='.repeat((4 - cleaned.length % 4) % 4);
         const base64 = (cleaned + padding)
@@ -2618,9 +2639,8 @@ function initializeTeamChat() {
             throw new Error(`VAPID public key invalid: ${outputArray.length} bytes, first byte ${outputArray[0]}`);
         }
 
-        return outputArray;
+        return outputArray.buffer;
     };
-
 
     const ensureChatPushSubscription = async () => {
         if (chatPushSubscriptionPromise) return chatPushSubscriptionPromise;
@@ -2648,76 +2668,20 @@ function initializeTeamChat() {
 
             const registration = await navigator.serviceWorker.ready;
             let subscription = await registration.pushManager.getSubscription();
-            const vapidKeyArray = urlBase64ToUint8Array(CHAT_PUSH_VAPID_PUBLIC_KEY);
+            if (!subscription) {
+                const vapidKeyBuffer = urlBase64ToArrayBuffer(CHAT_PUSH_VAPID_PUBLIC_KEY);
+                const vapidKeyView = new Uint8Array(vapidKeyBuffer);
 
-            /*
-             * Important : si la clé VAPID a changé, Safari/iPad peut conserver
-             * un ancien abonnement Push. Dans ce cas le serveur reçoit bien
-             * l'abonnement, mais Apple refuse l'envoi avec un 403.
-             * On compare donc la clé de l'abonnement existant avec la clé actuelle.
-             */
-            let mustCreateNewSubscription = !subscription;
-
-            if (subscription && subscription.options && subscription.options.applicationServerKey) {
-                try {
-                    const existingKey = new Uint8Array(subscription.options.applicationServerKey);
-                    const sameKey = existingKey.length === vapidKeyArray.length
-                        && existingKey.every((value, index) => value === vapidKeyArray[index]);
-
-                    appendChatMessage(
-                        'Système',
-                        `DEBUG PUSH EXISTANT: bytes=${existingKey.length}, sameKey=${sameKey}`,
-                        new Date().toISOString(),
-                        true
-                    );
-
-                    if (!sameKey) {
-                        await subscription.unsubscribe();
-                        subscription = null;
-                        mustCreateNewSubscription = true;
-                    }
-                } catch (compareError) {
-                    appendChatMessage(
-                        'Système',
-                        `DEBUG PUSH EXISTANT: comparaison impossible (${compareError.message || compareError}), réabonnement forcé`,
-                        new Date().toISOString(),
-                        true
-                    );
-
-                    try {
-                        await subscription.unsubscribe();
-                    } catch (_) {}
-
-                    subscription = null;
-                    mustCreateNewSubscription = true;
-                }
-            } else if (subscription) {
                 appendChatMessage(
                     'Système',
-                    'DEBUG PUSH EXISTANT: clé non lisible, réabonnement forcé',
-                    new Date().toISOString(),
-                    true
-                );
-
-                try {
-                    await subscription.unsubscribe();
-                } catch (_) {}
-
-                subscription = null;
-                mustCreateNewSubscription = true;
-            }
-
-            if (mustCreateNewSubscription) {
-                appendChatMessage(
-                    'Système',
-                    `DEBUG AVANT SUBSCRIBE UINT8 FINAL: keyLength=${CHAT_PUSH_VAPID_PUBLIC_KEY.length}, bytes=${vapidKeyArray.byteLength}, firstByte=${vapidKeyArray[0]}, isUint8Array=${vapidKeyArray instanceof Uint8Array}`,
+                    `DEBUG AVANT SUBSCRIBE: keyLength=${CHAT_PUSH_VAPID_PUBLIC_KEY.length}, bufferBytes=${vapidKeyBuffer.byteLength}, firstByte=${vapidKeyView[0]}`,
                     new Date().toISOString(),
                     true
                 );
 
                 subscription = await registration.pushManager.subscribe({
                     userVisibleOnly: true,
-                    applicationServerKey: vapidKeyArray
+                    applicationServerKey: vapidKeyBuffer
                 });
             }
 
@@ -2740,22 +2704,7 @@ function initializeTeamChat() {
             return true;
         } catch (error) {
             console.warn('Activation Web Push impossible:', error);
-
-            let vapidDebug = 'debug VAPID indisponible';
-            try {
-                const vapidKeyArray = urlBase64ToUint8Array(CHAT_PUSH_VAPID_PUBLIC_KEY);
-                vapidDebug = `mode=uint8array-final, keyLength=${CHAT_PUSH_VAPID_PUBLIC_KEY.length}, bytes=${vapidKeyArray.byteLength}, firstByte=${vapidKeyArray[0]}, isUint8Array=${vapidKeyArray instanceof Uint8Array}`;
-            } catch (debugError) {
-                vapidDebug = `debug VAPID erreur=${debugError.message || debugError}`;
-            }
-
-            appendChatMessage(
-                'Système',
-                `Push arrière-plan indisponible (${error.message || error}) — ${vapidDebug}.`,
-                new Date().toISOString(),
-                true
-            );
-
+            appendChatMessage('Système', `Push arrière-plan indisponible (${error.message || error}).`, new Date().toISOString(), true);
             return false;
         }
         })();
@@ -2814,6 +2763,186 @@ function initializeTeamChat() {
             time: new Date().toISOString()
         }), { qos: 1, retain: true });
     };
+
+    const updateLocationShareButton = () => {
+        locationShareButton.textContent = locationSharingEnabled ? '📍 Position ON' : '📍 Position OFF';
+        locationShareButton.style.background = locationSharingEnabled ? '#1f8f3a' : '#6b7280';
+        locationShareButton.style.color = '#ffffff';
+        locationShareButton.classList.toggle('active', locationSharingEnabled);
+    };
+
+    const getOwnLocationTopic = () => {
+        return chatLocationTopic && myClientId ? `${chatLocationTopic}/${myClientId}` : null;
+    };
+
+    const formatLocationAge = (timeMs) => {
+        const ageSeconds = Math.max(0, Math.round((Date.now() - timeMs) / 1000));
+        if (ageSeconds < 60) return `${ageSeconds} s`;
+        const ageMinutes = Math.round(ageSeconds / 60);
+        return `${ageMinutes} min`;
+    };
+
+    const buildRemoteLocationIcon = (user, timeMs) => {
+        const ageMs = Date.now() - timeMs;
+        const opacity = ageMs > CHAT_LOCATION_STALE_MS ? 0.55 : 0.95;
+        const label = `${escapeHtml(user || 'inconnu')}<br><span>${formatLocationAge(timeMs)}</span>`;
+        return L.divIcon({
+            className: 'chat-location-marker',
+            html: `<div style="display:flex;align-items:center;gap:4px;opacity:${opacity};transform:translate(-50%,-100%);">
+                    <div style="width:14px;height:14px;border-radius:50%;background:#2563eb;border:2px solid #fff;box-shadow:0 1px 5px rgba(0,0,0,.45);"></div>
+                    <div style="background:#ffffff;border:1px solid #2563eb;border-radius:8px;padding:2px 5px;font-size:11px;line-height:1.1;font-weight:700;color:#111;box-shadow:0 1px 5px rgba(0,0,0,.25);white-space:nowrap;text-align:center;">${label}</div>
+                </div>`,
+            iconSize: [1, 1],
+            iconAnchor: [0, 0]
+        });
+    };
+
+    const removeRemoteLocation = (senderClientId) => {
+        const record = remoteLocationMarkers.get(senderClientId);
+        if (record?.marker && map) {
+            map.removeLayer(record.marker);
+        }
+        remoteLocationMarkers.delete(senderClientId);
+    };
+
+    const refreshRemoteLocationMarkers = () => {
+        if (!map) return;
+        remoteLocationMarkers.forEach((record, senderClientId) => {
+            const ageMs = Date.now() - record.timeMs;
+            if (ageMs > CHAT_LOCATION_REMOVE_MS) {
+                removeRemoteLocation(senderClientId);
+                return;
+            }
+            record.marker.setIcon(buildRemoteLocationIcon(record.user, record.timeMs));
+        });
+    };
+
+    const updateRemoteLocationMarker = (payload) => {
+        if (!map || !payload || payload.senderClientId === myClientId) return;
+        const lat = Number(payload.lat);
+        const lon = Number(payload.lon);
+        if (!Number.isFinite(lat) || !Number.isFinite(lon)) return;
+
+        const user = String(payload.user || 'inconnu').trim().slice(0, 24) || 'inconnu';
+        const timeMs = Date.parse(payload.time || '');
+        const safeTimeMs = Number.isFinite(timeMs) ? timeMs : Date.now();
+        const position = [lat, lon];
+        const existing = remoteLocationMarkers.get(payload.senderClientId);
+
+        if (existing?.marker) {
+            existing.marker.setLatLng(position);
+            existing.marker.setIcon(buildRemoteLocationIcon(user, safeTimeMs));
+            existing.marker.bindPopup(`<b>${escapeHtml(user)}</b><br>Position: ${formatLocationAge(safeTimeMs)}`);
+            existing.user = user;
+            existing.timeMs = safeTimeMs;
+            existing.lat = lat;
+            existing.lon = lon;
+            return;
+        }
+
+        const marker = L.marker(position, {
+            icon: buildRemoteLocationIcon(user, safeTimeMs),
+            interactive: true
+        }).bindPopup(`<b>${escapeHtml(user)}</b><br>Position: ${formatLocationAge(safeTimeMs)}`);
+
+        marker.addTo(map);
+        remoteLocationMarkers.set(payload.senderClientId, {
+            marker,
+            user,
+            timeMs: safeTimeMs,
+            lat,
+            lon
+        });
+    };
+
+    const publishOwnLocationClear = () => {
+        const ownTopic = getOwnLocationTopic();
+        if (!chatClient || !ownTopic) return;
+        chatClient.publish(ownTopic, '', { qos: 1, retain: true });
+    };
+
+    const publishOwnLocation = (pos) => {
+        const ownTopic = getOwnLocationTopic();
+        if (!chatClient || !chatConnected || !ownTopic || !pos?.coords) return;
+
+        const { latitude, longitude, accuracy, heading, speed } = pos.coords;
+        if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) return;
+
+        const userName = (userInput.value || '').trim().slice(0, 24) || 'inconnu';
+        const payload = {
+            type: 'location',
+            room: (roomInput.value || '').trim().replace(/[^a-zA-Z0-9-_]/g, ''),
+            senderClientId: myClientId,
+            user: userName,
+            lat: latitude,
+            lon: longitude,
+            accuracy: Number.isFinite(accuracy) ? accuracy : null,
+            heading: Number.isFinite(heading) ? heading : null,
+            speed: Number.isFinite(speed) ? speed : null,
+            time: new Date().toISOString()
+        };
+
+        chatClient.publish(ownTopic, JSON.stringify(payload), { qos: 1, retain: true });
+        lastLocationPublishAt = Date.now();
+    };
+
+    const requestAndPublishOwnLocation = () => {
+        if (!locationSharingEnabled || !navigator.geolocation) return;
+        navigator.geolocation.getCurrentPosition(
+            (pos) => {
+                updateUserPosition(pos);
+                publishOwnLocation(pos);
+            },
+            (error) => {
+                console.warn('Position GPS chat indisponible:', error);
+                appendChatMessage('Système', `Position GPS indisponible (${error.message || error}).`, new Date().toISOString(), true);
+            },
+            { enableHighAccuracy: true, timeout: 10000, maximumAge: 5000 }
+        );
+    };
+
+    const startLocationSharing = (silent = false) => {
+        if (!navigator.geolocation) {
+            appendChatMessage('Système', 'Partage position impossible: GPS non supporté.', new Date().toISOString(), true);
+            return;
+        }
+        if (!chatClient || !chatConnected || !chatLocationTopic) {
+            appendChatMessage('Système', 'Connecte le chat avant d’activer le partage de position.', new Date().toISOString(), true);
+            return;
+        }
+
+        locationSharingEnabled = true;
+        localStorage.setItem(CHAT_LOCATION_SHARING_KEY, 'true');
+        updateLocationShareButton();
+
+        if (locationPublishTimer) clearInterval(locationPublishTimer);
+        requestAndPublishOwnLocation();
+        locationPublishTimer = setInterval(requestAndPublishOwnLocation, CHAT_LOCATION_PUBLISH_INTERVAL_MS);
+
+        if (!silent) {
+            appendChatMessage('Système', 'Partage de position activé.', new Date().toISOString(), true);
+        }
+    };
+
+    const stopLocationSharing = (silent = false) => {
+        locationSharingEnabled = false;
+        localStorage.setItem(CHAT_LOCATION_SHARING_KEY, 'false');
+        updateLocationShareButton();
+
+        if (locationPublishTimer) {
+            clearInterval(locationPublishTimer);
+            locationPublishTimer = null;
+        }
+
+        publishOwnLocationClear();
+
+        if (!silent) {
+            appendChatMessage('Système', 'Partage de position désactivé.', new Date().toISOString(), true);
+        }
+    };
+
+    setInterval(refreshRemoteLocationMarkers, 15000);
+    updateLocationShareButton();
 
     const persistSeenIds = () => {
         localStorage.setItem(CHAT_SEEN_IDS_KEY, JSON.stringify(Array.from(persistedSeenIds).slice(-400)));
@@ -2945,6 +3074,7 @@ function initializeTeamChat() {
         chatTopic = `pelic/chat/${roomName}`;
         chatHistoryTopic = `pelic/chat_history/${roomName}`;
         chatPresenceTopic = `pelic/chat_presence/${roomName}`;
+        chatLocationTopic = `pelic/chat_location/${roomName}`;
         setConnectionState(false, 'Connexion...');
         hasAnnouncedConnection = false;
         pendingChatMessages.length = 0;
@@ -3013,9 +3143,22 @@ function initializeTeamChat() {
                             appendChatMessage('Système', `Abonnement présence impossible: ${presenceErr.message}`, new Date().toISOString(), true);
                             return;
                         }
-                        announceConnection();
-                        publishPresence('online', userName);
-                        flushOutbox();
+
+                        chatClient.subscribe(`${chatLocationTopic}/#`, { qos: 1 }, (locationErr) => {
+                            if (locationErr) {
+                                setConnectionState(false, 'Erreur positions');
+                                isChatConnecting = false;
+                                appendChatMessage('Système', `Abonnement positions impossible: ${locationErr.message}`, new Date().toISOString(), true);
+                                return;
+                            }
+
+                            announceConnection();
+                            publishPresence('online', userName);
+                            if (locationSharingEnabled) {
+                                startLocationSharing(true);
+                            }
+                            flushOutbox();
+                        });
                     });
                 });
             });
@@ -3026,10 +3169,22 @@ function initializeTeamChat() {
                 const isCurrentChatTopic = receivedTopic === chatTopic;
                 const isCurrentHistoryTopic = receivedTopic.startsWith(`${chatHistoryTopic}/`);
                 const isCurrentPresenceTopic = receivedTopic.startsWith(`${chatPresenceTopic}/`);
-                if (!isCurrentChatTopic && !isCurrentHistoryTopic && !isCurrentPresenceTopic) return;
+                const isCurrentLocationTopic = chatLocationTopic && receivedTopic.startsWith(`${chatLocationTopic}/`);
+                if (!isCurrentChatTopic && !isCurrentHistoryTopic && !isCurrentPresenceTopic && !isCurrentLocationTopic) return;
 
-                const parsed = JSON.parse(payload.toString());
+                const rawPayload = payload.toString();
+                if (isCurrentLocationTopic && !rawPayload) {
+                    removeRemoteLocation(receivedTopic.split('/').pop());
+                    return;
+                }
+
+                const parsed = JSON.parse(rawPayload);
                 if (!parsed || !parsed.type) return;
+
+                if (parsed.type === 'location' && parsed.senderClientId) {
+                    updateRemoteLocationMarker(parsed);
+                    return;
+                }
 
                 if (parsed.type === 'read_receipt' && parsed.messageId) {
                     updateMessageStatus(parsed.messageId, 'read');
@@ -3075,6 +3230,10 @@ function initializeTeamChat() {
             hasAnnouncedConnection = false;
             isChatConnecting = false;
             setConnectionState(false);
+            if (locationPublishTimer) {
+                clearInterval(locationPublishTimer);
+                locationPublishTimer = null;
+            }
             activeUsers.clear();
             refreshOnlineUsersLabel();
         });
@@ -3082,6 +3241,10 @@ function initializeTeamChat() {
             hasAnnouncedConnection = false;
             isChatConnecting = false;
             setConnectionState(false, 'Hors ligne');
+            if (locationPublishTimer) {
+                clearInterval(locationPublishTimer);
+                locationPublishTimer = null;
+            }
             activeUsers.clear();
             refreshOnlineUsersLabel();
         });
@@ -3182,6 +3345,13 @@ function initializeTeamChat() {
     });
 
     connectButton.addEventListener('click', connectToChat);
+    locationShareButton.addEventListener('click', () => {
+        if (locationSharingEnabled) {
+            stopLocationSharing();
+        } else {
+            startLocationSharing();
+        }
+    });
     sendButton.addEventListener('click', sendCurrentMessage);
     messageInput.addEventListener('keydown', (e) => {
         if (e.key === 'Enter') {
@@ -3215,6 +3385,7 @@ function initializeTeamChat() {
     });
 
     window.addEventListener('beforeunload', () => {
+        publishOwnLocationClear();
         publishPresence('offline');
     });
 
