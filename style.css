@@ -961,3 +961,23 @@ html, body {
         pointer-events: auto !important;
     }
 }
+/* ==========================================================================
+   CHAT - ADAPTATION CLAVIER iPAD / PWA
+   À ajouter à la fin de style.css si besoin.
+   Le script applique déjà le décalage au clavier ; ce CSS améliore la marge
+   et le comportement de défilement.
+   ========================================================================== */
+
+#chat-messages {
+    min-height: 80px;
+    overflow-y: auto;
+}
+
+.chat-send-row {
+    background: inherit;
+    padding-bottom: env(safe-area-inset-bottom);
+}
+
+#chat-message-input {
+    scroll-margin-bottom: 180px;
+}
