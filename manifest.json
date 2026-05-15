@@ -1,13 +1,13 @@
 {
-    "name": "Push Test",
-    "short_name": "Push Test",
-    "id": "./push-test.html",
-    "start_url": "./push-test.html",
+    "name": "Communes et Aéroports",
+    "short_name": "3_Pelic",
+    "id": "./index.html",
+    "start_url": "./index.html",
     "scope": "./",
     "display": "standalone",
     "background_color": "#ffffff",
     "theme_color": "#0056b3",
-    "description": "Test isolé Web Push PWA",
+    "description": "Carte des communes de France et calcul des distances vers les pélicandromes.",
     "icons": [
         {
             "src": "icons/icon-192x192.png",
@@ -18,6 +18,12 @@
             "src": "icons/icon-512x512.png",
             "sizes": "512x512",
             "type": "image/png"
+        },
+        {
+            "src": "icons/maskable-icon-512x512.png",
+            "sizes": "512x512",
+            "type": "image/png",
+            "purpose": "maskable"
         }
     ]
 }
