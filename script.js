@@ -69,7 +69,7 @@ const MQTT_SCRIPT_URL = 'https://unpkg.com/mqtt/dist/mqtt.min.js';
 // Exemple: const CHAT_PUSH_API_URL = 'https://ton-domaine.fr/api/chat-push';
 // Exemple: const CHAT_PUSH_VAPID_PUBLIC_KEY = 'BGG6-HDRHDKDfcT0EjXwg4X5R6u24sKe3IMfWMjWeeSRAxgmcHnocHX0ZzxtBGbkjKOWVWNYwe1vNoKcLGkwaCM';
 const CHAT_PUSH_API_URL = 'https://grisonb.synology.me:8443';
-const CHAT_PUSH_VAPID_PUBLIC_KEY = 'BAB6UkrM0OzfJPCKYux_BdLfQJbMo7qKoXPhIoTB99J93yCS69c5qk2VWYBz0aftsKwdpVrVm0JMmkdwrNRfBpY';
+const CHAT_PUSH_VAPID_PUBLIC_KEY = 'BAsbIFcRk_p8emWTwx9RzLJdrvUGqYvkS9rvcCF12Ch7RGIdIV_06mnWSMzLqp6ekydWCXsmwAzySLsAP6vyhQQ';
 let mqttLoaderPromise = null;
 
 const pelicanAirports = [
@@ -2966,7 +2966,7 @@ function initializeTeamChat() {
             },
             (error) => {
                 console.warn('Position GPS chat indisponible:', error);
-                appendChatMessage('Système', `Position GPS indisponible (${error.message || error}).`, new Date().toISOString(), true);
+                console.warn('[Chat]', `Position GPS indisponible (${error.message || error}).`);
             },
             { enableHighAccuracy: true, timeout: 10000, maximumAge: 5000 }
         );
@@ -3061,7 +3061,7 @@ function initializeTeamChat() {
             publishChatPayload(payload, () => updateMessageStatus(payload.id, 'sent'));
         });
         localStorage.removeItem(CHAT_OUTBOX_KEY);
-        appendChatMessage('Système', `${outbox.length} message(s) hors-ligne envoyé(s).`, new Date().toISOString(), true);
+        console.info(`[Chat] ${outbox.length} message(s) hors-ligne envoyé(s).`);
     };
 
     const renderIncomingChatMessage = (parsed, isCurrentChatTopic) => {
@@ -3099,7 +3099,7 @@ function initializeTeamChat() {
         const userName = (userInput.value || '').trim();
         if (!roomName || !userName) return;
         if (chatConnected || isChatConnecting) return;
-        appendChatMessage('Système', reasonLabel, new Date().toISOString(), true);
+        console.info('[Chat]', reasonLabel);
         connectToChat();
     };
 
@@ -3109,7 +3109,7 @@ function initializeTeamChat() {
 
         if (typeof mqtt === 'undefined') {
             try {
-                appendChatMessage('Système', 'Chargement du module chat…', new Date().toISOString(), true);
+                console.info('[Chat] Chargement du module chat…');
                 await ensureMqttClientLoaded();
             } catch (mqttError) {
                 isChatConnecting = false;
@@ -3176,7 +3176,7 @@ function initializeTeamChat() {
                 hasAnnouncedConnection = true;
                 setConnectionState(true);
                 isChatConnecting = false;
-                appendChatMessage('Système', `Connecté au canal "${roomName}" (${CHAT_BROKER_URL}).`, new Date().toISOString(), true);
+                console.info(`[Chat] Connecté au canal "${roomName}" (${CHAT_BROKER_URL}).`);
 
                 while (pendingChatMessages.length) {
                     const pendingItem = pendingChatMessages.shift();
@@ -3346,7 +3346,7 @@ function initializeTeamChat() {
 
         if (!chatClient || !chatConnected || !chatTopic) {
             addToOutbox(payload);
-            appendChatMessage('Système', 'Réseau indisponible: message mis en file hors-ligne.', new Date().toISOString(), true);
+            console.info('[Chat] Réseau indisponible: message mis en file hors-ligne.');
             messageInput.value = '';
             return;
         }
@@ -3443,7 +3443,7 @@ function initializeTeamChat() {
             reconnectAfterOnlineTimeout = null;
         }
         setConnectionState(false, 'Hors ligne');
-        appendChatMessage('Système', 'Réseau perdu, les messages sortants seront mis en file.', new Date().toISOString(), true);
+        console.info('[Chat] Réseau perdu, les messages sortants seront mis en file.');
     });
 
     document.addEventListener('visibilitychange', () => {
