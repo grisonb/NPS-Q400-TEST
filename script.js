@@ -2511,6 +2511,84 @@ function ensureMqttClientLoaded() {
     return mqttLoaderPromise;
 }
 
+
+function setupChatKeyboardSafeArea() {
+    const chatPanel = document.getElementById('team-chat-panel');
+    const messageInput = document.getElementById('chat-message-input');
+    const messagesBox = document.getElementById('chat-messages');
+
+    if (!chatPanel || !messageInput) return;
+
+    const originalBottom = chatPanel.style.bottom || '';
+    const originalMaxHeight = chatPanel.style.maxHeight || '';
+
+    const applyKeyboardOffset = () => {
+        const visualViewport = window.visualViewport;
+
+        if (!visualViewport) {
+            chatPanel.style.bottom = originalBottom || '';
+            chatPanel.style.maxHeight = originalMaxHeight || '';
+            return;
+        }
+
+        const keyboardOffset = Math.max(
+            0,
+            Math.round(window.innerHeight - visualViewport.height - visualViewport.offsetTop)
+        );
+
+        if (keyboardOffset > 40 && document.activeElement === messageInput) {
+            chatPanel.style.bottom = `calc(10px + env(safe-area-inset-bottom) + ${keyboardOffset}px)`;
+            chatPanel.style.maxHeight = `calc(100dvh - 20px - ${keyboardOffset}px)`;
+
+            setTimeout(() => {
+                try {
+                    messageInput.scrollIntoView({
+                        block: 'nearest',
+                        inline: 'nearest'
+                    });
+                } catch (_) {}
+
+                if (messagesBox) {
+                    messagesBox.scrollTop = messagesBox.scrollHeight;
+                }
+            }, 80);
+        } else if (document.activeElement !== messageInput) {
+            chatPanel.style.bottom = originalBottom || '';
+            chatPanel.style.maxHeight = originalMaxHeight || '';
+        }
+    };
+
+    if (window.visualViewport && chatPanel.dataset.keyboardSafeAreaBound !== '1') {
+        chatPanel.dataset.keyboardSafeAreaBound = '1';
+        window.visualViewport.addEventListener('resize', applyKeyboardOffset);
+        window.visualViewport.addEventListener('scroll', applyKeyboardOffset);
+    }
+
+    if (messageInput.dataset.keyboardSafeAreaBound !== '1') {
+        messageInput.dataset.keyboardSafeAreaBound = '1';
+
+        messageInput.addEventListener('focus', () => {
+            setTimeout(applyKeyboardOffset, 80);
+            setTimeout(applyKeyboardOffset, 220);
+            setTimeout(applyKeyboardOffset, 420);
+        });
+
+        messageInput.addEventListener('input', () => {
+            if (messagesBox) {
+                messagesBox.scrollTop = messagesBox.scrollHeight;
+            }
+            setTimeout(applyKeyboardOffset, 40);
+        });
+
+        messageInput.addEventListener('blur', () => {
+            setTimeout(() => {
+                chatPanel.style.bottom = originalBottom || '';
+                chatPanel.style.maxHeight = originalMaxHeight || '';
+            }, 180);
+        });
+    }
+}
+
 function initializeTeamChat() {
     const panel = document.getElementById('team-chat-panel');
     const toggleButton = document.getElementById('chat-toggle-button');
@@ -2531,6 +2609,8 @@ function initializeTeamChat() {
     const clearChannelButton = document.getElementById('chat-clear-channel-button');
     const clearCancelButton = document.getElementById('chat-clear-cancel-button');
     if (!panel || !toggleButton || !minimizeButton || !clearButton || !alertBadge || !offlineBadge || !roomInput || !userInput || !connectButton || !sendButton || !messageInput || !messagesBox || !connectionState || !onlineUsersLabel || !clearModal || !clearLocalButton || !clearChannelButton || !clearCancelButton) return;
+
+    setupChatKeyboardSafeArea();
 
     const locationShareButton = document.createElement('button');
     locationShareButton.id = 'chat-location-share-button';
