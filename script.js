@@ -1278,12 +1278,36 @@ function updateUserPosition(pos) {
     lastPosition = { lat: latitude, lng: longitude };
 
     if (!userMarker) {
-        // La classe 'user-marker' dans style.css définit déjà un rond rouge. 
-        // En laissant 'html' vide, on n'affiche que le fond.
-        const userIcon = L.divIcon({ className: 'custom-marker-icon user-marker', html: '' });
+
+
+        const userIcon = L.divIcon({
+
+
+            className: 'custom-marker-icon own-gps-marker',
+
+
+            html: `<div style="width:16px;height:16px;border-radius:50%;background:#7c3aed;border:2px solid #fff;box-shadow:0 0 0 2px rgba(124,58,237,.35),0 1px 5px rgba(0,0,0,.45);"></div>`,
+
+
+            iconSize: [20, 20],
+
+
+            iconAnchor: [10, 10]
+
+
+        });
+
+
+
         userMarker = L.marker([latitude, longitude], { icon: userIcon }).bindPopup('Votre position').addTo(map);
+
+
     } else {
+
+
         userMarker.setLatLng([latitude, longitude]);
+
+
     }
 
     updateNearestCommuneDisplay(latitude, longitude);
@@ -2783,18 +2807,65 @@ function initializeTeamChat() {
     };
 
     const buildRemoteLocationIcon = (user, timeMs) => {
+
+
         const ageMs = Date.now() - timeMs;
-        const opacity = ageMs > CHAT_LOCATION_STALE_MS ? 0.55 : 0.95;
+
+
+
+        let color = '#2563eb'; // Bleu : position récente < 20 s
+
+
+        if (ageMs >= 20000 && ageMs < 60000) {
+
+
+            color = '#f97316'; // Orange : 20 s à 1 min
+
+
+        } else if (ageMs >= 60000) {
+
+
+            color = '#dc2626'; // Rouge : plus de 1 min
+
+
+        }
+
+
+
+        const opacity = ageMs > CHAT_LOCATION_STALE_MS ? 0.75 : 0.98;
+
+
         const label = `${escapeHtml(user || 'inconnu')}<br><span>${formatLocationAge(timeMs)}</span>`;
+
+
+
         return L.divIcon({
+
+
             className: 'chat-location-marker',
+
+
             html: `<div style="display:flex;align-items:center;gap:4px;opacity:${opacity};transform:translate(-50%,-100%);">
-                    <div style="width:14px;height:14px;border-radius:50%;background:#2563eb;border:2px solid #fff;box-shadow:0 1px 5px rgba(0,0,0,.45);"></div>
-                    <div style="background:#ffffff;border:1px solid #2563eb;border-radius:8px;padding:2px 5px;font-size:11px;line-height:1.1;font-weight:700;color:#111;box-shadow:0 1px 5px rgba(0,0,0,.25);white-space:nowrap;text-align:center;">${label}</div>
+
+
+                    <div style="width:14px;height:14px;border-radius:50%;background:${color};border:2px solid #fff;box-shadow:0 1px 5px rgba(0,0,0,.45);"></div>
+
+
+                    <div style="background:#ffffff;border:1px solid ${color};border-radius:8px;padding:2px 5px;font-size:11px;line-height:1.1;font-weight:700;color:#111;box-shadow:0 1px 5px rgba(0,0,0,.25);white-space:nowrap;text-align:center;">${label}</div>
+
+
                 </div>`,
+
+
             iconSize: [1, 1],
+
+
             iconAnchor: [0, 0]
+
+
         });
+
+
     };
 
     const removeRemoteLocation = (senderClientId) => {
