@@ -33,22 +33,27 @@ button.addEventListener('click', async () => {
 
     try {
         log(`User agent: ${navigator.userAgent}`);
-        log(`Notification.permission avant: ${Notification.permission}`);
+        log(`serviceWorker supporté: ${'serviceWorker' in navigator ? 'oui' : 'non'}`);
+        log(`PushManager supporté: ${'PushManager' in window ? 'oui' : 'non'}`);
+        log(`Notification supporté: ${typeof Notification !== 'undefined' ? 'oui' : 'non'}`);
 
         if (!('serviceWorker' in navigator)) {
-            log('ERREUR: serviceWorker non supporté');
+            log('STOP: serviceWorker non supporté');
             return;
         }
 
         if (!('PushManager' in window)) {
-            log('ERREUR: PushManager non supporté');
+            log('STOP: PushManager non supporté');
             return;
         }
 
         if (typeof Notification === 'undefined') {
-            log('ERREUR: Notification non supporté');
+            log('STOP: Notification non supporté dans ce contexte.');
+            log('Sur iPad, il faut lancer ce test depuis une PWA ajoutée à l’écran d’accueil.');
             return;
         }
+
+        log(`Notification.permission avant: ${Notification.permission}`);
 
         let permission = Notification.permission;
         if (permission === 'default') {
