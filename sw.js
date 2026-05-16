@@ -1,4 +1,4 @@
-const SW_VERSION = 'sw-offline-tiles-push-v1035-idb-fast';
+const SW_VERSION = 'sw-offline-tiles-push-v1038-idb-fast';
 
 const DB_NAME = 'OfflineTilesDB';
 const DB_VERSION = 3;
