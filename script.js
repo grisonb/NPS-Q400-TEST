@@ -1131,7 +1131,7 @@ function getAirportByOaci(oaci) {
 function updateBaseLabels() {
     const routeButton = document.getElementById('lftw-route-button');
     if (routeButton) {
-        routeButton.textContent = `Route BASE (${selectedBaseOACI})`;
+        routeButton.innerHTML = `Route BASE<br>${selectedBaseOACI}`;
         routeButton.title = `Afficher/Masquer la route vers la base ${selectedBaseOACI}`;
     }
     const csBaseLabel = document.getElementById('cs-base-label');
