@@ -3188,7 +3188,7 @@ function initializeTeamChat() {
                     <div style="flex:0 0 auto;width:14px;height:14px;border-radius:50%;background:${color};border:2px solid #fff;box-shadow:0 1px 5px rgba(0,0,0,.45);"></div>
                     <div style="transform:translate(${safeOffsetX}px,${safeOffsetY}px);background:#ffffff;border:1px solid ${color};border-radius:8px;padding:3px 6px;font-size:11px;line-height:1.15;font-weight:700;color:#111;box-shadow:0 1px 5px rgba(0,0,0,.25);white-space:nowrap;text-align:center;min-width:44px;">${label}</div>
                 </div>`,
-            iconSize: [120, 72],
+            iconSize: [118, 76],
             iconAnchor: [7, 38]
         });
     };
@@ -3204,6 +3204,66 @@ function initializeTeamChat() {
     const updateRemoteLocationLabelOffsets = () => {
         if (!map || !remoteLocationMarkers.size) return;
 
+        /*
+         * Anti-chevauchement v2 :
+         * - on tient compte de l'étiquette de notre propre position ;
+         * - on teste plusieurs positions possibles pour chaque vignette ;
+         * - on choisit la première position qui ne croise pas une vignette déjà placée.
+         *
+         * Les ronds restent sur les vraies positions GPS. Seules les vignettes bougent.
+         */
+        const labelWidth = 62;
+        const labelHeight = 46;
+        const margin = 8;
+
+        const makeBox = (point, offset) => ({
+            left: point.x + 22 + offset.x,
+            top: point.y - 38 + offset.y,
+            right: point.x + 22 + offset.x + labelWidth,
+            bottom: point.y - 38 + offset.y + labelHeight
+        });
+
+        const makeOwnBox = () => {
+            if (!userMarker || !map) return null;
+            const latLng = userMarker.getLatLng && userMarker.getLatLng();
+            if (!latLng) return null;
+            const point = map.latLngToLayerPoint(latLng);
+
+            return {
+                left: point.x + 22,
+                top: point.y - 25,
+                right: point.x + 22 + 56,
+                bottom: point.y - 25 + 28
+            };
+        };
+
+        const intersects = (a, b) => {
+            if (!a || !b) return false;
+            return !(
+                a.right + margin < b.left
+                || a.left - margin > b.right
+                || a.bottom + margin < b.top
+                || a.top - margin > b.bottom
+            );
+        };
+
+        const offsets = [
+            { x: 0, y: -58 },
+            { x: 0, y: 42 },
+            { x: 68, y: -18 },
+            { x: 68, y: 28 },
+            { x: -82, y: -18 },
+            { x: -82, y: 28 },
+            { x: 0, y: -104 },
+            { x: 0, y: 88 },
+            { x: 120, y: -18 },
+            { x: -132, y: -18 }
+        ];
+
+        const placedBoxes = [];
+        const ownBox = makeOwnBox();
+        if (ownBox) placedBoxes.push(ownBox);
+
         const records = Array.from(remoteLocationMarkers.entries())
             .map(([senderClientId, record]) => {
                 if (!record?.marker || !Number.isFinite(record.lat) || !Number.isFinite(record.lon)) return null;
@@ -3213,46 +3273,34 @@ function initializeTeamChat() {
             .filter(Boolean)
             .sort((a, b) => (a.point.y - b.point.y) || (a.point.x - b.point.x));
 
-        const offsets = [
-            { x: 0, y: 0 },
-            { x: 0, y: -34 },
-            { x: 0, y: 34 },
-            { x: 54, y: -18 },
-            { x: 54, y: 18 },
-            { x: -54, y: -18 },
-            { x: -54, y: 18 },
-            { x: 0, y: -68 },
-            { x: 0, y: 68 }
-        ];
-
-        const placed = [];
-
         records.forEach((item) => {
-            let collisionCount = 0;
+            let selectedOffset = offsets[offsets.length - 1];
+            let selectedBox = makeBox(item.point, selectedOffset);
 
-            placed.forEach((other) => {
-                const dx = item.point.x - other.point.x;
-                const dy = item.point.y - other.point.y;
-                const distancePx = Math.sqrt((dx * dx) + (dy * dy));
+            for (const offset of offsets) {
+                const candidateBox = makeBox(item.point, offset);
+                const collision = placedBoxes.some((box) => intersects(candidateBox, box));
 
-                if (distancePx < 55) {
-                    collisionCount += 1;
+                if (!collision) {
+                    selectedOffset = offset;
+                    selectedBox = candidateBox;
+                    break;
                 }
-            });
+            }
 
-            const labelOffset = offsets[Math.min(collisionCount, offsets.length - 1)];
-            item.record.labelOffset = labelOffset;
+            item.record.labelOffset = selectedOffset;
             item.record.marker.setIcon(buildRemoteLocationIcon(
                 item.record.user,
                 item.record.timeMs,
                 item.record.altitudeFt,
                 item.record.altitudeTimeMs,
-                labelOffset
+                selectedOffset
             ));
 
-            placed.push(item);
+            placedBoxes.push(selectedBox);
         });
     };
+
 
     const refreshRemoteLocationMarkers = () => {
         if (!map) return;
