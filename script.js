@@ -41,6 +41,8 @@ const FORCE_DISPLAY_MODE = new URLSearchParams(window.location.search).get('forc
 const SHOW_DEPARTMENTS_LAYER_KEY = 'showDepartmentsLayer';
 const ONLINE_MAX_NATIVE_ZOOM = 18;
 const OFFLINE_FALLBACK_NATIVE_ZOOM = 14;
+const OFFLINE_HARD_MAX_NATIVE_ZOOM = 12;
+const OFFLINE_BACKGROUND_COLOR = '#d8c8a5';
 const GLOBAL_MAX_ZOOM = 18;
 const GLOBAL_MIN_ZOOM = 0;
 let baseTileMaxNativeZoom = ONLINE_MAX_NATIVE_ZOOM;
@@ -368,8 +370,19 @@ function initMap() {
     map = L.map('map', {
         attributionControl: false,
         zoomControl: false,
-        maxZoom: GLOBAL_MAX_ZOOM
+        maxZoom: GLOBAL_MAX_ZOOM,
+        zoomAnimation: false,
+        fadeAnimation: false,
+        markerZoomAnimation: false
     }).setView([46.6, 2.2], 5.5);
+
+    const mapContainer = map.getContainer();
+    if (mapContainer) {
+        mapContainer.style.background = OFFLINE_BACKGROUND_COLOR;
+    }
+
+    map.on('zoomend', enforceOfflineZoomLimit);
+    map.on('moveend', enforceOfflineZoomLimit);
     L.control.zoom({ position: 'bottomleft' }).addTo(map);
     setupBaseTileLayer();
     permanentAirportLayer = L.layerGroup().addTo(map);
@@ -408,6 +421,29 @@ function initMap() {
     });
 }
 
+function enforceOfflineZoomLimit() {
+    if (!map || !offlineTilesMode) return;
+
+    const safeMaxZoom = Math.max(
+        GLOBAL_MIN_ZOOM,
+        Math.min(
+            GLOBAL_MAX_ZOOM,
+            OFFLINE_HARD_MAX_NATIVE_ZOOM,
+            Number.isFinite(baseTileMaxNativeZoom) ? baseTileMaxNativeZoom : OFFLINE_HARD_MAX_NATIVE_ZOOM
+        )
+    );
+
+    map.options.maxZoom = safeMaxZoom;
+
+    if (map.getMaxZoom && map.getMaxZoom() !== safeMaxZoom) {
+        map.setMaxZoom(safeMaxZoom);
+    }
+
+    if (map.getZoom() > safeMaxZoom) {
+        map.setView(map.getCenter(), safeMaxZoom, { animate: false });
+    }
+}
+
 function setupBaseTileLayer() {
     if (!map) return;
     if (baseTileLayer) {
@@ -415,24 +451,36 @@ function setupBaseTileLayer() {
     }
 
     /*
-     * Mode offline stable :
-     * - pas de fallback parent côté service worker, car il crée des répétitions de carte ;
-     * - on bloque le zoom au dernier zoom natif réellement disponible ;
-     * - résultat : pas de tuiles incohérentes, pas de duplication, mais zoom maximum limité.
+     * Mode offline ultra stable :
+     * - pas de sur-zoom ;
+     * - pas de fallback parent ;
+     * - plafond dur z12 pour éviter que Leaflet demande des tuiles absentes ;
+     * - animations désactivées pour éviter le flash blanc pendant le rafraîchissement.
      */
+    const offlineNativeMaxZoom = Math.max(
+        GLOBAL_MIN_ZOOM,
+        Math.min(
+            GLOBAL_MAX_ZOOM,
+            OFFLINE_HARD_MAX_NATIVE_ZOOM,
+            Number.isFinite(baseTileMaxNativeZoom) ? baseTileMaxNativeZoom : OFFLINE_HARD_MAX_NATIVE_ZOOM
+        )
+    );
+
     const effectiveMinZoom = offlineTilesMode
-        ? Math.max(GLOBAL_MIN_ZOOM, Math.min(baseTileMinNativeZoom, baseTileMaxNativeZoom))
+        ? Math.max(GLOBAL_MIN_ZOOM, Math.min(baseTileMinNativeZoom, offlineNativeMaxZoom))
         : GLOBAL_MIN_ZOOM;
 
     const effectiveMaxZoom = offlineTilesMode
-        ? Math.max(effectiveMinZoom, Math.min(GLOBAL_MAX_ZOOM, baseTileMaxNativeZoom))
+        ? offlineNativeMaxZoom
         : Math.min(GLOBAL_MAX_ZOOM, baseTileMaxNativeZoom + 2);
 
+    map.options.minZoom = effectiveMinZoom;
+    map.options.maxZoom = effectiveMaxZoom;
     map.setMinZoom(effectiveMinZoom);
     map.setMaxZoom(effectiveMaxZoom);
 
     if (map.getZoom() > effectiveMaxZoom) {
-        map.setZoom(effectiveMaxZoom);
+        map.setView(map.getCenter(), effectiveMaxZoom, { animate: false });
     }
 
     baseTileLayer = L.tileLayer('https://a.tile.openstreetmap.org/{z}/{x}/{y}.png', {
@@ -441,11 +489,15 @@ function setupBaseTileLayer() {
         minZoom: effectiveMinZoom,
         maxZoom: effectiveMaxZoom,
         attribution: '© OpenStreetMap',
-        keepBuffer: 8,
+        keepBuffer: 16,
         updateWhenZooming: false,
-        updateWhenIdle: true,
-        noWrap: true
+        updateWhenIdle: false,
+        updateInterval: 80,
+        noWrap: true,
+        errorTileUrl: 'data:image/gif;base64,R0lGODlhAQABAAD/ACwAAAAAAQABAAACADs='
     }).addTo(map);
+
+    enforceOfflineZoomLimit();
 }
 
 function clearCurrentSelection() {
@@ -827,10 +879,10 @@ async function updateBaseTileNativeZoomFromAvailability({ forceScan = false } = 
 
         if (offlineMinZoom === null || offlineMaxZoom === null) {
             baseTileMinNativeZoom = GLOBAL_MIN_ZOOM;
-            baseTileMaxNativeZoom = ONLINE_MAX_NATIVE_ZOOM;
+            baseTileMaxNativeZoom = OFFLINE_HARD_MAX_NATIVE_ZOOM;
         } else {
             baseTileMinNativeZoom = Math.max(GLOBAL_MIN_ZOOM, Math.min(GLOBAL_MAX_ZOOM, offlineMinZoom));
-            baseTileMaxNativeZoom = Math.max(0, Math.min(ONLINE_MAX_NATIVE_ZOOM, offlineMaxZoom));
+            baseTileMaxNativeZoom = Math.max(0, Math.min(OFFLINE_HARD_MAX_NATIVE_ZOOM, offlineMaxZoom));
         }
     }
 
