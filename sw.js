@@ -1,4 +1,4 @@
-const SW_VERSION = 'sw-offline-tiles-push-v1046-strict-transparent';
+const SW_VERSION = 'sw-offline-tiles-push-v1047-strict-transparent';
 
 const DB_NAME = 'OfflineTilesDB';
 const DB_VERSION = 3;
