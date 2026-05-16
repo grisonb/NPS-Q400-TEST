@@ -1134,3 +1134,88 @@ html, body {
         grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
     }
 }
+
+/* ==========================================================================
+   CORRECTION iPAD BOUTONS PRINCIPAUX - v10.61
+   ========================================================================== */
+
+#ui-overlay {
+    max-width: min(860px, calc(100vw - 24px)) !important;
+}
+
+.extra-controls,
+.extra-controls-grid {
+    display: grid !important;
+    grid-template-columns: repeat(5, minmax(0, 1fr)) !important;
+    gap: 12px !important;
+    align-items: stretch !important;
+    justify-content: stretch !important;
+    width: 100% !important;
+    box-sizing: border-box !important;
+}
+
+.extra-controls .toggle-button,
+.extra-controls-grid .toggle-button {
+    width: 100% !important;
+    min-width: 0 !important;
+    max-width: none !important;
+    min-height: 70px !important;
+    height: auto !important;
+    padding: 8px 8px !important;
+    box-sizing: border-box !important;
+    white-space: nowrap !important;
+    overflow-wrap: normal !important;
+    word-break: keep-all !important;
+    line-height: 1.08 !important;
+    font-size: 16px !important;
+    text-align: center !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+}
+
+#departments-layer-button,
+#communes-layer-button {
+    white-space: nowrap !important;
+    word-break: keep-all !important;
+    overflow-wrap: normal !important;
+    font-size: 15px !important;
+}
+
+@media (max-width: 900px) {
+    #ui-overlay {
+        max-width: min(820px, calc(100vw - 18px)) !important;
+        left: 9px !important;
+        right: 9px !important;
+    }
+
+    .extra-controls,
+    .extra-controls-grid {
+        grid-template-columns: repeat(5, minmax(0, 1fr)) !important;
+        gap: 9px !important;
+    }
+
+    .extra-controls .toggle-button,
+    .extra-controls-grid .toggle-button {
+        min-height: 64px !important;
+        font-size: 15px !important;
+        padding: 7px 5px !important;
+    }
+
+    #departments-layer-button,
+    #communes-layer-button {
+        font-size: 14px !important;
+    }
+}
+
+@media (max-width: 620px) {
+    .extra-controls,
+    .extra-controls-grid {
+        grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+    }
+
+    .extra-controls .toggle-button,
+    .extra-controls-grid .toggle-button {
+        white-space: normal !important;
+    }
+}
