@@ -57,7 +57,6 @@ let chatClient = null;
 let chatTopic = null;
 let chatHistoryTopic = null;
 let chatPresenceTopic = null;
-let chatLocationTopic = null;
 let chatConnected = false;
 const CHAT_BROKER_URL = 'wss://broker.emqx.io:8084/mqtt';
 const MQTT_SCRIPT_URL = 'https://unpkg.com/mqtt/dist/mqtt.min.js';
@@ -67,9 +66,9 @@ const MQTT_SCRIPT_URL = 'https://unpkg.com/mqtt/dist/mqtt.min.js';
 // =========================================================================
 // À REMPLIR quand le serveur push sera en place.
 // Exemple: const CHAT_PUSH_API_URL = 'https://ton-domaine.fr/api/chat-push';
-// Exemple: const CHAT_PUSH_VAPID_PUBLIC_KEY = 'BAB6UkrM0OzfJPCKYux_BdLfQJbMo7qKoXPhIoTB99J93yCS69c5qk2VWYBz0aftsKwdpVrVm0JMmkdwrNRfBpY';
+// Exemple: const CHAT_PUSH_VAPID_PUBLIC_KEY = 'BGG6-HDRHDKDfcT0EjXwg4X5R6u24sKe3IMfWMjWeeSRAxgmcHnocHX0ZzxtBGbkjKOWVWNYwe1vNoKcLGkwaCM';
 const CHAT_PUSH_API_URL = 'https://grisonb.synology.me:8443';
-const CHAT_PUSH_VAPID_PUBLIC_KEY = 'BAB6UkrM0OzfJPCKYux_BdLfQJbMo7qKoXPhIoTB99J93yCS69c5qk2VWYBz0aftsKwdpVrVm0JMmkdwrNRfBpY';
+const CHAT_PUSH_VAPID_PUBLIC_KEY = 'BAsbIFcRk_p8emWTwx9RzLJdrvUGqYvkS9rvcCF12Ch7RGIdIV_06mnWSMzLqp6ekydWCXsmwAzySLsAP6vyhQQ';
 let mqttLoaderPromise = null;
 
 const pelicanAirports = [
@@ -135,6 +134,143 @@ async function persistTilesBatchToCache(batch = []) {
         console.warn('Impossible de persister les tuiles dans Cache Storage:', error);
     }
 }
+
+async function accelerateActiveOfflinePacksToCache({ batchSize = 120 } = {}) {
+    if (!('caches' in window)) {
+        alert('Cache Storage indisponible sur cet appareil.');
+        return;
+    }
+
+    if (!db) {
+        try {
+            await initDB();
+        } catch (error) {
+            alert(`Base offline indisponible: ${error.message || error}`);
+            return;
+        }
+    }
+
+    const packsToPrepare = Array.isArray(activeOfflinePacks) ? activeOfflinePacks.filter(Boolean) : [];
+
+    if (!packsToPrepare.length) {
+        alert('Aucun pack offline actif à accélérer.');
+        return;
+    }
+
+    const status = document.getElementById('offline-status');
+    const cacheKeys = await caches.keys();
+    const tileCacheName = getPreferredTileCacheName(cacheKeys);
+    const cache = await caches.open(tileCacheName);
+
+    let totalCopied = 0;
+    let totalSkipped = 0;
+
+    const updateStatus = (message) => {
+        if (status) status.textContent = message;
+        console.info('[Offline cache]', message);
+    };
+
+    const putBatchInCache = async (records) => {
+        await Promise.all(records.map(async (record) => {
+            const targetUrl = record.tileUrl || getTileUrlFromStoredKey(record.url);
+            const tile = record.tile;
+            if (!targetUrl || !tile) return;
+
+            try {
+                const existing = await cache.match(targetUrl);
+                if (existing) {
+                    totalSkipped += 1;
+                    return;
+                }
+
+                const contentType = tile.type || (targetUrl.endsWith('.jpg') || targetUrl.endsWith('.jpeg') ? 'image/jpeg' : 'image/png');
+                await cache.put(targetUrl, new Response(tile, { headers: { 'Content-Type': contentType } }));
+                totalCopied += 1;
+            } catch (error) {
+                console.warn('Tuile non recopiée dans Cache Storage:', error);
+            }
+        }));
+    };
+
+    for (const packName of packsToPrepare) {
+        updateStatus(`Accélération du pack ${packName}...`);
+
+        await new Promise((resolve, reject) => {
+            const tx = db.transaction('tiles', 'readonly');
+            const store = tx.objectStore('tiles');
+            const request = store.indexNames.contains('packName')
+                ? store.index('packName').openCursor(IDBKeyRange.only(packName))
+                : store.openCursor();
+
+            let batch = [];
+            let scanned = 0;
+
+            const flush = async () => {
+                if (!batch.length) return;
+                const currentBatch = batch;
+                batch = [];
+                await putBatchInCache(currentBatch);
+                updateStatus(`Accélération ${packName}... ${totalCopied} ajoutée(s), ${totalSkipped} déjà en cache`);
+                await new Promise((r) => setTimeout(r, 0));
+            };
+
+            request.onsuccess = async () => {
+                const cursor = request.result;
+
+                if (!cursor) {
+                    try {
+                        await flush();
+                        resolve();
+                    } catch (error) {
+                        reject(error);
+                    }
+                    return;
+                }
+
+                const value = cursor.value || {};
+
+                if (!store.indexNames.contains('packName') && value.packName !== packName) {
+                    cursor.continue();
+                    return;
+                }
+
+                batch.push(value);
+                scanned += 1;
+
+                if (batch.length >= batchSize) {
+                    try {
+                        await flush();
+                    } catch (error) {
+                        reject(error);
+                        return;
+                    }
+                }
+
+                if (scanned % 1000 === 0) {
+                    updateStatus(`Accélération ${packName}... ${scanned} tuiles analysées`);
+                }
+
+                cursor.continue();
+            };
+
+            request.onerror = () => reject(request.error || new Error('Erreur lecture pack offline'));
+            tx.onerror = () => reject(tx.error || new Error('Erreur transaction pack offline'));
+            tx.onabort = () => reject(tx.error || new Error('Transaction pack offline annulée'));
+        });
+    }
+
+    notifyServiceWorkerActivePacks(activeOfflinePacks);
+
+    if (navigator.serviceWorker?.controller) {
+        navigator.serviceWorker.controller.postMessage({
+            type: 'OFFLINE_TILE_CACHE_READY',
+            cacheName: tileCacheName
+        });
+    }
+
+    updateStatus(`Pack offline accéléré. ${totalCopied} tuile(s) ajoutée(s) au cache rapide, ${totalSkipped} déjà présente(s).`);
+}
+
 
 async function clearTileCaches() {
     if (!('caches' in window)) return;
@@ -690,14 +826,20 @@ function setupEventListeners() {
     if (refreshOfflineTilesBtn) {
         refreshOfflineTilesBtn.addEventListener('click', async () => {
             refreshOfflineTilesBtn.disabled = true;
-            refreshOfflineTilesBtn.textContent = '⏳ Rafraîchissement...';
+            refreshOfflineTilesBtn.textContent = '⏳ Accélération...';
             try {
+                await accelerateActiveOfflinePacksToCache({ batchSize: 120 });
                 await refreshOfflineTilesRendering();
+            } catch (error) {
+                console.error('Accélération du pack offline impossible:', error);
+                alert(`Accélération du pack offline impossible: ${error.message || error}`);
             } finally {
                 refreshOfflineTilesBtn.disabled = false;
-                refreshOfflineTilesBtn.textContent = "Rafraîchir l'affichage des cartes offline";
+                refreshOfflineTilesBtn.textContent = "Accélérer l'affichage offline";
             }
         });
+        refreshOfflineTilesBtn.textContent = "Accélérer l'affichage offline";
+        refreshOfflineTilesBtn.title = "Copier le pack actif dans le cache rapide pour accélérer les déplacements/zooms";
     }
 
     updateBaseLabels();
@@ -1278,36 +1420,12 @@ function updateUserPosition(pos) {
     lastPosition = { lat: latitude, lng: longitude };
 
     if (!userMarker) {
-
-
-        const userIcon = L.divIcon({
-
-
-            className: 'custom-marker-icon own-gps-marker',
-
-
-            html: `<div style="width:16px;height:16px;border-radius:50%;background:#7c3aed;border:2px solid #fff;box-shadow:0 0 0 2px rgba(124,58,237,.35),0 1px 5px rgba(0,0,0,.45);"></div>`,
-
-
-            iconSize: [20, 20],
-
-
-            iconAnchor: [10, 10]
-
-
-        });
-
-
-
+        // La classe 'user-marker' dans style.css définit déjà un rond rouge. 
+        // En laissant 'html' vide, on n'affiche que le fond.
+        const userIcon = L.divIcon({ className: 'custom-marker-icon user-marker', html: '' });
         userMarker = L.marker([latitude, longitude], { icon: userIcon }).bindPopup('Votre position').addTo(map);
-
-
     } else {
-
-
         userMarker.setLatLng([latitude, longitude]);
-
-
     }
 
     updateNearestCommuneDisplay(latitude, longitude);
@@ -2511,84 +2629,6 @@ function ensureMqttClientLoaded() {
     return mqttLoaderPromise;
 }
 
-
-function setupChatKeyboardSafeArea() {
-    const chatPanel = document.getElementById('team-chat-panel');
-    const messageInput = document.getElementById('chat-message-input');
-    const messagesBox = document.getElementById('chat-messages');
-
-    if (!chatPanel || !messageInput) return;
-
-    const originalBottom = chatPanel.style.bottom || '';
-    const originalMaxHeight = chatPanel.style.maxHeight || '';
-
-    const applyKeyboardOffset = () => {
-        const visualViewport = window.visualViewport;
-
-        if (!visualViewport) {
-            chatPanel.style.bottom = originalBottom || '';
-            chatPanel.style.maxHeight = originalMaxHeight || '';
-            return;
-        }
-
-        const keyboardOffset = Math.max(
-            0,
-            Math.round(window.innerHeight - visualViewport.height - visualViewport.offsetTop)
-        );
-
-        if (keyboardOffset > 40 && document.activeElement === messageInput) {
-            chatPanel.style.bottom = `calc(10px + env(safe-area-inset-bottom) + ${keyboardOffset}px)`;
-            chatPanel.style.maxHeight = `calc(100dvh - 20px - ${keyboardOffset}px)`;
-
-            setTimeout(() => {
-                try {
-                    messageInput.scrollIntoView({
-                        block: 'nearest',
-                        inline: 'nearest'
-                    });
-                } catch (_) {}
-
-                if (messagesBox) {
-                    messagesBox.scrollTop = messagesBox.scrollHeight;
-                }
-            }, 80);
-        } else if (document.activeElement !== messageInput) {
-            chatPanel.style.bottom = originalBottom || '';
-            chatPanel.style.maxHeight = originalMaxHeight || '';
-        }
-    };
-
-    if (window.visualViewport && chatPanel.dataset.keyboardSafeAreaBound !== '1') {
-        chatPanel.dataset.keyboardSafeAreaBound = '1';
-        window.visualViewport.addEventListener('resize', applyKeyboardOffset);
-        window.visualViewport.addEventListener('scroll', applyKeyboardOffset);
-    }
-
-    if (messageInput.dataset.keyboardSafeAreaBound !== '1') {
-        messageInput.dataset.keyboardSafeAreaBound = '1';
-
-        messageInput.addEventListener('focus', () => {
-            setTimeout(applyKeyboardOffset, 80);
-            setTimeout(applyKeyboardOffset, 220);
-            setTimeout(applyKeyboardOffset, 420);
-        });
-
-        messageInput.addEventListener('input', () => {
-            if (messagesBox) {
-                messagesBox.scrollTop = messagesBox.scrollHeight;
-            }
-            setTimeout(applyKeyboardOffset, 40);
-        });
-
-        messageInput.addEventListener('blur', () => {
-            setTimeout(() => {
-                chatPanel.style.bottom = originalBottom || '';
-                chatPanel.style.maxHeight = originalMaxHeight || '';
-            }, 180);
-        });
-    }
-}
-
 function initializeTeamChat() {
     const panel = document.getElementById('team-chat-panel');
     const toggleButton = document.getElementById('chat-toggle-button');
@@ -2610,20 +2650,6 @@ function initializeTeamChat() {
     const clearCancelButton = document.getElementById('chat-clear-cancel-button');
     if (!panel || !toggleButton || !minimizeButton || !clearButton || !alertBadge || !offlineBadge || !roomInput || !userInput || !connectButton || !sendButton || !messageInput || !messagesBox || !connectionState || !onlineUsersLabel || !clearModal || !clearLocalButton || !clearChannelButton || !clearCancelButton) return;
 
-    setupChatKeyboardSafeArea();
-
-    const locationShareButton = document.createElement('button');
-    locationShareButton.id = 'chat-location-share-button';
-    locationShareButton.type = 'button';
-    locationShareButton.title = 'Partager ma position GPS avec les autres utilisateurs du canal';
-    locationShareButton.style.border = '0';
-    locationShareButton.style.borderRadius = '8px';
-    locationShareButton.style.padding = '4px 7px';
-    locationShareButton.style.fontWeight = '700';
-    locationShareButton.style.cursor = 'pointer';
-    locationShareButton.style.whiteSpace = 'nowrap';
-    clearButton.parentNode.insertBefore(locationShareButton, clearButton);
-
     const CHAT_CLIENT_ID_KEY = 'teamChatClientId';
     const CHAT_OUTBOX_KEY = 'teamChatOutbox';
     const CHAT_SEEN_IDS_KEY = 'teamChatSeenIds';
@@ -2637,14 +2663,6 @@ function initializeTeamChat() {
     const activeUsers = new Map();
     let chatPushSubscriptionPromise = null;
     const myClientId = getOrCreateClientId();
-    const CHAT_LOCATION_SHARING_KEY = 'teamChatLocationSharing';
-    const CHAT_LOCATION_PUBLISH_INTERVAL_MS = 10000;
-    const CHAT_LOCATION_STALE_MS = 60000;
-    const CHAT_LOCATION_REMOVE_MS = 300000;
-    let locationSharingEnabled = localStorage.getItem(CHAT_LOCATION_SHARING_KEY) === 'true';
-    let locationPublishTimer = null;
-    let lastLocationPublishAt = 0;
-    const remoteLocationMarkers = new Map();
     minimizeButton.textContent = '—';
 
     const defaultConfig = { room: 'Milan', user: '' };
@@ -2721,7 +2739,7 @@ function initializeTeamChat() {
         return `${CHAT_PUSH_API_URL.replace(/\/$/, '')}/${path.replace(/^\//, '')}`;
     };
 
-    const urlBase64ToUint8Array = (base64String) => {
+    const urlBase64ToArrayBuffer = (base64String) => {
         const cleaned = String(base64String || '').trim();
         const padding = '='.repeat((4 - cleaned.length % 4) % 4);
         const base64 = (cleaned + padding)
@@ -2735,11 +2753,15 @@ function initializeTeamChat() {
             outputArray[i] = rawData.charCodeAt(i);
         }
 
+        console.log('[PUSH] VAPID string length:', cleaned.length);
+        console.log('[PUSH] VAPID decoded bytes:', outputArray.length);
+        console.log('[PUSH] VAPID first byte:', outputArray[0]);
+
         if (outputArray.length !== 65 || outputArray[0] !== 4) {
             throw new Error(`VAPID public key invalid: ${outputArray.length} bytes, first byte ${outputArray[0]}`);
         }
 
-        return outputArray;
+        return outputArray.buffer;
     };
 
     const ensureChatPushSubscription = async () => {
@@ -2768,40 +2790,20 @@ function initializeTeamChat() {
 
             const registration = await navigator.serviceWorker.ready;
             let subscription = await registration.pushManager.getSubscription();
-            const vapidKeyArray = urlBase64ToUint8Array(CHAT_PUSH_VAPID_PUBLIC_KEY);
-            let mustCreateNewSubscription = !subscription;
+            if (!subscription) {
+                const vapidKeyBuffer = urlBase64ToArrayBuffer(CHAT_PUSH_VAPID_PUBLIC_KEY);
+                const vapidKeyView = new Uint8Array(vapidKeyBuffer);
 
-            if (subscription && subscription.options && subscription.options.applicationServerKey) {
-                try {
-                    const existingKey = new Uint8Array(subscription.options.applicationServerKey);
-                    const sameKey = existingKey.length === vapidKeyArray.length
-                        && existingKey.every((value, index) => value === vapidKeyArray[index]);
+                appendChatMessage(
+                    'Système',
+                    `DEBUG AVANT SUBSCRIBE: keyLength=${CHAT_PUSH_VAPID_PUBLIC_KEY.length}, bufferBytes=${vapidKeyBuffer.byteLength}, firstByte=${vapidKeyView[0]}`,
+                    new Date().toISOString(),
+                    true
+                );
 
-                    if (!sameKey) {
-                        await subscription.unsubscribe();
-                        subscription = null;
-                        mustCreateNewSubscription = true;
-                    }
-                } catch (compareError) {
-                    console.warn('Comparaison abonnement Push impossible, réabonnement forcé:', compareError);
-                    try {
-                        await subscription.unsubscribe();
-                    } catch (_) {}
-                    subscription = null;
-                    mustCreateNewSubscription = true;
-                }
-            } else if (subscription) {
-                try {
-                    await subscription.unsubscribe();
-                } catch (_) {}
-                subscription = null;
-                mustCreateNewSubscription = true;
-            }
-
-            if (mustCreateNewSubscription) {
                 subscription = await registration.pushManager.subscribe({
                     userVisibleOnly: true,
-                    applicationServerKey: vapidKeyArray
+                    applicationServerKey: vapidKeyBuffer
                 });
             }
 
@@ -2884,233 +2886,6 @@ function initializeTeamChat() {
         }), { qos: 1, retain: true });
     };
 
-    const updateLocationShareButton = () => {
-        locationShareButton.textContent = locationSharingEnabled ? '📍 Position ON' : '📍 Position OFF';
-        locationShareButton.style.background = locationSharingEnabled ? '#1f8f3a' : '#6b7280';
-        locationShareButton.style.color = '#ffffff';
-        locationShareButton.classList.toggle('active', locationSharingEnabled);
-    };
-
-    const getOwnLocationTopic = () => {
-        return chatLocationTopic && myClientId ? `${chatLocationTopic}/${myClientId}` : null;
-    };
-
-    const formatLocationAge = (timeMs) => {
-        const ageSeconds = Math.max(0, Math.round((Date.now() - timeMs) / 1000));
-        if (ageSeconds < 60) return `${ageSeconds} s`;
-        const ageMinutes = Math.round(ageSeconds / 60);
-        return `${ageMinutes} min`;
-    };
-
-    const buildRemoteLocationIcon = (user, timeMs) => {
-
-
-        const ageMs = Date.now() - timeMs;
-
-
-
-        let color = '#2563eb'; // Bleu : position récente < 20 s
-
-
-        if (ageMs >= 20000 && ageMs < 60000) {
-
-
-            color = '#f97316'; // Orange : 20 s à 1 min
-
-
-        } else if (ageMs >= 60000) {
-
-
-            color = '#dc2626'; // Rouge : plus de 1 min
-
-
-        }
-
-
-
-        const opacity = ageMs > CHAT_LOCATION_STALE_MS ? 0.75 : 0.98;
-
-
-        const label = `${escapeHtml(user || 'inconnu')}<br><span>${formatLocationAge(timeMs)}</span>`;
-
-
-
-        return L.divIcon({
-
-
-            className: 'chat-location-marker',
-
-
-            html: `<div style="display:flex;align-items:center;gap:4px;opacity:${opacity};transform:translate(-50%,-100%);">
-
-
-                    <div style="width:14px;height:14px;border-radius:50%;background:${color};border:2px solid #fff;box-shadow:0 1px 5px rgba(0,0,0,.45);"></div>
-
-
-                    <div style="background:#ffffff;border:1px solid ${color};border-radius:8px;padding:2px 5px;font-size:11px;line-height:1.1;font-weight:700;color:#111;box-shadow:0 1px 5px rgba(0,0,0,.25);white-space:nowrap;text-align:center;">${label}</div>
-
-
-                </div>`,
-
-
-            iconSize: [1, 1],
-
-
-            iconAnchor: [0, 0]
-
-
-        });
-
-
-    };
-
-    const removeRemoteLocation = (senderClientId) => {
-        const record = remoteLocationMarkers.get(senderClientId);
-        if (record?.marker && map) {
-            map.removeLayer(record.marker);
-        }
-        remoteLocationMarkers.delete(senderClientId);
-    };
-
-    const refreshRemoteLocationMarkers = () => {
-        if (!map) return;
-        remoteLocationMarkers.forEach((record, senderClientId) => {
-            const ageMs = Date.now() - record.timeMs;
-            if (ageMs > CHAT_LOCATION_REMOVE_MS) {
-                removeRemoteLocation(senderClientId);
-                return;
-            }
-            record.marker.setIcon(buildRemoteLocationIcon(record.user, record.timeMs));
-        });
-    };
-
-    const updateRemoteLocationMarker = (payload) => {
-        if (!map || !payload || payload.senderClientId === myClientId) return;
-        const lat = Number(payload.lat);
-        const lon = Number(payload.lon);
-        if (!Number.isFinite(lat) || !Number.isFinite(lon)) return;
-
-        const user = String(payload.user || 'inconnu').trim().slice(0, 24) || 'inconnu';
-        const timeMs = Date.parse(payload.time || '');
-        const safeTimeMs = Number.isFinite(timeMs) ? timeMs : Date.now();
-        const position = [lat, lon];
-        const existing = remoteLocationMarkers.get(payload.senderClientId);
-
-        if (existing?.marker) {
-            existing.marker.setLatLng(position);
-            existing.marker.setIcon(buildRemoteLocationIcon(user, safeTimeMs));
-            existing.marker.bindPopup(`<b>${escapeHtml(user)}</b><br>Position: ${formatLocationAge(safeTimeMs)}`);
-            existing.user = user;
-            existing.timeMs = safeTimeMs;
-            existing.lat = lat;
-            existing.lon = lon;
-            return;
-        }
-
-        const marker = L.marker(position, {
-            icon: buildRemoteLocationIcon(user, safeTimeMs),
-            interactive: true
-        }).bindPopup(`<b>${escapeHtml(user)}</b><br>Position: ${formatLocationAge(safeTimeMs)}`);
-
-        marker.addTo(map);
-        remoteLocationMarkers.set(payload.senderClientId, {
-            marker,
-            user,
-            timeMs: safeTimeMs,
-            lat,
-            lon
-        });
-    };
-
-    const publishOwnLocationClear = () => {
-        const ownTopic = getOwnLocationTopic();
-        if (!chatClient || !ownTopic) return;
-        chatClient.publish(ownTopic, '', { qos: 1, retain: true });
-    };
-
-    const publishOwnLocation = (pos) => {
-        const ownTopic = getOwnLocationTopic();
-        if (!chatClient || !chatConnected || !ownTopic || !pos?.coords) return;
-
-        const { latitude, longitude, accuracy, heading, speed } = pos.coords;
-        if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) return;
-
-        const userName = (userInput.value || '').trim().slice(0, 24) || 'inconnu';
-        const payload = {
-            type: 'location',
-            room: (roomInput.value || '').trim().replace(/[^a-zA-Z0-9-_]/g, ''),
-            senderClientId: myClientId,
-            user: userName,
-            lat: latitude,
-            lon: longitude,
-            accuracy: Number.isFinite(accuracy) ? accuracy : null,
-            heading: Number.isFinite(heading) ? heading : null,
-            speed: Number.isFinite(speed) ? speed : null,
-            time: new Date().toISOString()
-        };
-
-        chatClient.publish(ownTopic, JSON.stringify(payload), { qos: 1, retain: true });
-        lastLocationPublishAt = Date.now();
-    };
-
-    const requestAndPublishOwnLocation = () => {
-        if (!locationSharingEnabled || !navigator.geolocation) return;
-        navigator.geolocation.getCurrentPosition(
-            (pos) => {
-                updateUserPosition(pos);
-                publishOwnLocation(pos);
-            },
-            (error) => {
-                console.warn('Position GPS chat indisponible:', error);
-                console.warn('[Chat] Position GPS indisponible:', error);
-            },
-            { enableHighAccuracy: true, timeout: 10000, maximumAge: 5000 }
-        );
-    };
-
-    const startLocationSharing = (silent = false) => {
-        if (!navigator.geolocation) {
-            console.warn('[Chat] Partage position impossible: GPS non supporté.');
-            return;
-        }
-        if (!chatClient || !chatConnected || !chatLocationTopic) {
-            appendChatMessage('Système', 'Connecte le chat avant d’activer le partage de position.', new Date().toISOString(), true);
-            return;
-        }
-
-        locationSharingEnabled = true;
-        localStorage.setItem(CHAT_LOCATION_SHARING_KEY, 'true');
-        updateLocationShareButton();
-
-        if (locationPublishTimer) clearInterval(locationPublishTimer);
-        requestAndPublishOwnLocation();
-        locationPublishTimer = setInterval(requestAndPublishOwnLocation, CHAT_LOCATION_PUBLISH_INTERVAL_MS);
-
-        if (!silent) {
-            appendChatMessage('Système', 'Partage de position activé.', new Date().toISOString(), true);
-        }
-    };
-
-    const stopLocationSharing = (silent = false) => {
-        locationSharingEnabled = false;
-        localStorage.setItem(CHAT_LOCATION_SHARING_KEY, 'false');
-        updateLocationShareButton();
-
-        if (locationPublishTimer) {
-            clearInterval(locationPublishTimer);
-            locationPublishTimer = null;
-        }
-
-        publishOwnLocationClear();
-
-        if (!silent) {
-            appendChatMessage('Système', 'Partage de position désactivé.', new Date().toISOString(), true);
-        }
-    };
-
-    setInterval(refreshRemoteLocationMarkers, 15000);
-    updateLocationShareButton();
-
     const persistSeenIds = () => {
         localStorage.setItem(CHAT_SEEN_IDS_KEY, JSON.stringify(Array.from(persistedSeenIds).slice(-400)));
     };
@@ -3157,7 +2932,7 @@ function initializeTeamChat() {
             publishChatPayload(payload, () => updateMessageStatus(payload.id, 'sent'));
         });
         localStorage.removeItem(CHAT_OUTBOX_KEY);
-        console.info(`[Chat] ${outbox.length} message(s) hors-ligne envoyé(s).`);
+        appendChatMessage('Système', `${outbox.length} message(s) hors-ligne envoyé(s).`, new Date().toISOString(), true);
     };
 
     const renderIncomingChatMessage = (parsed, isCurrentChatTopic) => {
@@ -3195,7 +2970,7 @@ function initializeTeamChat() {
         const userName = (userInput.value || '').trim();
         if (!roomName || !userName) return;
         if (chatConnected || isChatConnecting) return;
-        console.info('[Chat]', reasonLabel);
+        appendChatMessage('Système', reasonLabel, new Date().toISOString(), true);
         connectToChat();
     };
 
@@ -3205,7 +2980,7 @@ function initializeTeamChat() {
 
         if (typeof mqtt === 'undefined') {
             try {
-                console.info('[Chat] Chargement du module chat…');
+                appendChatMessage('Système', 'Chargement du module chat…', new Date().toISOString(), true);
                 await ensureMqttClientLoaded();
             } catch (mqttError) {
                 isChatConnecting = false;
@@ -3241,7 +3016,6 @@ function initializeTeamChat() {
         chatTopic = `pelic/chat/${roomName}`;
         chatHistoryTopic = `pelic/chat_history/${roomName}`;
         chatPresenceTopic = `pelic/chat_presence/${roomName}`;
-        chatLocationTopic = `pelic/chat_location/${roomName}`;
         setConnectionState(false, 'Connexion...');
         hasAnnouncedConnection = false;
         pendingChatMessages.length = 0;
@@ -3272,7 +3046,7 @@ function initializeTeamChat() {
                 hasAnnouncedConnection = true;
                 setConnectionState(true);
                 isChatConnecting = false;
-                console.info(`[Chat] Connecté au canal "${roomName}" (${CHAT_BROKER_URL}).`);
+                appendChatMessage('Système', `Connecté au canal "${roomName}" (${CHAT_BROKER_URL}).`, new Date().toISOString(), true);
 
                 while (pendingChatMessages.length) {
                     const pendingItem = pendingChatMessages.shift();
@@ -3310,22 +3084,9 @@ function initializeTeamChat() {
                             appendChatMessage('Système', `Abonnement présence impossible: ${presenceErr.message}`, new Date().toISOString(), true);
                             return;
                         }
-
-                        chatClient.subscribe(`${chatLocationTopic}/#`, { qos: 1 }, (locationErr) => {
-                            if (locationErr) {
-                                setConnectionState(false, 'Erreur positions');
-                                isChatConnecting = false;
-                                appendChatMessage('Système', `Abonnement positions impossible: ${locationErr.message}`, new Date().toISOString(), true);
-                                return;
-                            }
-
-                            announceConnection();
-                            publishPresence('online', userName);
-                            if (locationSharingEnabled) {
-                                startLocationSharing(true);
-                            }
-                            flushOutbox();
-                        });
+                        announceConnection();
+                        publishPresence('online', userName);
+                        flushOutbox();
                     });
                 });
             });
@@ -3336,22 +3097,10 @@ function initializeTeamChat() {
                 const isCurrentChatTopic = receivedTopic === chatTopic;
                 const isCurrentHistoryTopic = receivedTopic.startsWith(`${chatHistoryTopic}/`);
                 const isCurrentPresenceTopic = receivedTopic.startsWith(`${chatPresenceTopic}/`);
-                const isCurrentLocationTopic = chatLocationTopic && receivedTopic.startsWith(`${chatLocationTopic}/`);
-                if (!isCurrentChatTopic && !isCurrentHistoryTopic && !isCurrentPresenceTopic && !isCurrentLocationTopic) return;
+                if (!isCurrentChatTopic && !isCurrentHistoryTopic && !isCurrentPresenceTopic) return;
 
-                const rawPayload = payload.toString();
-                if (isCurrentLocationTopic && !rawPayload) {
-                    removeRemoteLocation(receivedTopic.split('/').pop());
-                    return;
-                }
-
-                const parsed = JSON.parse(rawPayload);
+                const parsed = JSON.parse(payload.toString());
                 if (!parsed || !parsed.type) return;
-
-                if (parsed.type === 'location' && parsed.senderClientId) {
-                    updateRemoteLocationMarker(parsed);
-                    return;
-                }
 
                 if (parsed.type === 'read_receipt' && parsed.messageId) {
                     updateMessageStatus(parsed.messageId, 'read');
@@ -3397,10 +3146,6 @@ function initializeTeamChat() {
             hasAnnouncedConnection = false;
             isChatConnecting = false;
             setConnectionState(false);
-            if (locationPublishTimer) {
-                clearInterval(locationPublishTimer);
-                locationPublishTimer = null;
-            }
             activeUsers.clear();
             refreshOnlineUsersLabel();
         });
@@ -3408,10 +3153,6 @@ function initializeTeamChat() {
             hasAnnouncedConnection = false;
             isChatConnecting = false;
             setConnectionState(false, 'Hors ligne');
-            if (locationPublishTimer) {
-                clearInterval(locationPublishTimer);
-                locationPublishTimer = null;
-            }
             activeUsers.clear();
             refreshOnlineUsersLabel();
         });
@@ -3442,7 +3183,7 @@ function initializeTeamChat() {
 
         if (!chatClient || !chatConnected || !chatTopic) {
             addToOutbox(payload);
-            console.info('[Chat] Réseau indisponible: message mis en file hors-ligne.');
+            appendChatMessage('Système', 'Réseau indisponible: message mis en file hors-ligne.', new Date().toISOString(), true);
             messageInput.value = '';
             return;
         }
@@ -3512,13 +3253,6 @@ function initializeTeamChat() {
     });
 
     connectButton.addEventListener('click', connectToChat);
-    locationShareButton.addEventListener('click', () => {
-        if (locationSharingEnabled) {
-            stopLocationSharing();
-        } else {
-            startLocationSharing();
-        }
-    });
     sendButton.addEventListener('click', sendCurrentMessage);
     messageInput.addEventListener('keydown', (e) => {
         if (e.key === 'Enter') {
@@ -3539,7 +3273,7 @@ function initializeTeamChat() {
             reconnectAfterOnlineTimeout = null;
         }
         setConnectionState(false, 'Hors ligne');
-        console.info('[Chat] Réseau perdu, les messages sortants seront mis en file.');
+        appendChatMessage('Système', 'Réseau perdu, les messages sortants seront mis en file.', new Date().toISOString(), true);
     });
 
     document.addEventListener('visibilitychange', () => {
@@ -3552,41 +3286,10 @@ function initializeTeamChat() {
     });
 
     window.addEventListener('beforeunload', () => {
-        publishOwnLocationClear();
         publishPresence('offline');
     });
 
-    function getChatSenderStyle(user, isSystemMessage = false) {
-    if (isSystemMessage) {
-        return {
-            color: '#6b7280',
-            background: '#f3f4f6',
-            border: '#9ca3af'
-        };
-    }
-
-    const palette = [
-        { color: '#1d4ed8', background: '#eff6ff', border: '#3b82f6' },
-        { color: '#047857', background: '#ecfdf5', border: '#10b981' },
-        { color: '#b45309', background: '#fffbeb', border: '#f59e0b' },
-        { color: '#be123c', background: '#fff1f2', border: '#f43f5e' },
-        { color: '#6d28d9', background: '#f5f3ff', border: '#8b5cf6' },
-        { color: '#0f766e', background: '#f0fdfa', border: '#14b8a6' },
-        { color: '#c2410c', background: '#fff7ed', border: '#fb923c' },
-        { color: '#0369a1', background: '#f0f9ff', border: '#38bdf8' }
-    ];
-
-    const key = String(user || 'inconnu');
-    let hash = 0;
-    for (let i = 0; i < key.length; i += 1) {
-        hash = ((hash << 5) - hash) + key.charCodeAt(i);
-        hash |= 0;
-    }
-
-    return palette[Math.abs(hash) % palette.length];
-}
-
-function appendChatMessage(user, text, isoTime, isSystemMessage = false, meta = null) {
+    function appendChatMessage(user, text, isoTime, isSystemMessage = false, meta = null) {
         const row = document.createElement('div');
         row.className = 'chat-message';
         const time = new Date(isoTime || Date.now());
@@ -3597,19 +3300,10 @@ function appendChatMessage(user, text, isoTime, isSystemMessage = false, meta = 
         const statusSymbol = baseStatus === 'read' ? '✓✓' : (baseStatus === 'sent' ? '✓' : '⏳');
         const statusClass = baseStatus === 'read' ? 'chat-message-status read' : 'chat-message-status';
         const statusMarkup = (!isSystemMessage && isOwnMessage) ? `<span class="${statusClass}" data-message-status="${meta?.id || ''}">${statusSymbol}</span>` : '';
-        const senderStyle = getChatSenderStyle(user, isSystemMessage);
-        const senderLabel = isSystemMessage ? 'Système' : escapeHtml(user);
-
         if (!isSystemMessage) {
             row.classList.add(isOwnMessage ? 'chat-message-own' : 'chat-message-remote');
         }
-
-        row.style.borderLeft = `4px solid ${senderStyle.border}`;
-        row.style.backgroundColor = senderStyle.background;
-        row.style.borderRadius = '8px';
-        row.style.paddingLeft = '8px';
-
-        row.innerHTML = `<b style="color:${senderStyle.color}">${senderLabel}</b> <span style="color:#7a7a7a">(${hh}:${mm})</span>${statusMarkup}<br>${escapeHtml(text)}`;
+        row.innerHTML = `<b>${isSystemMessage ? 'Système' : escapeHtml(user)}</b> <span style="color:#7a7a7a">(${hh}:${mm})</span>${statusMarkup}<br>${escapeHtml(text)}`;
         messagesBox.appendChild(row);
         messagesBox.scrollTop = messagesBox.scrollHeight;
         if (meta?.id && isOwnMessage) {
