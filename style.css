@@ -994,3 +994,63 @@ html, body {
     background: transparent !important;
     background-color: transparent !important;
 }
+
+/* ==========================================================================
+   BOUTONS PRINCIPAUX - GRILLE COMPACTE AVEC BOUTON COMMUNES
+   Corrige l'affichage quand Route BASE / Circuits / Départements / Communes / Cartes
+   sont tous présents.
+   ========================================================================== */
+
+.extra-controls,
+.extra-controls-grid {
+    display: grid !important;
+    grid-template-columns: repeat(5, minmax(0, 1fr)) !important;
+    gap: 10px !important;
+    align-items: stretch !important;
+    justify-content: stretch !important;
+    width: 100% !important;
+    box-sizing: border-box !important;
+    overflow: visible !important;
+}
+
+.extra-controls .toggle-button,
+.extra-controls-grid .toggle-button {
+    width: 100% !important;
+    min-width: 0 !important;
+    max-width: none !important;
+    min-height: 66px !important;
+    height: auto !important;
+    padding: 8px 6px !important;
+    box-sizing: border-box !important;
+    white-space: normal !important;
+    word-break: normal !important;
+    overflow-wrap: anywhere !important;
+    line-height: 1.08 !important;
+    font-size: 15px !important;
+    text-align: center !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+}
+
+@media (max-width: 760px) {
+    .extra-controls,
+    .extra-controls-grid {
+        grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+        gap: 8px !important;
+    }
+
+    .extra-controls .toggle-button,
+    .extra-controls-grid .toggle-button {
+        min-height: 58px !important;
+        font-size: 14px !important;
+        padding: 6px 5px !important;
+    }
+}
+
+@media (max-width: 520px) {
+    .extra-controls,
+    .extra-controls-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    }
+}
