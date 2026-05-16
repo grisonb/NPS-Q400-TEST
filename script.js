@@ -1391,11 +1391,33 @@ function formatGpsAltitudeFtFromCoords(coords) {
     return Number.isFinite(altitudeMeters) ? `${Math.round(altitudeMeters * 3.28084)} ft` : '--- ft';
 }
 
+
+function ensureOwnGpsAltitudeMarkerStyle() {
+    const styleId = 'own-gps-altitude-marker-style';
+    if (document.getElementById(styleId)) return;
+
+    const style = document.createElement('style');
+    style.id = styleId;
+    style.textContent = `
+        .own-gps-altitude-marker {
+            background: transparent !important;
+            border: none !important;
+            box-shadow: none !important;
+        }
+    `;
+    document.head.appendChild(style);
+}
+
 function buildOwnGpsIcon(altitudeLabel = '--- ft') {
+    ensureOwnGpsAltitudeMarkerStyle();
     const safeAltitude = escapeHtml(altitudeLabel || '--- ft');
 
     return L.divIcon({
-        className: 'custom-marker-icon own-gps-marker',
+        /*
+         * Classe volontairement indépendante de custom-marker-icon / own-gps-marker :
+         * ces anciennes classes ajoutaient une grosse bulle blanche autour du marqueur.
+         */
+        className: 'own-gps-altitude-marker',
         html: `<div style="display:flex;align-items:center;gap:5px;">
                 <div style="flex:0 0 auto;width:16px;height:16px;border-radius:50%;background:#7c3aed;border:2px solid #fff;box-shadow:0 0 0 2px rgba(124,58,237,.35),0 1px 5px rgba(0,0,0,.45);"></div>
                 <div style="background:#ffffff;border:1px solid #7c3aed;border-radius:8px;padding:3px 6px;font-size:11px;line-height:1.15;font-weight:700;color:#111;box-shadow:0 1px 5px rgba(0,0,0,.25);white-space:nowrap;text-align:center;min-width:42px;">${safeAltitude}</div>
