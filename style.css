@@ -981,3 +981,16 @@ html, body {
 #chat-message-input {
     scroll-margin-bottom: 180px;
 }
+/* ==========================================================================
+   CARTE OFFLINE - SUPPRESSION DU FOND MARRON/BLANC ENTRE TUILES
+   ========================================================================== */
+
+#map,
+.leaflet-container,
+.leaflet-pane,
+.leaflet-map-pane,
+.leaflet-tile-pane,
+.leaflet-tile {
+    background: transparent !important;
+    background-color: transparent !important;
+}
