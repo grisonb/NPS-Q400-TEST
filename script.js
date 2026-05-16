@@ -1452,6 +1452,35 @@ function updateCommunesLayerAppearance() {
     if (!map || !hasLoadedCommunes) return;
 
     const zoom = map.getZoom();
+    const shouldDrawCommunes = areCommunesVisible && zoom >= 12;
+
+    /*
+     * Pour alléger l'affichage :
+     * les noms apparaissent à partir du zoom 12 ;
+     * les contours communaux suivent la même règle.
+     */
+    if (!shouldDrawCommunes) {
+        if (map.hasLayer(communesLayerGroup)) {
+            map.removeLayer(communesLayerGroup);
+        }
+        if (map.hasLayer(communesLabelsLayer)) {
+            map.removeLayer(communesLabelsLayer);
+        }
+
+        const status = document.getElementById('offline-status');
+        if (status && areCommunesVisible) {
+            status.textContent = 'Calque Communes actif : zoome davantage pour afficher les contours et noms.';
+        }
+        return;
+    }
+
+    if (!map.hasLayer(communesLayerGroup)) {
+        communesLayerGroup.addTo(map);
+    }
+
+    if (!map.hasLayer(communesLabelsLayer)) {
+        communesLabelsLayer.addTo(map);
+    }
 
     if (communesLayerGroup) {
         const style = getCommunesBoundaryStyle();
@@ -1463,12 +1492,8 @@ function updateCommunesLayerAppearance() {
     }
 
     renderVisibleCommuneLabels();
-
-    const status = document.getElementById('offline-status');
-    if (status && areCommunesVisible && zoom < 10) {
-        status.textContent = 'Calque Communes actif : zoome davantage pour une lecture utile.';
-    }
 }
+
 
 function renderVisibleCommuneLabels() {
     if (!map || !communesLabelsLayer || !areCommunesVisible || !hasLoadedCommunes) return;
@@ -1497,8 +1522,17 @@ function renderVisibleCommuneLabels() {
 }
 
 
+
+function simplifyCommuneDisplayName(name) {
+    return String(name || '')
+        .replace(/\s+Arrondissement$/i, '')
+        .replace(/\s+arrondissement$/i, '')
+        .trim();
+}
+
 function getCommuneNameFromProperties(properties = {}) {
-    return properties.nom || properties.nom_commune || properties.name || properties.libelle || properties.nom_standard || '';
+    const rawName = properties.nom || properties.nom_commune || properties.name || properties.libelle || properties.nom_standard || '';
+    return simplifyCommuneDisplayName(rawName);
 }
 
 function getCommuneDepCodeFromProperties(properties = {}) {
@@ -1753,12 +1787,10 @@ async function toggleCommunesLayer(shouldShow) {
     areCommunesVisible = shouldShow;
 
     if (areCommunesVisible) {
-        communesLayerGroup.addTo(map);
-        communesLabelsLayer.addTo(map);
         updateCommunesLayerAppearance();
     } else {
-        map.removeLayer(communesLayerGroup);
-        map.removeLayer(communesLabelsLayer);
+        if (map.hasLayer(communesLayerGroup)) map.removeLayer(communesLayerGroup);
+        if (map.hasLayer(communesLabelsLayer)) map.removeLayer(communesLabelsLayer);
     }
 
     localStorage.setItem(SHOW_COMMUNES_LAYER_KEY, String(areCommunesVisible));
@@ -1918,7 +1950,7 @@ function updateNearestCommuneDisplay(lat, lon) {
     }
 
     nearestDisplay.style.display = 'block';
-    nearestDisplay.innerHTML = `📍 Plus proche: <b>${nearestCommune.nom_standard} (${nearestCommune.dep_code})</b>`;
+    nearestDisplay.innerHTML = `📍 Plus proche: <b>${simplifyCommuneDisplayName(nearestCommune.nom_standard)} (${nearestCommune.dep_code})</b>`;
 }
 
 function findClosestCommune(lat, lon, maxDistanceNm = null) {
