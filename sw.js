@@ -1,4 +1,4 @@
-const SW_VERSION = 'sw-offline-tiles-push-v1045-idb-fast';
+const SW_VERSION = 'sw-offline-tiles-push-v1046-strict-transparent';
 
 const DB_NAME = 'OfflineTilesDB';
 const DB_VERSION = 3;
@@ -91,10 +91,16 @@ async function handleTileRequest(request) {
         /*
          * Offline strict : si la tuile n'est pas présente, on ne va pas online.
          */
-        return new Response('', {
-            status: 404,
-            statusText: 'Offline tile not found'
-        });
+        return new Response(
+            Uint8Array.from(atob('R0lGODlhAQABAAD/ACwAAAAAAQABAAACADs='), c => c.charCodeAt(0)),
+            {
+                status: 200,
+                headers: {
+                    'Content-Type': 'image/gif',
+                    'X-Offline-Tile': 'transparent-missing'
+                }
+            }
+        );
     }
 
     try {
