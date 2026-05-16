@@ -1,4 +1,4 @@
-const SW_VERSION = 'sw-offline-tiles-push-v1038-idb-fast';
+const SW_VERSION = 'sw-offline-tiles-push-v1039-idb-fast';
 
 const DB_NAME = 'OfflineTilesDB';
 const DB_VERSION = 3;
@@ -23,8 +23,11 @@ let dbPromise = null;
 let offlineSettingsLoadedAt = 0;
 
 const SETTINGS_REFRESH_INTERVAL_MS = 5000;
-const MEMORY_TILE_CACHE_MAX = 160;
+const MEMORY_TILE_CACHE_MAX = 600;
 const memoryTileCache = new Map();
+const MISSING_TILE_CACHE_MAX = 900;
+const MISSING_TILE_TTL_MS = 30000;
+const missingTileCache = new Map();
 
 self.addEventListener('install', event => {
     self.skipWaiting();
@@ -61,6 +64,7 @@ self.addEventListener('message', event => {
         activeOfflinePacks = Array.isArray(data.value) ? data.value.filter(Boolean) : [];
         offlineSettingsLoadedAt = Date.now();
         memoryTileCache.clear();
+        missingTileCache.clear();
     }
 });
 
@@ -128,11 +132,18 @@ async function findOfflineTileResponse(tileUrl) {
         return cached.clone();
     }
 
+    if (isRecentlyMissingTile(cacheKey)) {
+        return null;
+    }
+
     try {
         const db = await openOfflineDB();
         const record = await findTileRecordInDB(db, tileUrl);
 
-        if (!record || !record.tile) return null;
+        if (!record || !record.tile) {
+            rememberMissingTile(cacheKey);
+            return null;
+        }
 
         const contentType = record.tile.type || guessTileContentType(tileUrl);
         const response = new Response(record.tile, {
@@ -143,9 +154,11 @@ async function findOfflineTileResponse(tileUrl) {
         });
 
         rememberMemoryTile(cacheKey, response.clone());
+        missingTileCache.delete(cacheKey);
         return response;
     } catch (error) {
         console.warn('[SW] Lecture tuile offline impossible:', error);
+        rememberMissingTile(cacheKey);
         return null;
     }
 }
@@ -162,6 +175,27 @@ function rememberMemoryTile(key, response) {
 function touchMemoryTile(key, response) {
     memoryTileCache.delete(key);
     memoryTileCache.set(key, response);
+}
+
+function rememberMissingTile(key) {
+    missingTileCache.set(key, Date.now());
+
+    while (missingTileCache.size > MISSING_TILE_CACHE_MAX) {
+        const oldestKey = missingTileCache.keys().next().value;
+        missingTileCache.delete(oldestKey);
+    }
+}
+
+function isRecentlyMissingTile(key) {
+    const timestamp = missingTileCache.get(key);
+    if (!timestamp) return false;
+
+    if ((Date.now() - timestamp) > MISSING_TILE_TTL_MS) {
+        missingTileCache.delete(key);
+        return false;
+    }
+
+    return true;
 }
 
 function openOfflineDB() {
