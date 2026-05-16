@@ -20,6 +20,12 @@ let departmentsLayerGroup = null;
 let departmentsLabelsLayer = null;
 let areDepartmentsVisible = false;
 let hasLoadedDepartments = false;
+let communesLayerGroup = null;
+let communesLabelsLayer = null;
+let areCommunesVisible = false;
+let hasLoadedCommunes = false;
+let communesLabelData = [];
+let communesLayerLoadController = null;
 const DEFAULT_BASE_OACI = 'LFTW';
 let selectedBaseOACI = DEFAULT_BASE_OACI;
 let gaarCircuits = [];
@@ -40,6 +46,7 @@ const OFFLINE_ACTIVE_PACKS_KEY = 'offlineActivePacks';
 const COMMUNES_CACHE_KEY = 'communesDataCacheV1';
 const FORCE_DISPLAY_MODE = new URLSearchParams(window.location.search).get('force_display') === '1';
 const SHOW_DEPARTMENTS_LAYER_KEY = 'showDepartmentsLayer';
+const SHOW_COMMUNES_LAYER_KEY = 'showCommunesLayer';
 const ONLINE_MAX_NATIVE_ZOOM = 18;
 const OFFLINE_FALLBACK_NATIVE_ZOOM = 14;
 const OFFLINE_HARD_MAX_NATIVE_ZOOM = 13;
@@ -430,11 +437,18 @@ function initMap() {
     gaarLayer = L.layerGroup().addTo(map);
     departmentsLayerGroup = L.layerGroup();
     departmentsLabelsLayer = L.layerGroup();
+    communesLayerGroup = L.layerGroup();
+    communesLabelsLayer = L.layerGroup();
     drawPermanentAirportMarkers();
     redrawGaarCircuits();
 
     if (areDepartmentsVisible) {
         setTimeout(() => { toggleDepartmentsLayer(true); }, 150);
+    }
+
+    areCommunesVisible = localStorage.getItem(SHOW_COMMUNES_LAYER_KEY) === 'true';
+    if (areCommunesVisible) {
+        setTimeout(() => { toggleCommunesLayer(true); }, 250);
     }
 
     map.on('click', handleGaarMapClick);
@@ -628,6 +642,18 @@ function setupEventListeners() {
         if (map && map._departmentZoomStyleBound !== true) {
             map._departmentZoomStyleBound = true;
             map.on('zoomend', updateDepartmentsLayerAppearance);
+        }
+    }
+
+    if (communesLayerButton) {
+        communesLayerButton.classList.toggle('active', areCommunesVisible);
+        communesLayerButton.addEventListener('click', () => {
+            toggleCommunesLayer(!areCommunesVisible);
+        });
+
+        if (map && map._communesZoomStyleBound !== true) {
+            map._communesZoomStyleBound = true;
+            map.on('zoomend moveend', updateCommunesLayerAppearance);
         }
     }
 
@@ -1342,6 +1368,216 @@ async function toggleDepartmentsLayer(shouldShow) {
 
     localStorage.setItem(SHOW_DEPARTMENTS_LAYER_KEY, String(areDepartmentsVisible));
     if (departmentsLayerButton) departmentsLayerButton.classList.toggle('active', areDepartmentsVisible);
+}
+
+function getCommunesBoundaryStyle() {
+    const zoom = map && Number.isFinite(map.getZoom()) ? map.getZoom() : 8;
+
+    let weight = 0.5;
+    let opacity = 0.55;
+
+    if (zoom >= 9) {
+        weight = 0.8;
+        opacity = 0.7;
+    }
+
+    if (zoom >= 11) {
+        weight = 1.2;
+        opacity = 0.85;
+    }
+
+    if (zoom >= 13) {
+        weight = 1.6;
+        opacity = 0.95;
+    }
+
+    return {
+        color: '#202020',
+        weight,
+        opacity,
+        fillColor: '#ffffff',
+        fillOpacity: 0,
+        pane: 'overlayPane'
+    };
+}
+
+function buildCommuneNameIcon(communeName) {
+    const zoom = map && Number.isFinite(map.getZoom()) ? map.getZoom() : 12;
+
+    let fontSize = 10;
+    let maxWidth = 120;
+
+    if (zoom >= 13) {
+        fontSize = 11;
+        maxWidth = 150;
+    }
+
+    if (zoom >= 15) {
+        fontSize = 12;
+        maxWidth = 180;
+    }
+
+    return L.divIcon({
+        className: 'commune-name-label',
+        html: `<span style="
+            display:inline-block;
+            max-width:${maxWidth}px;
+            overflow:hidden;
+            text-overflow:ellipsis;
+            padding:1px 4px;
+            border-radius:6px;
+            background:rgba(255,255,255,.78);
+            color:#000;
+            font-size:${fontSize}px;
+            font-weight:800;
+            line-height:1.05;
+            text-align:center;
+            text-shadow:
+                -1px -1px 0 #fff,
+                1px -1px 0 #fff,
+                -1px 1px 0 #fff,
+                1px 1px 0 #fff;
+            box-shadow:0 1px 3px rgba(0,0,0,.25);
+            white-space:nowrap;
+        ">${escapeHtml(communeName)}</span>`,
+        iconSize: [1, 1],
+        iconAnchor: [0, 0]
+    });
+}
+
+function updateCommunesLayerAppearance() {
+    if (!map || !hasLoadedCommunes) return;
+
+    const zoom = map.getZoom();
+
+    if (communesLayerGroup) {
+        const style = getCommunesBoundaryStyle();
+        communesLayerGroup.eachLayer((layer) => {
+            if (layer && typeof layer.setStyle === 'function') {
+                layer.setStyle(style);
+            }
+        });
+    }
+
+    renderVisibleCommuneLabels();
+
+    const status = document.getElementById('offline-status');
+    if (status && areCommunesVisible && zoom < 10) {
+        status.textContent = 'Calque Communes actif : zoome davantage pour une lecture utile.';
+    }
+}
+
+function renderVisibleCommuneLabels() {
+    if (!map || !communesLabelsLayer || !areCommunesVisible || !hasLoadedCommunes) return;
+
+    communesLabelsLayer.clearLayers();
+
+    const zoom = map.getZoom();
+    if (zoom < 12) return;
+
+    const bounds = map.getBounds().pad(0.05);
+    const maxLabels = zoom >= 14 ? 450 : 220;
+    let count = 0;
+
+    for (const item of communesLabelData) {
+        if (count >= maxLabels) break;
+        if (!bounds.contains(item.latLng)) continue;
+
+        communesLabelsLayer.addLayer(L.marker(item.latLng, {
+            icon: buildCommuneNameIcon(item.name),
+            interactive: false,
+            keyboard: false
+        }));
+
+        count += 1;
+    }
+}
+
+async function loadCommunesLayerData() {
+    const COMMUNES_GEOJSON_URL = 'https://etalab-datasets.geo.data.gouv.fr/contours-administratifs/latest/geojson/communes-50m.geojson';
+
+    const status = document.getElementById('offline-status');
+    if (status) {
+        status.textContent = 'Chargement du calque Communes 50 m... fichier lourd, patienter.';
+    }
+
+    if (communesLayerLoadController) {
+        communesLayerLoadController.abort();
+    }
+
+    communesLayerLoadController = new AbortController();
+
+    const response = await fetch(COMMUNES_GEOJSON_URL, {
+        cache: 'force-cache',
+        signal: communesLayerLoadController.signal
+    });
+
+    if (!response.ok) {
+        throw new Error(`HTTP ${response.status}`);
+    }
+
+    const communesGeojson = await response.json();
+
+    communesLabelData = [];
+    communesLayerGroup.clearLayers();
+    communesLabelsLayer.clearLayers();
+
+    const geoJsonLayer = L.geoJSON(communesGeojson, {
+        style: getCommunesBoundaryStyle
+    });
+
+    geoJsonLayer.eachLayer((layer) => {
+        communesLayerGroup.addLayer(layer);
+
+        const properties = layer.feature?.properties || {};
+        const communeName = properties.nom || properties.nom_commune || properties.name || properties.libelle || '';
+        if (!communeName || !layer.getBounds) return;
+
+        const center = layer.getBounds().getCenter();
+        communesLabelData.push({
+            name: communeName,
+            latLng: center
+        });
+    });
+
+    hasLoadedCommunes = true;
+    updateCommunesLayerAppearance();
+
+    if (status) {
+        status.textContent = `Calque Communes chargé : ${communesLabelData.length} communes.`;
+    }
+}
+
+async function toggleCommunesLayer(shouldShow) {
+    const communesLayerButton = document.getElementById('communes-layer-button');
+
+    if (shouldShow && !hasLoadedCommunes) {
+        try {
+            await loadCommunesLayerData();
+        } catch (error) {
+            if (error?.name === 'AbortError') return;
+            console.error('Erreur de chargement du calque communes:', error);
+            alert("Impossible de générer le calque des communes.");
+            areCommunesVisible = false;
+            localStorage.setItem(SHOW_COMMUNES_LAYER_KEY, 'false');
+            if (communesLayerButton) communesLayerButton.classList.remove('active');
+            return;
+        }
+    }
+
+    areCommunesVisible = shouldShow;
+
+    if (areCommunesVisible) {
+        communesLayerGroup.addTo(map);
+        communesLabelsLayer.addTo(map);
+        updateCommunesLayerAppearance();
+    } else {
+        map.removeLayer(communesLayerGroup);
+        map.removeLayer(communesLabelsLayer);
+    }
+
+    localStorage.setItem(SHOW_COMMUNES_LAYER_KEY, String(areCommunesVisible));
+    if (communesLayerButton) communesLayerButton.classList.toggle('active', areCommunesVisible);
 }
 
 const loadState = () => {
