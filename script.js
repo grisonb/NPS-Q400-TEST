@@ -364,6 +364,49 @@ async function loadCommunesData() {
     }
 }
 
+
+function applyMapNoBackgroundStyle() {
+    const styleId = 'map-no-background-style';
+    if (!document.getElementById(styleId)) {
+        const style = document.createElement('style');
+        style.id = styleId;
+        style.textContent = `
+            #map,
+            .leaflet-container,
+            .leaflet-pane,
+            .leaflet-map-pane,
+            .leaflet-tile-pane {
+                background: transparent !important;
+                background-color: transparent !important;
+            }
+
+            .leaflet-tile {
+                background: transparent !important;
+            }
+        `;
+        document.head.appendChild(style);
+    }
+
+    const mapElement = document.getElementById('map');
+    if (mapElement) {
+        mapElement.style.background = 'transparent';
+        mapElement.style.backgroundColor = 'transparent';
+    }
+
+    if (map && map.getContainer) {
+        const container = map.getContainer();
+        if (container) {
+            container.style.background = 'transparent';
+            container.style.backgroundColor = 'transparent';
+        }
+    }
+
+    document.querySelectorAll('.leaflet-container, .leaflet-pane, .leaflet-map-pane, .leaflet-tile-pane').forEach((element) => {
+        element.style.background = 'transparent';
+        element.style.backgroundColor = 'transparent';
+    });
+}
+
 function initMap() {
     if (map) return;
     map = L.map('map', {
@@ -377,6 +420,7 @@ function initMap() {
 
     map.on('zoomend', enforceOfflineZoomLimit);
     L.control.zoom({ position: 'bottomleft' }).addTo(map);
+    applyMapNoBackgroundStyle();
     setupBaseTileLayer();
     permanentAirportLayer = L.layerGroup().addTo(map);
     routesLayer = L.layerGroup().addTo(map);
@@ -491,6 +535,9 @@ function setupBaseTileLayer() {
     }).addTo(map);
 
     enforceOfflineZoomLimit();
+
+
+    applyMapNoBackgroundStyle();
 }
 
 function clearCurrentSelection() {
