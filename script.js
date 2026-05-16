@@ -656,7 +656,7 @@ function setupEventListeners() {
 
         if (map && map._communesZoomStyleBound !== true) {
             map._communesZoomStyleBound = true;
-            map.on('zoomend moveend', updateCommunesLayerAppearance);
+            map.on('zoom move zoomend moveend', updateCommunesLayerAppearance);
         }
     }
 
@@ -1455,16 +1455,19 @@ function updateCommunesLayerAppearance() {
     const shouldDrawCommunes = areCommunesVisible && zoom >= 12;
 
     /*
-     * Pour alléger l'affichage :
-     * les noms apparaissent à partir du zoom 12 ;
-     * les contours communaux suivent la même règle.
+     * iPad / lisibilité :
+     * sous zoom 12, on coupe complètement le calque Communes :
+     * pas de noms ET pas de contours.
      */
     if (!shouldDrawCommunes) {
-        if (map.hasLayer(communesLayerGroup)) {
-            map.removeLayer(communesLayerGroup);
-        }
+        communesLabelsLayer.clearLayers();
+
         if (map.hasLayer(communesLabelsLayer)) {
             map.removeLayer(communesLabelsLayer);
+        }
+
+        if (map.hasLayer(communesLayerGroup)) {
+            map.removeLayer(communesLayerGroup);
         }
 
         const status = document.getElementById('offline-status');
