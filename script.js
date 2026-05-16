@@ -1649,14 +1649,42 @@ function ensureCommunesLayerDataLoaded() {
     return communesLayerLoadPromise;
 }
 
+
+function isTouchTabletForCommunesLayer() {
+    const ua = navigator.userAgent || '';
+    const isIPadClassic = /iPad/i.test(ua);
+    const isIPadDesktopUA = /Macintosh/i.test(ua) && navigator.maxTouchPoints > 1;
+    const isTouchLargeScreen = navigator.maxTouchPoints > 1 && Math.min(window.innerWidth, window.innerHeight) >= 700;
+
+    return isIPadClassic || isIPadDesktopUA || isTouchLargeScreen;
+}
+
+function getCommunesGeojsonUrl() {
+    /*
+     * Sur PC, le 50 m fonctionne.
+     * Sur iPad, le 50 m peut être trop lourd à charger/parser et l'app retombe
+     * alors sur l'ancien calcul par centre-ville.
+     *
+     * On utilise donc 1000 m sur iPad/tablette : beaucoup plus léger, suffisant
+     * pour identifier la commune/arrondissement sous le point GPS dans l'immense
+     * majorité des cas.
+     */
+    const precision = isTouchTabletForCommunesLayer() ? '1000m' : '50m';
+    return {
+        precision,
+        url: `https://etalab-datasets.geo.data.gouv.fr/contours-administratifs/latest/geojson/communes-${precision}.geojson`
+    };
+}
+
 async function loadCommunesLayerData() {
     if (hasLoadedCommunes) return;
 
-    const COMMUNES_GEOJSON_URL = 'https://etalab-datasets.geo.data.gouv.fr/contours-administratifs/latest/geojson/communes-50m.geojson';
+    const communesSource = getCommunesGeojsonUrl();
+    const COMMUNES_GEOJSON_URL = communesSource.url;
 
     const status = document.getElementById('offline-status');
     if (status) {
-        status.textContent = 'Chargement du calque Communes 50 m... fichier lourd, patienter.';
+        status.textContent = `Chargement du calque Communes ${communesSource.precision}... patienter.`;
     }
 
     if (!communesLayerLoadController) {
@@ -1701,7 +1729,7 @@ async function loadCommunesLayerData() {
     updateCommunesLayerAppearance();
 
     if (status) {
-        status.textContent = `Calque Communes chargé : ${communesLabelData.length} communes.`;
+        status.textContent = `Calque Communes ${communesSource.precision} chargé : ${communesLabelData.length} communes.`;
     }
 }
 
@@ -1865,6 +1893,9 @@ function updateNearestCommuneDisplay(lat, lon) {
      * on garde l'ancien calcul par centre-ville comme solution temporaire.
      */
     if (!hasLoadedCommunes) {
+        nearestDisplay.style.display = 'block';
+        nearestDisplay.innerHTML = '📍 Commune: <b>chargement...</b>';
+
         ensureCommunesLayerDataLoaded()
             .then(() => {
                 const preciseCommune = findCommuneContainingPoint(lat, lon);
