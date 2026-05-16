@@ -13,6 +13,7 @@ let allCommunes = [], map, baseTileLayer, permanentAirportLayer, routesLayer, cu
 let disabledAirports = new Set(), waterAirports = new Set(), customPelicanAirports = new Set();
 const MAGNETIC_DECLINATION = 1.0;
 let userMarker = null, watchId = null, accuracyCircle = null, headingLayer = null, lastPosition = null;
+let ownGpsVectorLayer = null, ownGpsVectorMarkers = [];
 let userToTargetLayer = null, lftwRouteLayer = null;
 let showLftwRoute = true;
 let departmentsLayerGroup = null;
@@ -1404,9 +1405,144 @@ function buildOwnGpsIcon(altitudeLabel = '--- ft') {
     });
 }
 
+
+function calculateDestinationLatLng(lat, lon, bearingDeg, distanceMeters) {
+    const earthRadiusMeters = 6371000;
+    const angularDistance = distanceMeters / earthRadiusMeters;
+    const bearingRad = toRad(bearingDeg);
+    const latRad = toRad(lat);
+    const lonRad = toRad(lon);
+
+    const destLatRad = Math.asin(
+        Math.sin(latRad) * Math.cos(angularDistance)
+        + Math.cos(latRad) * Math.sin(angularDistance) * Math.cos(bearingRad)
+    );
+
+    const destLonRad = lonRad + Math.atan2(
+        Math.sin(bearingRad) * Math.sin(angularDistance) * Math.cos(latRad),
+        Math.cos(angularDistance) - Math.sin(latRad) * Math.sin(destLatRad)
+    );
+
+    return [toDeg(destLatRad), toDeg(destLonRad)];
+}
+
+function estimateMotionFromLastPosition(latitude, longitude, currentTimestampMs) {
+    if (!lastPosition || !Number.isFinite(lastPosition.latitude) || !Number.isFinite(lastPosition.longitude)) {
+        return { heading: null, speed: null };
+    }
+
+    const previousTimestampMs = Number(lastPosition.timestamp || 0);
+    const elapsedSeconds = (currentTimestampMs - previousTimestampMs) / 1000;
+
+    if (!Number.isFinite(elapsedSeconds) || elapsedSeconds < 2 || elapsedSeconds > 120) {
+        return { heading: null, speed: null };
+    }
+
+    const distanceNm = calculateDistanceInNm(lastPosition.latitude, lastPosition.longitude, latitude, longitude);
+    const distanceMeters = distanceNm * 1852;
+
+    if (!Number.isFinite(distanceMeters) || distanceMeters < 3) {
+        return { heading: null, speed: null };
+    }
+
+    return {
+        heading: calculateBearing(lastPosition.latitude, lastPosition.longitude, latitude, longitude),
+        speed: distanceMeters / elapsedSeconds
+    };
+}
+
+function ensureOwnGpsVectorLayer() {
+    if (!map) return null;
+
+    if (!ownGpsVectorLayer) {
+        ownGpsVectorLayer = L.layerGroup().addTo(map);
+    }
+
+    return ownGpsVectorLayer;
+}
+
+function clearOwnGpsVector() {
+    if (ownGpsVectorLayer) {
+        ownGpsVectorLayer.clearLayers();
+    }
+    ownGpsVectorMarkers = [];
+}
+
+function buildOwnGpsVectorLabel(minutes, latLng) {
+    return L.marker(latLng, {
+        interactive: false,
+        icon: L.divIcon({
+            className: 'own-gps-vector-time-marker',
+            html: `<div style="background:#ffffff;border:1px solid #7c3aed;border-radius:7px;padding:1px 4px;font-size:10px;font-weight:700;color:#111;box-shadow:0 1px 4px rgba(0,0,0,.25);white-space:nowrap;">${minutes}'</div>`,
+            iconSize: [1, 1],
+            iconAnchor: [0, 0]
+        })
+    });
+}
+
+function updateOwnGpsVector(latitude, longitude, headingDeg, speedMps) {
+    const layer = ensureOwnGpsVectorLayer();
+    if (!layer) return;
+
+    layer.clearLayers();
+    ownGpsVectorMarkers = [];
+
+    if (!Number.isFinite(headingDeg) || !Number.isFinite(speedMps) || speedMps < 1) {
+        return;
+    }
+
+    const start = [latitude, longitude];
+    const timeMarksMinutes = [2, 5, 10];
+    const maxMinutes = Math.max(...timeMarksMinutes);
+    const endDistanceMeters = speedMps * maxMinutes * 60;
+    const end = calculateDestinationLatLng(latitude, longitude, headingDeg, endDistanceMeters);
+
+    const vectorLine = L.polyline([start, end], {
+        color: '#7c3aed',
+        weight: 3,
+        opacity: 0.9,
+        dashArray: '8,6',
+        interactive: false
+    }).addTo(layer);
+
+    const arrowHeadDistanceMeters = Math.max(80, Math.min(600, endDistanceMeters * 0.08));
+    const leftHead = calculateDestinationLatLng(end[0], end[1], (headingDeg + 210) % 360, arrowHeadDistanceMeters);
+    const rightHead = calculateDestinationLatLng(end[0], end[1], (headingDeg + 150) % 360, arrowHeadDistanceMeters);
+
+    L.polyline([leftHead, end, rightHead], {
+        color: '#7c3aed',
+        weight: 3,
+        opacity: 0.9,
+        interactive: false
+    }).addTo(layer);
+
+    timeMarksMinutes.forEach((minutes) => {
+        const markDistanceMeters = speedMps * minutes * 60;
+        const point = calculateDestinationLatLng(latitude, longitude, headingDeg, markDistanceMeters);
+
+        L.circleMarker(point, {
+            radius: 4,
+            color: '#7c3aed',
+            weight: 2,
+            fillColor: '#ffffff',
+            fillOpacity: 1,
+            interactive: false
+        }).addTo(layer);
+
+        ownGpsVectorMarkers.push(buildOwnGpsVectorLabel(minutes, point).addTo(layer));
+    });
+}
+
 function updateUserPosition(pos) {
     const { latitude, longitude } = pos.coords;
     const ownAltitudeLabel = formatGpsAltitudeFtFromCoords(pos.coords);
+    const gpsTimestampMs = Number(pos.timestamp) || Date.now();
+    const estimatedMotion = estimateMotionFromLastPosition(latitude, longitude, gpsTimestampMs);
+    const rawHeading = Number(pos.coords.heading);
+    const rawSpeed = Number(pos.coords.speed);
+    const motionHeading = Number.isFinite(rawHeading) ? rawHeading : estimatedMotion.heading;
+    const motionSpeed = Number.isFinite(rawSpeed) ? rawSpeed : estimatedMotion.speed;
+    updateOwnGpsVector(latitude, longitude, motionHeading, motionSpeed);
     lastPosition = { lat: latitude, lng: longitude };
 
     if (!userMarker) {
