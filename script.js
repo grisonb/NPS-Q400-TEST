@@ -413,7 +413,13 @@ function setupBaseTileLayer() {
     if (baseTileLayer) {
         map.removeLayer(baseTileLayer);
     }
-    const overzoomDelta = offlineTilesMode ? 0 : 2;
+    /*
+     * Mode offline :
+     * on autorise un sur-zoom de 4 niveaux au-dessus du zoom natif disponible.
+     * Leaflet utilisera les tuiles du zoom maxNativeZoom et les agrandira.
+     * Résultat : qualité moins bonne, mais pas de carte blanche quand on zoome trop.
+     */
+    const overzoomDelta = offlineTilesMode ? 4 : 2;
     const effectiveMinZoom = offlineTilesMode ? Math.max(GLOBAL_MIN_ZOOM, baseTileMinNativeZoom) : GLOBAL_MIN_ZOOM;
     const effectiveMaxZoom = Math.min(GLOBAL_MAX_ZOOM, baseTileMaxNativeZoom + overzoomDelta);
     map.setMinZoom(effectiveMinZoom);
