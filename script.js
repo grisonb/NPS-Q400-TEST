@@ -49,6 +49,7 @@ const COMMUNES_CACHE_KEY = 'communesDataCacheV1';
 const FORCE_DISPLAY_MODE = new URLSearchParams(window.location.search).get('force_display') === '1';
 const SHOW_DEPARTMENTS_LAYER_KEY = 'showDepartmentsLayer';
 const SHOW_COMMUNES_LAYER_KEY = 'showCommunesLayer';
+const COMMUNES_DISPLAY_MIN_ZOOM = 10.5;
 const ONLINE_MAX_NATIVE_ZOOM = 18;
 const OFFLINE_FALLBACK_NATIVE_ZOOM = 14;
 const OFFLINE_HARD_MAX_NATIVE_ZOOM = 13;
@@ -1376,22 +1377,22 @@ async function toggleDepartmentsLayer(shouldShow) {
 function getCommunesBoundaryStyle() {
     const zoom = map && Number.isFinite(map.getZoom()) ? map.getZoom() : 8;
 
-    let weight = 0.5;
-    let opacity = 0.55;
+    let weight = 0.45;
+    let opacity = 0.50;
 
-    if (zoom >= 9) {
-        weight = 0.8;
-        opacity = 0.7;
+    if (zoom >= 10.5) {
+        weight = 0.65;
+        opacity = 0.62;
     }
 
-    if (zoom >= 11) {
-        weight = 1.2;
-        opacity = 0.85;
+    if (zoom >= 12) {
+        weight = 0.95;
+        opacity = 0.78;
     }
 
-    if (zoom >= 13) {
-        weight = 1.6;
-        opacity = 0.95;
+    if (zoom >= 14) {
+        weight = 1.25;
+        opacity = 0.90;
     }
 
     return {
@@ -1403,6 +1404,7 @@ function getCommunesBoundaryStyle() {
         pane: 'overlayPane'
     };
 }
+
 
 function buildCommuneNameIcon(communeName) {
     const zoom = map && Number.isFinite(map.getZoom()) ? map.getZoom() : 12;
@@ -1452,12 +1454,12 @@ function updateCommunesLayerAppearance() {
     if (!map || !hasLoadedCommunes) return;
 
     const zoom = map.getZoom();
-    const shouldDrawCommunes = areCommunesVisible && zoom >= 12;
+    const shouldDrawCommunes = areCommunesVisible && zoom >= COMMUNES_DISPLAY_MIN_ZOOM;
 
     /*
-     * iPad / lisibilité :
-     * sous zoom 12, on coupe complètement le calque Communes :
-     * pas de noms ET pas de contours.
+     * Calque Communes :
+     * - sous COMMUNES_DISPLAY_MIN_ZOOM : aucun contour / aucun nom ;
+     * - à partir du seuil : contours + noms.
      */
     if (!shouldDrawCommunes) {
         communesLabelsLayer.clearLayers();
@@ -1504,7 +1506,7 @@ function renderVisibleCommuneLabels() {
     communesLabelsLayer.clearLayers();
 
     const zoom = map.getZoom();
-    if (zoom < 12) return;
+    if (zoom < COMMUNES_DISPLAY_MIN_ZOOM) return;
 
     const bounds = map.getBounds().pad(0.05);
     const maxLabels = zoom >= 14 ? 450 : 220;
@@ -1706,7 +1708,7 @@ function getCommunesGeojsonUrl() {
      * pour identifier la commune/arrondissement sous le point GPS dans l'immense
      * majorité des cas.
      */
-    const precision = isTouchTabletForCommunesLayer() ? '1000m' : '50m';
+    const precision = isTouchTabletForCommunesLayer() ? '100m' : '50m';
     return {
         precision,
         url: `https://etalab-datasets.geo.data.gouv.fr/contours-administratifs/latest/geojson/communes-${precision}.geojson`
