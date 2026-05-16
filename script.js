@@ -1396,12 +1396,12 @@ function buildOwnGpsIcon(altitudeLabel = '--- ft') {
 
     return L.divIcon({
         className: 'custom-marker-icon own-gps-marker',
-        html: `<div style="display:flex;align-items:center;gap:4px;transform:translate(-50%,-100%);">
-                <div style="width:16px;height:16px;border-radius:50%;background:#7c3aed;border:2px solid #fff;box-shadow:0 0 0 2px rgba(124,58,237,.35),0 1px 5px rgba(0,0,0,.45);"></div>
-                <div style="background:#ffffff;border:1px solid #7c3aed;border-radius:8px;padding:2px 5px;font-size:11px;line-height:1.1;font-weight:700;color:#111;box-shadow:0 1px 5px rgba(0,0,0,.25);white-space:nowrap;text-align:center;">${safeAltitude}</div>
+        html: `<div style="display:flex;align-items:center;gap:5px;">
+                <div style="flex:0 0 auto;width:16px;height:16px;border-radius:50%;background:#7c3aed;border:2px solid #fff;box-shadow:0 0 0 2px rgba(124,58,237,.35),0 1px 5px rgba(0,0,0,.45);"></div>
+                <div style="background:#ffffff;border:1px solid #7c3aed;border-radius:8px;padding:3px 6px;font-size:11px;line-height:1.15;font-weight:700;color:#111;box-shadow:0 1px 5px rgba(0,0,0,.25);white-space:nowrap;text-align:center;min-width:42px;">${safeAltitude}</div>
             </div>`,
-        iconSize: [1, 1],
-        iconAnchor: [0, 0]
+        iconSize: [82, 28],
+        iconAnchor: [8, 22]
     });
 }
 
@@ -1473,9 +1473,9 @@ function buildOwnGpsVectorLabel(minutes, latLng) {
         interactive: false,
         icon: L.divIcon({
             className: 'own-gps-vector-time-marker',
-            html: `<div style="background:#ffffff;border:1px solid #7c3aed;border-radius:7px;padding:1px 4px;font-size:10px;font-weight:700;color:#111;box-shadow:0 1px 4px rgba(0,0,0,.25);white-space:nowrap;">${minutes}'</div>`,
-            iconSize: [1, 1],
-            iconAnchor: [0, 0]
+            html: `<div style="font-size:12px;font-weight:900;color:#111;text-shadow:-1px -1px 0 #fff,1px -1px 0 #fff,-1px 1px 0 #fff,1px 1px 0 #fff,0 1px 4px rgba(0,0,0,.55);white-space:nowrap;line-height:1;">${minutes}'</div>`,
+            iconSize: [28, 16],
+            iconAnchor: [-6, 8]
         })
     });
 }
@@ -1499,20 +1499,9 @@ function updateOwnGpsVector(latitude, longitude, headingDeg, speedMps) {
 
     const vectorLine = L.polyline([start, end], {
         color: '#7c3aed',
-        weight: 3,
+        weight: 4,
         opacity: 0.9,
-        dashArray: '8,6',
-        interactive: false
-    }).addTo(layer);
-
-    const arrowHeadDistanceMeters = Math.max(80, Math.min(600, endDistanceMeters * 0.08));
-    const leftHead = calculateDestinationLatLng(end[0], end[1], (headingDeg + 210) % 360, arrowHeadDistanceMeters);
-    const rightHead = calculateDestinationLatLng(end[0], end[1], (headingDeg + 150) % 360, arrowHeadDistanceMeters);
-
-    L.polyline([leftHead, end, rightHead], {
-        color: '#7c3aed',
-        weight: 3,
-        opacity: 0.9,
+        dashArray: '10,7',
         interactive: false
     }).addTo(layer);
 
@@ -3171,12 +3160,12 @@ function initializeTeamChat() {
 
         return L.divIcon({
             className: 'chat-location-marker',
-            html: `<div style="display:flex;align-items:center;gap:4px;opacity:${opacity};transform:translate(-50%,-100%);">
-                    <div style="width:14px;height:14px;border-radius:50%;background:${color};border:2px solid #fff;box-shadow:0 1px 5px rgba(0,0,0,.45);"></div>
-                    <div style="background:#ffffff;border:1px solid ${color};border-radius:8px;padding:2px 5px;font-size:11px;line-height:1.1;font-weight:700;color:#111;box-shadow:0 1px 5px rgba(0,0,0,.25);white-space:nowrap;text-align:center;">${label}</div>
+            html: `<div style="display:flex;align-items:center;gap:5px;opacity:${opacity};">
+                    <div style="flex:0 0 auto;width:14px;height:14px;border-radius:50%;background:${color};border:2px solid #fff;box-shadow:0 1px 5px rgba(0,0,0,.45);"></div>
+                    <div style="background:#ffffff;border:1px solid ${color};border-radius:8px;padding:3px 6px;font-size:11px;line-height:1.15;font-weight:700;color:#111;box-shadow:0 1px 5px rgba(0,0,0,.25);white-space:nowrap;text-align:center;min-width:44px;">${label}</div>
                 </div>`,
-            iconSize: [1, 1],
-            iconAnchor: [0, 0]
+            iconSize: [92, 46],
+            iconAnchor: [7, 38]
         });
     };
 
