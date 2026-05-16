@@ -1,5 +1,6 @@
-const SW_VERSION = 'sw-offline-tiles-push-v1039-idb-fast';
+const SW_VERSION = 'sw-offline-tiles-push-v1035-cache-direct';
 
+const TILE_CACHE_PREFIX = 'test-communes-tile-cache-';
 const DB_NAME = 'OfflineTilesDB';
 const DB_VERSION = 3;
 
@@ -7,27 +8,18 @@ const OFFLINE_TILES_ENABLED_KEY = 'offlineTilesEnabled';
 const OFFLINE_ONLINE_FALLBACK_KEY = 'offlineOnlineFallback';
 const OFFLINE_ACTIVE_PACKS_KEY = 'offlineActivePacks';
 
-/*
- * IMPORTANT :
- * - pas de cache agressif de index.html / script.js ;
- * - pas de suppression des caches de tuiles ;
- * - service worker conservé pour Push + offline tiles ;
- * - lecture tuiles optimisée IndexedDB, sans boucle Cache Storage à chaque tuile.
- */
-
 let offlineTilesEnabled = false;
 let offlineOnlineFallback = false;
 let activeOfflinePacks = [];
 
 let dbPromise = null;
 let offlineSettingsLoadedAt = 0;
+let fastTileCacheName = null;
+let fastTileCache = null;
 
 const SETTINGS_REFRESH_INTERVAL_MS = 5000;
-const MEMORY_TILE_CACHE_MAX = 600;
+const MEMORY_TILE_CACHE_MAX = 400;
 const memoryTileCache = new Map();
-const MISSING_TILE_CACHE_MAX = 900;
-const MISSING_TILE_TTL_MS = 30000;
-const missingTileCache = new Map();
 
 self.addEventListener('install', event => {
     self.skipWaiting();
@@ -36,6 +28,7 @@ self.addEventListener('install', event => {
 self.addEventListener('activate', event => {
     event.waitUntil((async () => {
         await refreshOfflineSettingsFromDB({ force: true });
+        await prepareFastTileCache();
         await self.clients.claim();
     })());
 });
@@ -64,7 +57,14 @@ self.addEventListener('message', event => {
         activeOfflinePacks = Array.isArray(data.value) ? data.value.filter(Boolean) : [];
         offlineSettingsLoadedAt = Date.now();
         memoryTileCache.clear();
-        missingTileCache.clear();
+        prepareFastTileCache().catch(() => {});
+        return;
+    }
+
+    if (data.type === 'OFFLINE_TILE_CACHE_READY') {
+        fastTileCacheName = data.cacheName || null;
+        fastTileCache = null;
+        prepareFastTileCache({ force: true }).catch(() => {});
     }
 });
 
@@ -78,10 +78,6 @@ self.addEventListener('fetch', event => {
         return;
     }
 
-    /*
-     * Application : réseau direct.
-     * Cela évite le retour à d'anciennes versions PWA.
-     */
     event.respondWith(fetch(request));
 });
 
@@ -92,9 +88,6 @@ async function handleTileRequest(request) {
         const offlineResponse = await findOfflineTileResponse(request.url);
         if (offlineResponse) return offlineResponse;
 
-        /*
-         * Offline strict : si la tuile n'est pas présente, on ne va pas online.
-         */
         return new Response('', {
             status: 404,
             statusText: 'Offline tile not found'
@@ -126,24 +119,30 @@ function isOpenStreetMapTileRequest(url) {
 async function findOfflineTileResponse(tileUrl) {
     const cacheKey = `${tileUrl}::${(activeOfflinePacks || []).join('|')}`;
 
-    const cached = memoryTileCache.get(cacheKey);
-    if (cached) {
-        touchMemoryTile(cacheKey, cached);
-        return cached.clone();
+    const cachedMemory = memoryTileCache.get(cacheKey);
+    if (cachedMemory) {
+        touchMemoryTile(cacheKey, cachedMemory);
+        return cachedMemory.clone();
     }
 
-    if (isRecentlyMissingTile(cacheKey)) {
-        return null;
+    try {
+        const cache = await prepareFastTileCache();
+        if (cache) {
+            const cached = await cache.match(tileUrl);
+            if (cached) {
+                rememberMemoryTile(cacheKey, cached.clone());
+                return cached;
+            }
+        }
+    } catch (cacheError) {
+        console.warn('[SW] Cache rapide indisponible:', cacheError);
     }
 
     try {
         const db = await openOfflineDB();
         const record = await findTileRecordInDB(db, tileUrl);
 
-        if (!record || !record.tile) {
-            rememberMissingTile(cacheKey);
-            return null;
-        }
+        if (!record || !record.tile) return null;
 
         const contentType = record.tile.type || guessTileContentType(tileUrl);
         const response = new Response(record.tile, {
@@ -154,13 +153,28 @@ async function findOfflineTileResponse(tileUrl) {
         });
 
         rememberMemoryTile(cacheKey, response.clone());
-        missingTileCache.delete(cacheKey);
         return response;
     } catch (error) {
         console.warn('[SW] Lecture tuile offline impossible:', error);
-        rememberMissingTile(cacheKey);
         return null;
     }
+}
+
+async function prepareFastTileCache({ force = false } = {}) {
+    if (fastTileCache && !force) return fastTileCache;
+
+    if (!fastTileCacheName || force) {
+        try {
+            const cacheNames = await caches.keys();
+            const tileCacheNames = cacheNames.filter(name => name.startsWith(TILE_CACHE_PREFIX)).sort();
+            fastTileCacheName = tileCacheNames.length ? tileCacheNames[tileCacheNames.length - 1] : `${TILE_CACHE_PREFIX}v1035`;
+        } catch (_) {
+            fastTileCacheName = `${TILE_CACHE_PREFIX}v1035`;
+        }
+    }
+
+    fastTileCache = await caches.open(fastTileCacheName);
+    return fastTileCache;
 }
 
 function rememberMemoryTile(key, response) {
@@ -175,27 +189,6 @@ function rememberMemoryTile(key, response) {
 function touchMemoryTile(key, response) {
     memoryTileCache.delete(key);
     memoryTileCache.set(key, response);
-}
-
-function rememberMissingTile(key) {
-    missingTileCache.set(key, Date.now());
-
-    while (missingTileCache.size > MISSING_TILE_CACHE_MAX) {
-        const oldestKey = missingTileCache.keys().next().value;
-        missingTileCache.delete(oldestKey);
-    }
-}
-
-function isRecentlyMissingTile(key) {
-    const timestamp = missingTileCache.get(key);
-    if (!timestamp) return false;
-
-    if ((Date.now() - timestamp) > MISSING_TILE_TTL_MS) {
-        missingTileCache.delete(key);
-        return false;
-    }
-
-    return true;
 }
 
 function openOfflineDB() {
@@ -230,10 +223,6 @@ function findTileRecordInDB(db, tileUrl) {
         let request;
 
         if (store.indexNames.contains('tileUrl')) {
-            /*
-             * Chemin rapide : index tileUrl + curseur.
-             * On s'arrête dès qu'une tuile correspondant au pack actif est trouvée.
-             */
             request = store.index('tileUrl').openCursor(IDBKeyRange.only(tileUrl));
         } else {
             request = store.openCursor();
