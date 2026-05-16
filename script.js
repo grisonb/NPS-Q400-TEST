@@ -41,8 +41,7 @@ const FORCE_DISPLAY_MODE = new URLSearchParams(window.location.search).get('forc
 const SHOW_DEPARTMENTS_LAYER_KEY = 'showDepartmentsLayer';
 const ONLINE_MAX_NATIVE_ZOOM = 18;
 const OFFLINE_FALLBACK_NATIVE_ZOOM = 14;
-const OFFLINE_HARD_MAX_NATIVE_ZOOM = 12;
-const OFFLINE_BACKGROUND_COLOR = '#d8c8a5';
+const OFFLINE_HARD_MAX_NATIVE_ZOOM = 13;
 const GLOBAL_MAX_ZOOM = 18;
 const GLOBAL_MIN_ZOOM = 0;
 let baseTileMaxNativeZoom = ONLINE_MAX_NATIVE_ZOOM;
@@ -371,18 +370,12 @@ function initMap() {
         attributionControl: false,
         zoomControl: false,
         maxZoom: GLOBAL_MAX_ZOOM,
-        zoomAnimation: false,
+        zoomAnimation: true,
         fadeAnimation: false,
-        markerZoomAnimation: false
+        markerZoomAnimation: true
     }).setView([46.6, 2.2], 5.5);
 
-    const mapContainer = map.getContainer();
-    if (mapContainer) {
-        mapContainer.style.background = OFFLINE_BACKGROUND_COLOR;
-    }
-
     map.on('zoomend', enforceOfflineZoomLimit);
-    map.on('moveend', enforceOfflineZoomLimit);
     L.control.zoom({ position: 'bottomleft' }).addTo(map);
     setupBaseTileLayer();
     permanentAirportLayer = L.layerGroup().addTo(map);
@@ -489,10 +482,10 @@ function setupBaseTileLayer() {
         minZoom: effectiveMinZoom,
         maxZoom: effectiveMaxZoom,
         attribution: '© OpenStreetMap',
-        keepBuffer: 16,
+        keepBuffer: 32,
         updateWhenZooming: false,
-        updateWhenIdle: false,
-        updateInterval: 80,
+        updateWhenIdle: true,
+        updateInterval: 160,
         noWrap: true,
         errorTileUrl: 'data:image/gif;base64,R0lGODlhAQABAAD/ACwAAAAAAQABAAACADs='
     }).addTo(map);
