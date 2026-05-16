@@ -1,4 +1,4 @@
-const SW_VERSION = 'sw-offline-tiles-push-v1035-cache-direct';
+const SW_VERSION = 'sw-offline-tiles-push-v1040-cache-direct';
 
 const TILE_CACHE_PREFIX = 'test-communes-tile-cache-';
 const DB_NAME = 'OfflineTilesDB';
