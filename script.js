@@ -1377,26 +1377,31 @@ async function toggleDepartmentsLayer(shouldShow) {
 function getCommunesBoundaryStyle() {
     const zoom = map && Number.isFinite(map.getZoom()) ? map.getZoom() : 8;
 
-    let weight = 0.45;
-    let opacity = 0.50;
+    /*
+     * Contours communes renforcés :
+     * - plus visibles sur fond OSM/OACI ;
+     * - restent moins épais que les limites départementales.
+     */
+    let weight = 0.9;
+    let opacity = 0.72;
 
     if (zoom >= 10.5) {
-        weight = 0.65;
-        opacity = 0.62;
+        weight = 1.15;
+        opacity = 0.82;
     }
 
     if (zoom >= 12) {
-        weight = 0.95;
-        opacity = 0.78;
+        weight = 1.65;
+        opacity = 0.92;
     }
 
     if (zoom >= 14) {
-        weight = 1.25;
-        opacity = 0.90;
+        weight = 2.15;
+        opacity = 1;
     }
 
     return {
-        color: '#202020',
+        color: '#111111',
         weight,
         opacity,
         fillColor: '#ffffff',
