@@ -1,4 +1,4 @@
-const SW_VERSION = 'sw-offline-tiles-push-v1035';
+const SW_VERSION = 'sw-offline-tiles-push-v1035-fast';
 
 const TILE_CACHE_PREFIX = 'test-communes-tile-cache-';
 const DB_NAME = 'OfflineTilesDB';
@@ -11,6 +11,14 @@ let offlineTilesEnabled = false;
 let offlineOnlineFallback = false;
 let activeOfflinePacks = [];
 
+let offlineSettingsLoadedAt = 0;
+let cachedTileCacheNames = [];
+let cachedTileCacheNamesLoadedAt = 0;
+let dbPromise = null;
+
+const SETTINGS_REFRESH_INTERVAL_MS = 3000;
+const TILE_CACHE_NAMES_REFRESH_INTERVAL_MS = 10000;
+
 self.addEventListener('install', event => {
     self.skipWaiting();
 });
@@ -18,11 +26,9 @@ self.addEventListener('install', event => {
 self.addEventListener('activate', event => {
     event.waitUntil((async () => {
         /*
-         * Important :
-         * - on ne supprime plus tous les caches ;
-         * - on conserve les caches de tuiles offline ;
-         * - on évite de remettre en cache index.html/script.js pour ne pas recréer
-         *   les retours d'anciennes versions.
+         * On conserve les caches de tuiles offline.
+         * On supprime seulement les autres caches applicatifs pour éviter
+         * les retours vers d'anciennes versions index/script.
          */
         try {
             const cacheNames = await caches.keys();
@@ -35,7 +41,8 @@ self.addEventListener('activate', event => {
             console.warn('[SW] Nettoyage cache non critique impossible:', error);
         }
 
-        await refreshOfflineSettingsFromDB();
+        await refreshOfflineSettingsFromDB({ force: true });
+        await refreshTileCacheNames({ force: true });
         await self.clients.claim();
     })());
 });
@@ -50,16 +57,19 @@ self.addEventListener('message', event => {
 
     if (data.type === 'OFFLINE_TILES_ENABLED_CHANGED') {
         offlineTilesEnabled = !!data.value;
+        offlineSettingsLoadedAt = Date.now();
         return;
     }
 
     if (data.type === 'OFFLINE_ONLINE_FALLBACK_CHANGED') {
         offlineOnlineFallback = !!data.value;
+        offlineSettingsLoadedAt = Date.now();
         return;
     }
 
     if (data.type === 'OFFLINE_ACTIVE_PACKS_CHANGED') {
         activeOfflinePacks = Array.isArray(data.value) ? data.value.filter(Boolean) : [];
+        offlineSettingsLoadedAt = Date.now();
         return;
     }
 });
@@ -75,8 +85,8 @@ self.addEventListener('fetch', event => {
     }
 
     /*
-     * Pour les fichiers de l'application, on reste volontairement réseau direct :
-     * cela évite de réintroduire le problème v10.35 -> ancienne version.
+     * Pour l'application elle-même : réseau direct.
+     * Cela évite de recréer le problème de retour à une ancienne version.
      */
     event.respondWith(fetch(request));
 });
@@ -85,12 +95,12 @@ async function handleTileRequest(request) {
     await refreshOfflineSettingsFromDB();
 
     if (offlineTilesEnabled) {
-        const offlineResponse = await findOfflineTileResponse(request.url);
+        const offlineResponse = await findOfflineTileResponseFast(request.url);
         if (offlineResponse) return offlineResponse;
 
         /*
-         * Mode offline strict : pas de récupération réseau si la tuile manque.
-         * On retourne une 404 propre pour éviter que la carte bascule sur l'online.
+         * Mode offline strict : si la tuile n'existe pas dans le pack,
+         * on ne bascule pas sur internet.
          */
         return new Response('', {
             status: 404,
@@ -102,7 +112,7 @@ async function handleTileRequest(request) {
         return await fetch(request);
     } catch (networkError) {
         if (offlineOnlineFallback) {
-            const offlineResponse = await findOfflineTileResponse(request.url);
+            const offlineResponse = await findOfflineTileResponseFast(request.url);
             if (offlineResponse) return offlineResponse;
         }
 
@@ -120,55 +130,85 @@ function isOpenStreetMapTileRequest(url) {
     }
 }
 
-async function findOfflineTileResponse(tileUrl) {
+async function findOfflineTileResponseFast(tileUrl) {
     /*
-     * Priorité à IndexedDB, car elle contient le nom du pack et permet
-     * de respecter le pack actif.
+     * Chemin rapide : Cache Storage d'abord.
+     * C'est beaucoup plus rapide que d'interroger IndexedDB pour chaque tuile
+     * pendant un déplacement ou un zoom.
+     */
+    try {
+        await refreshTileCacheNames();
+        for (const cacheName of cachedTileCacheNames) {
+            const cache = await caches.open(cacheName);
+            const cached = await cache.match(tileUrl);
+            if (cached) return cached;
+        }
+    } catch (cacheError) {
+        console.warn('[SW] Lecture tuile Cache Storage impossible:', cacheError);
+    }
+
+    /*
+     * Fallback IndexedDB : utile si la tuile n'a pas encore été recopiée
+     * dans Cache Storage.
      */
     try {
         const db = await openOfflineDB();
         const record = await findTileRecordInDB(db, tileUrl);
         if (record && record.tile) {
             const contentType = record.tile.type || guessTileContentType(tileUrl);
-            return new Response(record.tile, {
+            const response = new Response(record.tile, {
                 headers: {
                     'Content-Type': contentType,
                     'X-Offline-Tile': 'indexeddb'
                 }
             });
+
+            /*
+             * Mise en cache opportuniste : la prochaine demande de cette tuile
+             * passera par le chemin rapide Cache Storage.
+             */
+            try {
+                const targetCacheName = cachedTileCacheNames[0] || getFallbackTileCacheName();
+                const cache = await caches.open(targetCacheName);
+                await cache.put(tileUrl, response.clone());
+                if (!cachedTileCacheNames.includes(targetCacheName)) {
+                    cachedTileCacheNames.unshift(targetCacheName);
+                }
+            } catch (_) {}
+
+            return response;
         }
     } catch (dbError) {
         console.warn('[SW] Lecture tuile IndexedDB impossible:', dbError);
     }
 
-    /*
-     * Fallback Cache Storage : utile pour les tuiles déjà persistées par script.js.
-     * Ce fallback ne sait pas filtrer par pack, mais il permet de récupérer des
-     * tuiles disponibles même si IndexedDB est momentanément indisponible.
-     */
-    try {
-        const cacheNames = await caches.keys();
-        const tileCacheNames = cacheNames
-            .filter(name => name.startsWith(TILE_CACHE_PREFIX))
-            .sort()
-            .reverse();
-
-        for (const cacheName of tileCacheNames) {
-            const cache = await caches.open(cacheName);
-            const cached = await cache.match(tileUrl);
-            if (cached) {
-                return cached;
-            }
-        }
-    } catch (cacheError) {
-        console.warn('[SW] Lecture tuile Cache Storage impossible:', cacheError);
-    }
-
     return null;
 }
 
+async function refreshTileCacheNames({ force = false } = {}) {
+    const now = Date.now();
+
+    if (!force && cachedTileCacheNames.length && (now - cachedTileCacheNamesLoadedAt) < TILE_CACHE_NAMES_REFRESH_INTERVAL_MS) {
+        return;
+    }
+
+    const cacheNames = await caches.keys();
+    cachedTileCacheNames = cacheNames
+        .filter(name => name.startsWith(TILE_CACHE_PREFIX))
+        .sort()
+        .reverse();
+
+    cachedTileCacheNamesLoadedAt = now;
+}
+
+function getFallbackTileCacheName() {
+    return `${TILE_CACHE_PREFIX}${SW_VERSION}`;
+}
+
 function openOfflineDB() {
-    return new Promise((resolve, reject) => {
+    if (dbPromise) return dbPromise;
+
+    dbPromise = new Promise((resolve, reject) => {
         if (typeof indexedDB === 'undefined') {
             reject(new Error('IndexedDB indisponible dans le service worker'));
             return;
@@ -179,7 +219,12 @@ function openOfflineDB() {
         request.onsuccess = event => resolve(event.target.result);
         request.onerror = event => reject(event.target.error || new Error('Erreur ouverture IndexedDB'));
         request.onblocked = () => reject(new Error('IndexedDB bloquée'));
+    }).catch(error => {
+        dbPromise = null;
+        throw error;
     });
+
+    return dbPromise;
 }
 
 async function findTileRecordInDB(db, tileUrl) {
@@ -252,7 +297,13 @@ function guessTileContentType(tileUrl) {
     return /\.(jpg|jpeg)(?:\?.*)?$/i.test(tileUrl) ? 'image/jpeg' : 'image/png';
 }
 
-async function refreshOfflineSettingsFromDB() {
+async function refreshOfflineSettingsFromDB({ force = false } = {}) {
+    const now = Date.now();
+
+    if (!force && (now - offlineSettingsLoadedAt) < SETTINGS_REFRESH_INTERVAL_MS) {
+        return;
+    }
+
     try {
         const db = await openOfflineDB();
         const settings = await readOfflineSettings(db);
@@ -268,9 +319,11 @@ async function refreshOfflineSettingsFromDB() {
         if (Array.isArray(settings[OFFLINE_ACTIVE_PACKS_KEY])) {
             activeOfflinePacks = settings[OFFLINE_ACTIVE_PACKS_KEY].filter(Boolean);
         }
+
+        offlineSettingsLoadedAt = now;
     } catch (error) {
         /*
-         * Non bloquant : le script.js renvoie aussi l'état par postMessage.
+         * Non bloquant : script.js envoie aussi les changements par postMessage.
          */
     }
 }
