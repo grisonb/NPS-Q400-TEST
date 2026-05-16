@@ -1383,41 +1383,39 @@ function findClosestCommune(lat, lon, maxDistanceNm = null) {
     return closestCommune;
 }
 
+
+function formatGpsAltitudeFtFromCoords(coords) {
+    if (!coords) return '--- ft';
+    const altitudeMeters = Number(coords.altitude);
+    return Number.isFinite(altitudeMeters) ? `${Math.round(altitudeMeters * 3.28084)} ft` : '--- ft';
+}
+
+function buildOwnGpsIcon(altitudeLabel = '--- ft') {
+    const safeAltitude = escapeHtml(altitudeLabel || '--- ft');
+
+    return L.divIcon({
+        className: 'custom-marker-icon own-gps-marker',
+        html: `<div style="display:flex;align-items:center;gap:4px;transform:translate(-50%,-100%);">
+                <div style="width:16px;height:16px;border-radius:50%;background:#7c3aed;border:2px solid #fff;box-shadow:0 0 0 2px rgba(124,58,237,.35),0 1px 5px rgba(0,0,0,.45);"></div>
+                <div style="background:#ffffff;border:1px solid #7c3aed;border-radius:8px;padding:2px 5px;font-size:11px;line-height:1.1;font-weight:700;color:#111;box-shadow:0 1px 5px rgba(0,0,0,.25);white-space:nowrap;text-align:center;">${safeAltitude}</div>
+            </div>`,
+        iconSize: [1, 1],
+        iconAnchor: [0, 0]
+    });
+}
+
 function updateUserPosition(pos) {
     const { latitude, longitude } = pos.coords;
+    const ownAltitudeLabel = formatGpsAltitudeFtFromCoords(pos.coords);
     lastPosition = { lat: latitude, lng: longitude };
 
     if (!userMarker) {
-
-
-        const userIcon = L.divIcon({
-
-
-            className: 'custom-marker-icon own-gps-marker',
-
-
-            html: `<div style="width:16px;height:16px;border-radius:50%;background:#7c3aed;border:2px solid #fff;box-shadow:0 0 0 2px rgba(124,58,237,.35),0 1px 5px rgba(0,0,0,.45);"></div>`,
-
-
-            iconSize: [20, 20],
-
-
-            iconAnchor: [10, 10]
-
-
-        });
-
-
-
-        userMarker = L.marker([latitude, longitude], { icon: userIcon }).bindPopup('Votre position').addTo(map);
-
-
+        const userIcon = buildOwnGpsIcon(ownAltitudeLabel);
+        userMarker = L.marker([latitude, longitude], { icon: userIcon }).bindPopup(`Votre position<br>${escapeHtml(ownAltitudeLabel)}`).addTo(map);
     } else {
-
-
         userMarker.setLatLng([latitude, longitude]);
-
-
+        userMarker.setIcon(buildOwnGpsIcon(ownAltitudeLabel));
+        userMarker.bindPopup(`Votre position<br>${escapeHtml(ownAltitudeLabel)}`);
     }
 
     updateNearestCommuneDisplay(latitude, longitude);
@@ -2751,6 +2749,7 @@ function initializeTeamChat() {
     const CHAT_LOCATION_PUBLISH_INTERVAL_MS = 10000;
     const CHAT_LOCATION_STALE_MS = 60000;
     const CHAT_LOCATION_REMOVE_MS = 300000;
+    const CHAT_ALTITUDE_STALE_MS = 30000;
     let locationSharingEnabled = localStorage.getItem(CHAT_LOCATION_SHARING_KEY) === 'true';
     let locationPublishTimer = null;
     let lastLocationPublishAt = 0;
@@ -3012,66 +3011,37 @@ function initializeTeamChat() {
         return `${ageMinutes} min`;
     };
 
-    const buildRemoteLocationIcon = (user, timeMs) => {
+    const formatAltitudeLabel = (altitudeFt, altitudeTimeMs) => {
+        const hasFreshAltitude = Number.isFinite(altitudeFt)
+            && Number.isFinite(altitudeTimeMs)
+            && (Date.now() - altitudeTimeMs) <= CHAT_ALTITUDE_STALE_MS;
 
+        return hasFreshAltitude ? `${Math.round(altitudeFt)} ft` : '--- ft';
+    };
 
+    const buildRemoteLocationIcon = (user, timeMs, altitudeFt = null, altitudeTimeMs = null) => {
         const ageMs = Date.now() - timeMs;
 
-
-
         let color = '#2563eb'; // Bleu : position récente < 20 s
-
-
         if (ageMs >= 20000 && ageMs < 60000) {
-
-
             color = '#f97316'; // Orange : 20 s à 1 min
-
-
         } else if (ageMs >= 60000) {
-
-
             color = '#dc2626'; // Rouge : plus de 1 min
-
-
         }
 
-
-
         const opacity = ageMs > CHAT_LOCATION_STALE_MS ? 0.75 : 0.98;
-
-
-        const label = `${escapeHtml(user || 'inconnu')}<br><span>${formatLocationAge(timeMs)}</span>`;
-
-
+        const altitudeLabel = formatAltitudeLabel(altitudeFt, altitudeTimeMs);
+        const label = `${escapeHtml(user || 'inconnu')}<br><span>${formatLocationAge(timeMs)}</span><br><span>${altitudeLabel}</span>`;
 
         return L.divIcon({
-
-
             className: 'chat-location-marker',
-
-
             html: `<div style="display:flex;align-items:center;gap:4px;opacity:${opacity};transform:translate(-50%,-100%);">
-
-
                     <div style="width:14px;height:14px;border-radius:50%;background:${color};border:2px solid #fff;box-shadow:0 1px 5px rgba(0,0,0,.45);"></div>
-
-
                     <div style="background:#ffffff;border:1px solid ${color};border-radius:8px;padding:2px 5px;font-size:11px;line-height:1.1;font-weight:700;color:#111;box-shadow:0 1px 5px rgba(0,0,0,.25);white-space:nowrap;text-align:center;">${label}</div>
-
-
                 </div>`,
-
-
             iconSize: [1, 1],
-
-
             iconAnchor: [0, 0]
-
-
         });
-
-
     };
 
     const removeRemoteLocation = (senderClientId) => {
@@ -3090,7 +3060,7 @@ function initializeTeamChat() {
                 removeRemoteLocation(senderClientId);
                 return;
             }
-            record.marker.setIcon(buildRemoteLocationIcon(record.user, record.timeMs));
+            record.marker.setIcon(buildRemoteLocationIcon(record.user, record.timeMs, record.altitudeFt, record.altitudeTimeMs));
         });
     };
 
@@ -3106,21 +3076,36 @@ function initializeTeamChat() {
         const position = [lat, lon];
         const existing = remoteLocationMarkers.get(payload.senderClientId);
 
+        const altitudeMeters = Number(payload.altitude);
+        const hasAltitude = Number.isFinite(altitudeMeters);
+        const altitudeFt = hasAltitude
+            ? Math.round(altitudeMeters * 3.28084)
+            : (Number.isFinite(existing?.altitudeFt) ? existing.altitudeFt : null);
+        const altitudeTimeMs = hasAltitude
+            ? safeTimeMs
+            : (Number.isFinite(existing?.altitudeTimeMs) ? existing.altitudeTimeMs : null);
+
+        const altitudeLabel = formatAltitudeLabel(altitudeFt, altitudeTimeMs);
+        const popupHtml = `<b>${escapeHtml(user)}</b><br>Position: ${formatLocationAge(safeTimeMs)}<br>${altitudeLabel}`;
+
         if (existing?.marker) {
             existing.marker.setLatLng(position);
-            existing.marker.setIcon(buildRemoteLocationIcon(user, safeTimeMs));
-            existing.marker.bindPopup(`<b>${escapeHtml(user)}</b><br>Position: ${formatLocationAge(safeTimeMs)}`);
+            existing.marker.setIcon(buildRemoteLocationIcon(user, safeTimeMs, altitudeFt, altitudeTimeMs));
+            existing.marker.bindPopup(popupHtml);
             existing.user = user;
             existing.timeMs = safeTimeMs;
             existing.lat = lat;
             existing.lon = lon;
+            existing.altitudeFt = altitudeFt;
+            existing.altitudeTimeMs = altitudeTimeMs;
+            existing.altitudeAccuracy = Number.isFinite(Number(payload.altitudeAccuracy)) ? Number(payload.altitudeAccuracy) : null;
             return;
         }
 
         const marker = L.marker(position, {
-            icon: buildRemoteLocationIcon(user, safeTimeMs),
+            icon: buildRemoteLocationIcon(user, safeTimeMs, altitudeFt, altitudeTimeMs),
             interactive: true
-        }).bindPopup(`<b>${escapeHtml(user)}</b><br>Position: ${formatLocationAge(safeTimeMs)}`);
+        }).bindPopup(popupHtml);
 
         marker.addTo(map);
         remoteLocationMarkers.set(payload.senderClientId, {
@@ -3128,7 +3113,10 @@ function initializeTeamChat() {
             user,
             timeMs: safeTimeMs,
             lat,
-            lon
+            lon,
+            altitudeFt,
+            altitudeTimeMs,
+            altitudeAccuracy: Number.isFinite(Number(payload.altitudeAccuracy)) ? Number(payload.altitudeAccuracy) : null
         });
     };
 
@@ -3142,7 +3130,7 @@ function initializeTeamChat() {
         const ownTopic = getOwnLocationTopic();
         if (!chatClient || !chatConnected || !ownTopic || !pos?.coords) return;
 
-        const { latitude, longitude, accuracy, heading, speed } = pos.coords;
+        const { latitude, longitude, accuracy, altitude, altitudeAccuracy, heading, speed } = pos.coords;
         if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) return;
 
         const userName = (userInput.value || '').trim().slice(0, 24) || 'inconnu';
@@ -3154,6 +3142,8 @@ function initializeTeamChat() {
             lat: latitude,
             lon: longitude,
             accuracy: Number.isFinite(accuracy) ? accuracy : null,
+            altitude: Number.isFinite(altitude) ? altitude : null,
+            altitudeAccuracy: Number.isFinite(altitudeAccuracy) ? altitudeAccuracy : null,
             heading: Number.isFinite(heading) ? heading : null,
             speed: Number.isFinite(speed) ? speed : null,
             time: new Date().toISOString()
