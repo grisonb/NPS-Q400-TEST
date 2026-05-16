@@ -624,6 +624,11 @@ function setupEventListeners() {
         departmentsLayerButton.addEventListener('click', () => {
             toggleDepartmentsLayer(!areDepartmentsVisible);
         });
+
+        if (map && map._departmentZoomStyleBound !== true) {
+            map._departmentZoomStyleBound = true;
+            map.on('zoomend', updateDepartmentsLayerAppearance);
+        }
     }
 
     searchInput.addEventListener('input', () => {
@@ -1171,6 +1176,113 @@ function drawPermanentAirportMarkers() {
     });
 }
 
+
+function getDepartmentBoundaryStyle() {
+    const zoom = map && Number.isFinite(map.getZoom()) ? map.getZoom() : 6;
+
+    let weight = 1.2;
+    let opacity = 0.8;
+
+    if (zoom >= 7) {
+        weight = 1.8;
+        opacity = 0.9;
+    }
+
+    if (zoom >= 9) {
+        weight = 2.8;
+        opacity = 0.95;
+    }
+
+    if (zoom >= 11) {
+        weight = 4.0;
+        opacity = 1;
+    }
+
+    return {
+        color: '#000000',
+        weight,
+        opacity,
+        fillColor: '#ffffff',
+        fillOpacity: 0.02,
+        pane: 'overlayPane'
+    };
+}
+
+function buildDepartmentCodeIcon(depCode) {
+    const zoom = map && Number.isFinite(map.getZoom()) ? map.getZoom() : 6;
+
+    let fontSize = 13;
+    let padding = '2px 5px';
+    let borderWidth = 2;
+
+    if (zoom >= 7) {
+        fontSize = 15;
+        padding = '3px 6px';
+        borderWidth = 2;
+    }
+
+    if (zoom >= 9) {
+        fontSize = 18;
+        padding = '4px 8px';
+        borderWidth = 3;
+    }
+
+    if (zoom >= 11) {
+        fontSize = 22;
+        padding = '5px 10px';
+        borderWidth = 3;
+    }
+
+    return L.divIcon({
+        className: 'department-code-label',
+        html: `<span style="
+            display:inline-block;
+            min-width:24px;
+            padding:${padding};
+            border:${borderWidth}px solid #000;
+            border-radius:8px;
+            background:rgba(255,255,255,.92);
+            color:#000;
+            font-size:${fontSize}px;
+            font-weight:900;
+            line-height:1;
+            text-align:center;
+            text-shadow:
+                -1px -1px 0 #fff,
+                1px -1px 0 #fff,
+                -1px 1px 0 #fff,
+                1px 1px 0 #fff;
+            box-shadow:0 1px 5px rgba(0,0,0,.45);
+            white-space:nowrap;
+        ">${escapeHtml(depCode)}</span>`,
+        iconSize: [1, 1],
+        iconAnchor: [0, 0]
+    });
+}
+
+function updateDepartmentsLayerAppearance() {
+    if (!map || !hasLoadedDepartments) return;
+
+    const style = getDepartmentBoundaryStyle();
+
+    if (departmentsLayerGroup) {
+        departmentsLayerGroup.eachLayer((layer) => {
+            if (layer && typeof layer.setStyle === 'function') {
+                layer.setStyle(style);
+            }
+        });
+    }
+
+    if (departmentsLabelsLayer) {
+        departmentsLabelsLayer.eachLayer((marker) => {
+            const depCode = marker?.options?.depCode;
+            if (depCode && typeof marker.setIcon === 'function') {
+                marker.setIcon(buildDepartmentCodeIcon(depCode));
+            }
+        });
+    }
+}
+
 async function loadDepartmentsLayerData() {
     const DEPARTMENTS_GEOJSON_URL = 'https://etalab-datasets.geo.data.gouv.fr/contours-administratifs/latest/geojson/departements-1000m.geojson';
     const response = await fetch(DEPARTMENTS_GEOJSON_URL, { cache: 'force-cache' });
@@ -1180,13 +1292,7 @@ async function loadDepartmentsLayerData() {
 
     const departmentsGeojson = await response.json();
     const geoJsonLayer = L.geoJSON(departmentsGeojson, {
-        style: {
-            color: '#111',
-            weight: 1,
-            opacity: 0.9,
-            fillColor: '#ffffff',
-            fillOpacity: 0.03
-        }
+        style: getDepartmentBoundaryStyle
     });
 
     geoJsonLayer.eachLayer((layer) => {
@@ -1196,16 +1302,15 @@ async function loadDepartmentsLayerData() {
         if (!depCode || !layer.getBounds) return;
         const center = layer.getBounds().getCenter();
         departmentsLabelsLayer.addLayer(L.marker(center, {
-            icon: L.divIcon({
-                className: 'department-code-label',
-                html: `<span>${depCode}</span>`
-            }),
+            icon: buildDepartmentCodeIcon(depCode),
             interactive: false,
-            keyboard: false
+            keyboard: false,
+            depCode
         }));
     });
 
     hasLoadedDepartments = true;
+    updateDepartmentsLayerAppearance();
 }
 
 async function toggleDepartmentsLayer(shouldShow) {
@@ -1229,6 +1334,7 @@ async function toggleDepartmentsLayer(shouldShow) {
     if (areDepartmentsVisible) {
         departmentsLayerGroup.addTo(map);
         departmentsLabelsLayer.addTo(map);
+        updateDepartmentsLayerAppearance();
     } else {
         map.removeLayer(departmentsLayerGroup);
         map.removeLayer(departmentsLabelsLayer);
