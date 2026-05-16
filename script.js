@@ -594,6 +594,7 @@ function setupEventListeners() {
     const calculatorModal = document.getElementById('calculator-modal');
     const closeCalculatorButton = document.getElementById('close-calculator-btn');
     const departmentsLayerButton = document.getElementById('departments-layer-button');
+    const communesLayerButton = document.getElementById('communes-layer-button');
     const offlineMapsButton = document.getElementById('offline-maps-button');
     const offlineMapModal = document.getElementById('offline-map-modal');
     const closeOfflineMapButton = document.getElementById('close-offline-map-btn');
