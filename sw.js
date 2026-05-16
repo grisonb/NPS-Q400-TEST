@@ -1,4 +1,4 @@
-const SW_VERSION = 'sw-offline-tiles-push-v1041-idb-fast';
+const SW_VERSION = 'sw-offline-tiles-push-v1044-parent-fallback';
 
 const DB_NAME = 'OfflineTilesDB';
 const DB_VERSION = 3;
@@ -130,7 +130,32 @@ async function findOfflineTileResponse(tileUrl) {
 
     try {
         const db = await openOfflineDB();
-        const record = await findTileRecordInDB(db, tileUrl);
+
+        /*
+         * 1) Tuile exacte.
+         */
+        let record = await findTileRecordInDB(db, tileUrl);
+        let source = 'indexeddb';
+
+        /*
+         * 2) Anti-écran-blanc :
+         * si Leaflet demande un zoom trop élevé absent du pack, on remonte
+         * vers une tuile parente disponible.
+         *
+         * Visuellement ce sera moins précis, parfois un peu répétitif,
+         * mais c'est préférable à une tuile blanche.
+         */
+        if (!record || !record.tile) {
+            const parentUrls = buildParentTileUrls(tileUrl, 8);
+
+            for (const parentUrl of parentUrls) {
+                record = await findTileRecordInDB(db, parentUrl);
+                if (record && record.tile) {
+                    source = 'indexeddb-parent';
+                    break;
+                }
+            }
+        }
 
         if (!record || !record.tile) return null;
 
@@ -138,7 +163,7 @@ async function findOfflineTileResponse(tileUrl) {
         const response = new Response(record.tile, {
             headers: {
                 'Content-Type': contentType,
-                'X-Offline-Tile': 'indexeddb'
+                'X-Offline-Tile': source
             }
         });
 
@@ -146,6 +171,47 @@ async function findOfflineTileResponse(tileUrl) {
         return response;
     } catch (error) {
         console.warn('[SW] Lecture tuile offline impossible:', error);
+        return null;
+    }
+}
+
+function buildParentTileUrls(tileUrl, maxLevels = 8) {
+    const parsed = parseOsmTileUrl(tileUrl);
+    if (!parsed) return [];
+
+    const urls = [];
+    let z = parsed.z;
+    let x = parsed.x;
+    let y = parsed.y;
+
+    for (let level = 0; level < maxLevels; level += 1) {
+        if (z <= 0) break;
+
+        z -= 1;
+        x = Math.floor(x / 2);
+        y = Math.floor(y / 2);
+
+        urls.push(`${parsed.origin}/${z}/${x}/${y}.${parsed.ext}`);
+    }
+
+    return urls;
+}
+
+function parseOsmTileUrl(tileUrl) {
+    try {
+        const parsed = new URL(tileUrl);
+        const match = parsed.pathname.match(/^\/(\d+)\/(\d+)\/(\d+)\.(png|jpg|jpeg)$/i);
+
+        if (!match) return null;
+
+        return {
+            origin: `${parsed.protocol}//${parsed.hostname}`,
+            z: Number.parseInt(match[1], 10),
+            x: Number.parseInt(match[2], 10),
+            y: Number.parseInt(match[3], 10),
+            ext: match[4].toLowerCase()
+        };
+    } catch (_) {
         return null;
     }
 }
