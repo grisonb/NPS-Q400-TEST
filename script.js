@@ -25,7 +25,9 @@ let communesLabelsLayer = null;
 let areCommunesVisible = false;
 let hasLoadedCommunes = false;
 let communesLabelData = [];
+let communesPolygonData = [];
 let communesLayerLoadController = null;
+let communesLayerLoadPromise = null;
 const DEFAULT_BASE_OACI = 'LFTW';
 let selectedBaseOACI = DEFAULT_BASE_OACI;
 let gaarCircuits = [];
@@ -457,7 +459,7 @@ function initMap() {
         if (isDrawingMode) return;
         selectedPelicanOACI = null;
         L.DomEvent.preventDefault(e.originalEvent);
-        const closestCommune = findClosestCommune(e.latlng.lat, e.latlng.lng, 27);
+        const closestCommune = findCommuneContainingPoint(e.latlng.lat, e.latlng.lng) || findClosestCommune(e.latlng.lat, e.latlng.lng, 27);
         const pointName = closestCommune?.nom_standard || 'Feu manuel';
         const manualCommune = {
             nom_standard: pointName,
@@ -1494,7 +1496,162 @@ function renderVisibleCommuneLabels() {
     }
 }
 
+
+function getCommuneNameFromProperties(properties = {}) {
+    return properties.nom || properties.nom_commune || properties.name || properties.libelle || properties.nom_standard || '';
+}
+
+function getCommuneDepCodeFromProperties(properties = {}) {
+    return properties.code_departement || properties.dep_code || properties.dep || properties.codeDepartement || '';
+}
+
+function coordinatesToRings(geometry) {
+    if (!geometry || !geometry.type || !Array.isArray(geometry.coordinates)) return [];
+
+    if (geometry.type === 'Polygon') {
+        return geometry.coordinates;
+    }
+
+    if (geometry.type === 'MultiPolygon') {
+        return geometry.coordinates.flat();
+    }
+
+    return [];
+}
+
+function getGeometryBoundsFromRings(rings) {
+    let minLat = Infinity;
+    let maxLat = -Infinity;
+    let minLon = Infinity;
+    let maxLon = -Infinity;
+
+    rings.forEach((ring) => {
+        if (!Array.isArray(ring)) return;
+        ring.forEach((coord) => {
+            if (!Array.isArray(coord) || coord.length < 2) return;
+            const lon = Number(coord[0]);
+            const lat = Number(coord[1]);
+            if (!Number.isFinite(lat) || !Number.isFinite(lon)) return;
+            minLat = Math.min(minLat, lat);
+            maxLat = Math.max(maxLat, lat);
+            minLon = Math.min(minLon, lon);
+            maxLon = Math.max(maxLon, lon);
+        });
+    });
+
+    if (!Number.isFinite(minLat) || !Number.isFinite(minLon)) return null;
+
+    return { minLat, maxLat, minLon, maxLon };
+}
+
+function isPointInRing(lat, lon, ring) {
+    if (!Array.isArray(ring) || ring.length < 3) return false;
+
+    let inside = false;
+
+    for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+        const xi = Number(ring[i][0]);
+        const yi = Number(ring[i][1]);
+        const xj = Number(ring[j][0]);
+        const yj = Number(ring[j][1]);
+
+        if (!Number.isFinite(xi) || !Number.isFinite(yi) || !Number.isFinite(xj) || !Number.isFinite(yj)) {
+            continue;
+        }
+
+        const intersects = ((yi > lat) !== (yj > lat))
+            && (lon < ((xj - xi) * (lat - yi)) / ((yj - yi) || 1e-12) + xi);
+
+        if (intersects) inside = !inside;
+    }
+
+    return inside;
+}
+
+function isPointInPolygonRings(lat, lon, rings) {
+    if (!Array.isArray(rings) || !rings.length) return false;
+
+    /*
+     * Convention GeoJSON :
+     * - premier anneau = contour extérieur ;
+     * - anneaux suivants = trous éventuels.
+     */
+    if (!isPointInRing(lat, lon, rings[0])) return false;
+
+    for (let i = 1; i < rings.length; i += 1) {
+        if (isPointInRing(lat, lon, rings[i])) return false;
+    }
+
+    return true;
+}
+
+function buildCommunePolygonIndex(communesGeojson) {
+    const features = Array.isArray(communesGeojson?.features) ? communesGeojson.features : [];
+    const index = [];
+
+    features.forEach((feature) => {
+        const properties = feature.properties || {};
+        const name = getCommuneNameFromProperties(properties);
+        if (!name) return;
+
+        const rings = coordinatesToRings(feature.geometry);
+        const bounds = getGeometryBoundsFromRings(rings);
+        if (!bounds) return;
+
+        index.push({
+            name,
+            depCode: getCommuneDepCodeFromProperties(properties),
+            rings,
+            bounds
+        });
+    });
+
+    return index;
+}
+
+function findCommuneContainingPoint(lat, lon) {
+    if (!Array.isArray(communesPolygonData) || !communesPolygonData.length) return null;
+
+    for (const commune of communesPolygonData) {
+        const bounds = commune.bounds;
+        if (!bounds) continue;
+
+        if (
+            lat < bounds.minLat
+            || lat > bounds.maxLat
+            || lon < bounds.minLon
+            || lon > bounds.maxLon
+        ) {
+            continue;
+        }
+
+        if (isPointInPolygonRings(lat, lon, commune.rings)) {
+            return {
+                nom_standard: commune.name,
+                dep_code: commune.depCode || ''
+            };
+        }
+    }
+
+    return null;
+}
+
+function ensureCommunesLayerDataLoaded() {
+    if (hasLoadedCommunes) return Promise.resolve();
+    if (communesLayerLoadPromise) return communesLayerLoadPromise;
+
+    communesLayerLoadPromise = loadCommunesLayerData()
+        .catch((error) => {
+            communesLayerLoadPromise = null;
+            throw error;
+        });
+
+    return communesLayerLoadPromise;
+}
+
 async function loadCommunesLayerData() {
+    if (hasLoadedCommunes) return;
+
     const COMMUNES_GEOJSON_URL = 'https://etalab-datasets.geo.data.gouv.fr/contours-administratifs/latest/geojson/communes-50m.geojson';
 
     const status = document.getElementById('offline-status');
@@ -1502,11 +1659,9 @@ async function loadCommunesLayerData() {
         status.textContent = 'Chargement du calque Communes 50 m... fichier lourd, patienter.';
     }
 
-    if (communesLayerLoadController) {
-        communesLayerLoadController.abort();
+    if (!communesLayerLoadController) {
+        communesLayerLoadController = new AbortController();
     }
-
-    communesLayerLoadController = new AbortController();
 
     const response = await fetch(COMMUNES_GEOJSON_URL, {
         cache: 'force-cache',
@@ -1519,6 +1674,7 @@ async function loadCommunesLayerData() {
 
     const communesGeojson = await response.json();
 
+    communesPolygonData = buildCommunePolygonIndex(communesGeojson);
     communesLabelData = [];
     communesLayerGroup.clearLayers();
     communesLabelsLayer.clearLayers();
@@ -1531,7 +1687,7 @@ async function loadCommunesLayerData() {
         communesLayerGroup.addLayer(layer);
 
         const properties = layer.feature?.properties || {};
-        const communeName = properties.nom || properties.nom_commune || properties.name || properties.libelle || '';
+        const communeName = getCommuneNameFromProperties(properties);
         if (!communeName || !layer.getBounds) return;
 
         const center = layer.getBounds().getCenter();
@@ -1695,6 +1851,33 @@ function drawUserToTargetRoute() {
 function updateNearestCommuneDisplay(lat, lon) {
     const nearestDisplay = document.getElementById('nearest-commune-display');
     if (!nearestDisplay) return;
+
+    const containedCommune = findCommuneContainingPoint(lat, lon);
+    if (containedCommune) {
+        nearestDisplay.style.display = 'block';
+        nearestDisplay.innerHTML = `📍 Commune: <b>${containedCommune.nom_standard}${containedCommune.dep_code ? ` (${containedCommune.dep_code})` : ''}</b>`;
+        return;
+    }
+
+    /*
+     * Si le fichier communes-50m n'est pas encore chargé, on l'utilise même
+     * si le calque Communes n'est pas affiché. En attendant la fin du chargement,
+     * on garde l'ancien calcul par centre-ville comme solution temporaire.
+     */
+    if (!hasLoadedCommunes) {
+        ensureCommunesLayerDataLoaded()
+            .then(() => {
+                const preciseCommune = findCommuneContainingPoint(lat, lon);
+                if (!preciseCommune) return;
+                const display = document.getElementById('nearest-commune-display');
+                if (!display) return;
+                display.style.display = 'block';
+                display.innerHTML = `📍 Commune: <b>${preciseCommune.nom_standard}${preciseCommune.dep_code ? ` (${preciseCommune.dep_code})` : ''}</b>`;
+            })
+            .catch((error) => {
+                console.warn('Chargement du calque communes pour identification impossible:', error);
+            });
+    }
 
     const nearestCommune = findClosestCommune(lat, lon);
     if (!nearestCommune) {
