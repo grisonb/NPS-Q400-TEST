@@ -41,6 +41,8 @@ const FORCE_DISPLAY_MODE = new URLSearchParams(window.location.search).get('forc
 const SHOW_DEPARTMENTS_LAYER_KEY = 'showDepartmentsLayer';
 const ONLINE_MAX_NATIVE_ZOOM = 18;
 const OFFLINE_FALLBACK_NATIVE_ZOOM = 14;
+const OFFLINE_FORCED_MAX_NATIVE_ZOOM = 13;
+const OFFLINE_OVERZOOM_DELTA = 5;
 const GLOBAL_MAX_ZOOM = 18;
 const GLOBAL_MIN_ZOOM = 0;
 let baseTileMaxNativeZoom = ONLINE_MAX_NATIVE_ZOOM;
@@ -413,26 +415,54 @@ function setupBaseTileLayer() {
     if (baseTileLayer) {
         map.removeLayer(baseTileLayer);
     }
+
     /*
      * Mode offline :
-     * on autorise un sur-zoom de 4 niveaux au-dessus du zoom natif disponible.
-     * Leaflet utilisera les tuiles du zoom maxNativeZoom et les agrandira.
-     * Résultat : qualité moins bonne, mais pas de carte blanche quand on zoome trop.
+     * - on force un zoom natif maximum conservateur ;
+     * - Leaflet ne doit pas demander des tuiles z14/z15/z16... si le pack
+     *   ne les contient pas ;
+     * - au-delà, il agrandit les tuiles du dernier zoom natif.
+     *
+     * Objectif : éviter l'écran blanc en zoomant trop.
      */
-    const overzoomDelta = offlineTilesMode ? 4 : 2;
-    const effectiveMinZoom = offlineTilesMode ? Math.max(GLOBAL_MIN_ZOOM, baseTileMinNativeZoom) : GLOBAL_MIN_ZOOM;
-    const effectiveMaxZoom = Math.min(GLOBAL_MAX_ZOOM, baseTileMaxNativeZoom + overzoomDelta);
+    const offlineNativeMaxZoom = Math.max(
+        GLOBAL_MIN_ZOOM,
+        Math.min(
+            GLOBAL_MAX_ZOOM,
+            OFFLINE_FORCED_MAX_NATIVE_ZOOM,
+            Number.isFinite(baseTileMaxNativeZoom) ? baseTileMaxNativeZoom : OFFLINE_FALLBACK_NATIVE_ZOOM
+        )
+    );
+
+    const effectiveNativeMaxZoom = offlineTilesMode
+        ? offlineNativeMaxZoom
+        : baseTileMaxNativeZoom;
+
+    const effectiveMinZoom = offlineTilesMode
+        ? Math.max(GLOBAL_MIN_ZOOM, Math.min(baseTileMinNativeZoom, effectiveNativeMaxZoom))
+        : GLOBAL_MIN_ZOOM;
+
+    const effectiveMaxZoom = offlineTilesMode
+        ? Math.min(GLOBAL_MAX_ZOOM, effectiveNativeMaxZoom + OFFLINE_OVERZOOM_DELTA)
+        : Math.min(GLOBAL_MAX_ZOOM, effectiveNativeMaxZoom + 2);
+
     map.setMinZoom(effectiveMinZoom);
     map.setMaxZoom(effectiveMaxZoom);
+
+    if (map.getZoom() > effectiveMaxZoom) {
+        map.setZoom(effectiveMaxZoom);
+    }
+
     baseTileLayer = L.tileLayer('https://a.tile.openstreetmap.org/{z}/{x}/{y}.png', {
         minNativeZoom: effectiveMinZoom,
-        maxNativeZoom: baseTileMaxNativeZoom,
+        maxNativeZoom: effectiveNativeMaxZoom,
         minZoom: effectiveMinZoom,
         maxZoom: effectiveMaxZoom,
         attribution: '© OpenStreetMap',
         keepBuffer: 8,
         updateWhenZooming: false,
-        updateWhenIdle: true
+        updateWhenIdle: true,
+        noWrap: true
     }).addTo(map);
 }
 
