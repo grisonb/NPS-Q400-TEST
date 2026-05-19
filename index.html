@@ -6,12 +6,12 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover">
     <title>Carte de Navigation</title>
     <link rel="stylesheet" href="leaflet.css">
-    <link rel="stylesheet" href="style.css?appv=v1068">
+    <link rel="stylesheet" href="style.css?appv=v2026.13">
     <link rel="manifest" href="manifest.json">
     <meta name="apple-mobile-web-app-capable" content="no">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <script>
-        const APP_VERSION = 'v10.70';
+        const APP_VERSION = 'v10.71';
         const APP_VERSION_STORAGE_KEY = 'appVersion';
         const SW_CONTROLLER_RELOAD_GUARD_KEY = 'swControllerReloadGuard';
         window.APP_VERSION = APP_VERSION;
@@ -92,16 +92,15 @@
     <div id="nearest-commune-display" style="display: none;"></div>
     <div id="team-chat-panel" style="display: none;">
         <div class="chat-header">
-            <strong>Chat équipe</strong>
+            <span id="chat-online-users">En ligne: --</span>
             <div class="chat-header-actions">
                 <span id="chat-connection-state">Hors ligne</span>
-                <span id="chat-online-users">En ligne: --</span>
                 <button id="chat-clear-button" title="Supprimer les messages">🗑️</button>
                 <button id="chat-minimize-button" title="Réduire/Agrandir le chat">—</button>
             </div>
         </div>
         <div class="chat-config-row">
-            <input type="text" id="chat-room-input" maxlength="32" placeholder="Canal (ex: GAAR-ALPHA)">
+            <input type="text" id="chat-room-input" maxlength="32" placeholder="Canal sans espace (ex: GAAR-ALPHA)">
             <input type="text" id="chat-user-input" maxlength="24" placeholder="Votre pseudo">
             <button id="chat-connect-button">Connexion</button>
         </div>
@@ -162,7 +161,7 @@
     <script src="leaflet.min.js"></script>
     <script src="suncalc.js"></script>
     <script src="jszip.min.js"></script>
-    <script src="script.js?appv=v1068"></script>
+    <script src="script.js?appv=v2026.13"></script>
     
     <div id="calculator-modal" style="display: none;">
         <div class="main-container">
@@ -188,7 +187,7 @@
 <div class="onglet-panneau" id="previ-rotations">
                     <div class="analyse-grid">
                         <div class="analyse-col">
-                            <div class="bingo-group"><div class="result-line"><span class="label base-bingo-label">BINGO BASE LFTW</span><span class="value" id="previ-bingo-base">-- kg</span></div></div><hr class="analyse-separator">
+                            <div class="bingo-group"><div class="result-line"><span class="label base-bingo-label">BINGO BASE</span><span class="value" id="previ-bingo-base">-- kg</span></div></div><hr class="analyse-separator">
                             <div class="rotations-group">
                                 <h3 class="analyse-col-title">NBR ROTATIONS POSSIBLES</h3>
                                 <div id="previ-rotation-results-container">
@@ -219,7 +218,7 @@
                 <div class="onglet-panneau" id="suivi-rotations">
                     <div class="analyse-grid">
                         <div class="analyse-col">
-                            <div class="bingo-group"><div class="result-line"><span class="label base-bingo-label">BINGO BASE LFTW</span><span class="value" id="suivi-bingo-base">-- kg</span></div></div><hr class="analyse-separator">
+                            <div class="bingo-group"><div class="result-line"><span class="label base-bingo-label">BINGO BASE</span><span class="value" id="suivi-bingo-base">-- kg</span></div></div><hr class="analyse-separator">
                             <div class="rotations-group">
                                 <h3 class="analyse-col-title">Nbr Rotations Restantes</h3>
                                     
@@ -251,7 +250,7 @@
 <div class="onglet-panneau" id="deroutement">
                     <div class="analyse-grid">
                          <div class="analyse-col">
-                            <div class="bingo-group"><div class="result-line"><span class="label base-bingo-label">BINGO BASE LFTW</span><span class="value" id="derout-bingo-base">-- kg</span></div></div><hr class="analyse-separator">
+                            <div class="bingo-group"><div class="result-line"><span class="label base-bingo-label">BINGO BASE</span><span class="value" id="derout-bingo-base">-- kg</span></div></div><hr class="analyse-separator">
                             <div class="rotations-group">
                                 <h3 class="analyse-col-title">Nbr Rotations Possibles</h3>
                                 <div id="derout-rotation-results-container">
