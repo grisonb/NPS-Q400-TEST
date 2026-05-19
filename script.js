@@ -5201,12 +5201,57 @@ function initializeCalculator() {
     refreshBlocFuelAirportOaciCells();
 
     function setupManualButton(btnId, wrapperId, flagSetter) {
-        const btn = document.getElementById(btnId); const input = document.getElementById(wrapperId).querySelector('.display-input');
-        btn.addEventListener('click', () => { const isManual = flagSetter(); if (isManual) { btn.textContent = 'MANUEL'; btn.classList.add('active'); input.readOnly = false; } else { btn.textContent = 'AUTO'; btn.classList.remove('active'); input.readOnly = true; } masterRecalculate(); });
+        const btn = document.getElementById(btnId);
+        const wrapper = document.getElementById(wrapperId);
+        const input = wrapper?.querySelector('.display-input');
+        if (!btn || !wrapper || !input) return;
+
+        btn.addEventListener('click', () => {
+            const isManual = flagSetter();
+            const isFuelManualField = wrapper.classList.contains('numeric-input-wrapper') && (wrapper.dataset.unit || '') === 'kg';
+
+            if (isManual) {
+                btn.textContent = 'MANUEL';
+                btn.classList.add('active');
+
+                if (isFuelManualField) {
+                    input.readOnly = true;
+                    input.setAttribute('readonly', 'readonly');
+                    openFuelSplitModal(input);
+                } else {
+                    input.readOnly = false;
+                    input.removeAttribute('readonly');
+                }
+            } else {
+                btn.textContent = 'AUTO';
+                btn.classList.remove('active');
+                input.readOnly = true;
+                input.setAttribute('readonly', 'readonly');
+            }
+
+            masterRecalculate();
+        });
     }
     setupManualButton('fuel-sur-feu-manual-btn', 'fuel-sur-feu-wrapper', () => isFuelSurFeuManual = !isFuelSurFeuManual);
     setupManualButton('suivi-conso-rotation-manual-btn', 'suivi-conso-rotation-wrapper', () => isSuiviConsoManual = !isSuiviConsoManual);
     setupManualButton('suivi-duree-rotation-manual-btn', 'suivi-duree-rotation-wrapper', () => isSuiviDureeManual = !isSuiviDureeManual);
+
+    ['fuel-sur-feu-wrapper', 'suivi-conso-rotation-wrapper'].forEach((wrapperId) => {
+        const wrapper = document.getElementById(wrapperId);
+        const input = wrapper?.querySelector('.display-input');
+        if (!wrapper || !input || wrapper.dataset.fuelSplitManualBound === '1') return;
+        wrapper.dataset.fuelSplitManualBound = '1';
+        wrapper.addEventListener('click', (event) => {
+            if (event.target && event.target.classList && event.target.classList.contains('clear-btn')) return;
+            const isManualWrapper = (wrapperId === 'fuel-sur-feu-wrapper' && isFuelSurFeuManual)
+                || (wrapperId === 'suivi-conso-rotation-wrapper' && isSuiviConsoManual);
+            if (isManualWrapper) {
+                event.preventDefault();
+                event.stopPropagation();
+                openFuelSplitModal(input);
+            }
+        });
+    });
 
     resetButton.addEventListener('click', () => {
         if (confirm("Voulez-vous vraiment remettre tout le tableau à zéro ?")) {
