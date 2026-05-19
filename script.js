@@ -2043,7 +2043,7 @@ function buildOwnGpsIcon(altitudeLabel = '--- ft') {
                 <div style="background:#ffffff;border:1px solid #7c3aed;border-radius:8px;padding:3px 6px;font-size:11px;line-height:1.15;font-weight:700;color:#111;box-shadow:0 1px 5px rgba(0,0,0,.25);white-space:nowrap;text-align:center;min-width:42px;">${safeAltitude}</div>
             </div>`,
         iconSize: [82, 28],
-        iconAnchor: [10, 14]
+        iconAnchor: [12, 14]
     });
 }
 
@@ -2186,6 +2186,10 @@ function updateUserPosition(pos) {
     }
 
     updateNearestCommuneDisplay(latitude, longitude);
+
+    if (typeof window.refreshCalculatorAirportContext === 'function') {
+        window.refreshCalculatorAirportContext();
+    }
 
     // Synchronise les calculs (dont GPS->Feu) dès qu'une position GPS est reçue.
     if (currentCommune) {
@@ -4681,6 +4685,95 @@ function initializeCalculator() {
     updateLftwSunset();
     setInterval(updateLftwSunset, 60000);
 
+    const AIRPORT_DETECTION_RADIUS_NM = 2;
+
+    function getCurrentGpsLatLngForAirportDetection() {
+        if (userMarker && userMarker.getLatLng) {
+            const latLng = userMarker.getLatLng();
+            if (latLng && Number.isFinite(latLng.lat) && Number.isFinite(latLng.lng)) {
+                return { lat: latLng.lat, lon: latLng.lng };
+            }
+        }
+
+        if (lastPosition) {
+            const lat = Number.isFinite(lastPosition.lat) ? lastPosition.lat : lastPosition.latitude;
+            const lon = Number.isFinite(lastPosition.lng) ? lastPosition.lng : lastPosition.longitude;
+            if (Number.isFinite(lat) && Number.isFinite(lon)) {
+                return { lat, lon };
+            }
+        }
+
+        return null;
+    }
+
+    function getAirportAtCurrentPosition(maxDistanceNm = AIRPORT_DETECTION_RADIUS_NM) {
+        const gps = getCurrentGpsLatLngForAirportDetection();
+        if (!gps) return null;
+
+        const airports = [...pelicanAirports, ...otherAirports];
+        let bestAirport = null;
+        let bestDistance = Infinity;
+
+        airports.forEach((airport) => {
+            const distance = calculateDistanceInNm(gps.lat, gps.lon, airport.lat, airport.lon);
+            if (Number.isFinite(distance) && distance < bestDistance) {
+                bestDistance = distance;
+                bestAirport = airport;
+            }
+        });
+
+        if (!bestAirport || bestDistance > maxDistanceNm) return null;
+        return { ...bestAirport, distance: bestDistance };
+    }
+
+    function getBlocDepartAirportOaci() {
+        const blocDepartWrapper = document.getElementById('bloc-depart');
+        const blocDepartValue = blocDepartWrapper?.querySelector('.display-input')?.value || '';
+        if (parseTime(blocDepartValue) === null) return '';
+
+        const airport = getAirportAtCurrentPosition();
+        return airport ? airport.oaci : '';
+    }
+
+    function updateBlocDepartAirportLabel() {
+        const label = document.getElementById('bloc-depart-label');
+        if (!label) return;
+
+        const oaci = getBlocDepartAirportOaci();
+        label.textContent = oaci ? `BLOC DÉPART ${oaci}` : 'BLOC DÉPART';
+    }
+
+    function updateRowAirportOaci(row, { forceDetect = false } = {}) {
+        if (!row) return;
+        const cell = row.querySelector('.airport-oaci-cell');
+        if (!cell) return;
+
+        const rowTimeValue = row.querySelector('.time-input-wrapper .display-input')?.value || '';
+        if (parseTime(rowTimeValue) === null) {
+            row.dataset.airportOaci = '';
+            cell.textContent = '--';
+            return;
+        }
+
+        if (forceDetect || !row.dataset.airportOaci) {
+            const airport = getAirportAtCurrentPosition();
+            row.dataset.airportOaci = airport ? airport.oaci : '';
+        }
+
+        cell.textContent = row.dataset.airportOaci || '--';
+    }
+
+    function refreshBlocFuelAirportOaciCells() {
+        document.querySelectorAll('#bloc-fuel tbody tr').forEach((row) => {
+            updateRowAirportOaci(row);
+        });
+    }
+
+    window.refreshCalculatorAirportContext = () => {
+        updateBlocDepartAirportLabel();
+        refreshBlocFuelAirportOaciCells();
+    };
+
     const activateTab = (onglet) => { document.querySelectorAll('.onglet-bouton').forEach(btn => btn.classList.remove('active')); document.querySelectorAll('.onglet-panneau').forEach(p => p.classList.remove('active')); onglet.classList.add('active'); document.getElementById(onglet.dataset.onglet).classList.add('active'); resetButton.style.display = (onglet.dataset.onglet === 'bloc-fuel') ? 'flex' : 'none'; };
     onglets.forEach(onglet => {
         onglet.addEventListener('click', () => activateTab(onglet));
@@ -4701,7 +4794,8 @@ function initializeCalculator() {
         document.querySelectorAll('#bloc-fuel tbody tr').forEach(row => {
             tableData.push({
                 time: row.querySelector('.time-input-wrapper .display-input').value,
-                fuel: row.querySelector('.numeric-input-wrapper .display-input').value
+                fuel: row.querySelector('.numeric-input-wrapper .display-input').value,
+                oaci: row.dataset.airportOaci || row.querySelector('.airport-oaci-cell')?.textContent?.replace('--', '').trim() || ''
             });
         });
         state.calculator_table_data = tableData;
@@ -4726,6 +4820,15 @@ function initializeCalculator() {
         };
 
         const recalculateAndSave = () => {
+            if (wrapper.id === 'bloc-depart') {
+                updateBlocDepartAirportLabel();
+            } else {
+                const row = wrapper.closest('tr');
+                if (row && row.closest('#bloc-fuel')) {
+                    updateRowAirportOaci(row, { forceDetect: true });
+                }
+            }
+
             masterRecalculate();
             saveCalculatorState();
         };
@@ -4884,7 +4987,7 @@ function initializeCalculator() {
 
     const addNewRow = (tableBody, data, isLastRow = false) => {
         const row = document.createElement('tr');
-        row.innerHTML = `<td><div class="input-wrapper time-input-wrapper"><input type="text" class="display-input" readonly placeholder="--:--"><span class="clear-btn">&times;</span><span class="clock-icon">🕒</span><input type="time" class="engine-input"></div></td><td><div class="input-wrapper numeric-input-wrapper" data-unit="kg"><input type="text" class="display-input" inputmode="numeric" placeholder="[valeur]"><span class="clear-btn">&times;</span></div></td><td class="duree-rotation-cell"></td><td class="fuel-rotation-cell"></td><td class="tps-vol-cell"></td><td class="tps-vol-restant-cell"></td>`;
+        row.innerHTML = `<td><div class="input-wrapper time-input-wrapper"><input type="text" class="display-input" readonly placeholder="--:--"><span class="clear-btn">&times;</span><span class="clock-icon">🕒</span><input type="time" class="engine-input"></div></td><td><div class="input-wrapper numeric-input-wrapper" data-unit="kg"><input type="text" class="display-input" inputmode="numeric" placeholder="[valeur]"><span class="clear-btn">&times;</span></div></td><td class="airport-oaci-cell">--</td><td class="duree-rotation-cell"></td><td class="fuel-rotation-cell"></td><td class="tps-vol-cell"></td><td class="tps-vol-restant-cell"></td>`;
         tableBody.appendChild(row);
 
         const timeWrapper = row.querySelector('.time-input-wrapper');
@@ -4892,10 +4995,13 @@ function initializeCalculator() {
 
         initializeTimeInput(timeWrapper, data ? data.time : '');
         initializeNumericInput(numericWrapper, data ? data.fuel : '');
+        row.dataset.airportOaci = data?.oaci || '';
+        updateRowAirportOaci(row);
 
         const checkAndAddRow = () => {
             if (row.nextSibling) {
                 timeWrapper.querySelector('.engine-input').removeEventListener('change', checkAndAddRow);
+                timeWrapper.querySelector('.display-input').removeEventListener('blur', checkAndAddRow);
                 numericWrapper.querySelector('.display-input').removeEventListener('blur', checkAndAddRow);
                 return;
             }
@@ -4906,6 +5012,7 @@ function initializeCalculator() {
 
         if (isLastRow) {
             timeWrapper.querySelector('.engine-input').addEventListener('change', checkAndAddRow);
+            timeWrapper.querySelector('.display-input').addEventListener('blur', checkAndAddRow);
             numericWrapper.querySelector('.display-input').addEventListener('blur', checkAndAddRow);
         }
     };
@@ -4939,6 +5046,8 @@ function initializeCalculator() {
     }
 
     loadCalculatorState();
+    updateBlocDepartAirportLabel();
+    refreshBlocFuelAirportOaciCells();
 
     function setupManualButton(btnId, wrapperId, flagSetter) {
         const btn = document.getElementById(btnId); const input = document.getElementById(wrapperId).querySelector('.display-input');
