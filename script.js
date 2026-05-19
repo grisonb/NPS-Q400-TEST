@@ -1158,7 +1158,7 @@ function updateBaseLabels() {
     const csBaseLabel = document.getElementById('cs-base-label');
     if (csBaseLabel) csBaseLabel.textContent = `CS BASE (${selectedBaseOACI})`;
     document.querySelectorAll('.base-bingo-label').forEach(el => {
-        el.textContent = `BINGO BASE ${selectedBaseOACI}`;
+        el.textContent = 'BINGO BASE';
     });
     const deroutFuelMiniBaseLabel = document.getElementById('derout-fuel-mini-base-label');
     if (deroutFuelMiniBaseLabel) deroutFuelMiniBaseLabel.textContent = `Fuel mini 1 largage / BASE (${selectedBaseOACI}) :`;
@@ -2043,7 +2043,7 @@ function buildOwnGpsIcon(altitudeLabel = '--- ft') {
                 <div style="background:#ffffff;border:1px solid #7c3aed;border-radius:8px;padding:3px 6px;font-size:11px;line-height:1.15;font-weight:700;color:#111;box-shadow:0 1px 5px rgba(0,0,0,.25);white-space:nowrap;text-align:center;min-width:42px;">${safeAltitude}</div>
             </div>`,
         iconSize: [82, 28],
-        iconAnchor: [8, 22]
+        iconAnchor: [10, 14]
     });
 }
 
@@ -3485,12 +3485,6 @@ function initializeTeamChat() {
     const clearCancelButton = document.getElementById('chat-clear-cancel-button');
     if (!panel || !toggleButton || !minimizeButton || !clearButton || !alertBadge || !offlineBadge || !roomInput || !userInput || !connectButton || !sendButton || !messageInput || !messagesBox || !connectionState || !onlineUsersLabel || !clearModal || !clearLocalButton || !clearChannelButton || !clearCancelButton) return;
 
-    const chatHeaderTitle = panel.querySelector('.chat-header > strong');
-    if (chatHeaderTitle && onlineUsersLabel && chatHeaderTitle.parentNode) {
-        chatHeaderTitle.replaceWith(onlineUsersLabel);
-        onlineUsersLabel.classList.add('chat-online-users-title');
-    }
-
     setupChatKeyboardSafeArea();
 
     const locationShareButton = document.createElement('button');
@@ -3511,7 +3505,6 @@ function initializeTeamChat() {
     let unreadCount = 0;
     let reconnectAfterOnlineTimeout = null;
     let isChatConnecting = false;
-    let manualChatDisconnect = false;
     let hasAnnouncedConnection = true;
     const pendingChatMessages = [];
     const renderedMessageIds = new Set();
@@ -3544,14 +3537,16 @@ function initializeTeamChat() {
 
     const setConnectionState = (isOnline, label = null) => {
         chatConnected = isOnline;
-        const stateLabel = label || (isOnline ? 'Connecté' : 'Hors ligne');
-        connectionState.textContent = stateLabel;
+        const effectiveLabel = label || (isOnline ? 'Connecté' : 'Hors ligne');
+        connectionState.textContent = effectiveLabel;
         connectionState.classList.toggle('online', isOnline);
         connectionState.classList.toggle('offline', !isOnline);
         offlineBadge.style.display = isOnline ? 'none' : 'flex';
 
-        connectButton.textContent = isOnline ? 'Déconnexion' : (stateLabel === 'Connexion...' ? 'Connexion...' : 'Connexion');
-        connectButton.disabled = stateLabel === 'Connexion...';
+        if (connectButton) {
+            connectButton.disabled = effectiveLabel === 'Connexion...';
+            connectButton.textContent = isOnline ? 'Déconnexion' : (effectiveLabel === 'Connexion...' ? 'Connexion...' : 'Connexion');
+        }
     };
     setConnectionState(false);
 
@@ -3751,7 +3746,7 @@ function initializeTeamChat() {
             .filter((name) => typeof name === 'string' && name.trim())
             .sort((a, b) => a.localeCompare(b, 'fr'));
         if (!users.length) {
-            onlineUsersLabel.textContent = chatConnected ? 'En ligne: 0' : 'En ligne: --';
+            onlineUsersLabel.textContent = 'En ligne: 0';
             return;
         }
         const preview = users.slice(0, 4).join(', ');
@@ -4182,7 +4177,6 @@ function initializeTeamChat() {
         const roomName = (roomInput.value || '').trim().replace(/[^a-zA-Z0-9-_]/g, '');
         const userName = (userInput.value || '').trim();
         if (!roomName || !userName) return;
-        if (manualChatDisconnect) return;
         if (chatConnected || isChatConnecting) return;
         console.info('[Chat]', reasonLabel);
         connectToChat();
@@ -4190,9 +4184,7 @@ function initializeTeamChat() {
 
     async function connectToChat() {
         if (isChatConnecting) return;
-        manualChatDisconnect = false;
         isChatConnecting = true;
-        setConnectionState(false, 'Connexion...');
 
         if (typeof mqtt === 'undefined') {
             try {
@@ -4200,7 +4192,6 @@ function initializeTeamChat() {
                 await ensureMqttClientLoaded();
             } catch (mqttError) {
                 isChatConnecting = false;
-                setConnectionState(false);
                 appendChatMessage('Système', `Client MQTT introuvable (${mqttError.message || mqttError}).`, new Date().toISOString(), true);
                 return;
             }
@@ -4210,7 +4201,6 @@ function initializeTeamChat() {
         if (!roomName || !userName) {
             appendChatMessage('Système', 'Canal et pseudo obligatoires.', new Date().toISOString(), true);
             isChatConnecting = false;
-            setConnectionState(false);
             return;
         }
 
@@ -4416,59 +4406,27 @@ function initializeTeamChat() {
     }
 
     function disconnectFromChat() {
-        manualChatDisconnect = true;
         isChatConnecting = false;
-
-        const previousUser = activeUsers.get(myClientId) || (userInput.value || '').trim();
-        const clientToClose = chatClient;
-        const currentPresenceTopic = chatPresenceTopic;
-        const currentLocationTopic = getOwnLocationTopic();
+        publishOwnLocationClear();
+        publishPresence('offline', (userInput.value || '').trim());
 
         if (locationPublishTimer) {
             clearInterval(locationPublishTimer);
             locationPublishTimer = null;
         }
 
-        if (clientToClose) {
-            try {
-                if (currentPresenceTopic && myClientId) {
-                    clientToClose.publish(`${currentPresenceTopic}/${myClientId}`, JSON.stringify({
-                        type: 'presence',
-                        senderClientId: myClientId,
-                        user: previousUser || 'inconnu',
-                        status: 'offline',
-                        time: new Date().toISOString()
-                    }), { qos: 1, retain: true });
-                }
-                if (currentLocationTopic) {
-                    clientToClose.publish(currentLocationTopic, '', { qos: 1, retain: true });
-                }
-                setTimeout(() => {
-                    try { clientToClose.end(true); } catch (_) {}
-                }, 150);
-            } catch (_) {
-                try { clientToClose.end(true); } catch (_) {}
-            }
+        if (chatClient) {
+            const clientToClose = chatClient;
+            chatClient = null;
+            try { clientToClose.end(true); } catch (_) {}
         }
 
-        chatClient = null;
-        chatTopic = null;
-        chatHistoryTopic = null;
-        chatPresenceTopic = null;
-        chatLocationTopic = null;
-        hasAnnouncedConnection = true;
-        pendingChatMessages.length = 0;
         activeUsers.clear();
-        remoteLocationMarkers.forEach((record) => {
-            if (record?.marker && map) {
-                map.removeLayer(record.marker);
-            }
-        });
-        remoteLocationMarkers.clear();
         refreshOnlineUsersLabel();
-        setConnectionState(false);
+        setConnectionState(false, 'Hors ligne');
         appendChatMessage('Système', 'Déconnecté du chat.', new Date().toISOString(), true);
     }
+
 
     function sendCurrentMessage() {
         const text = (messageInput.value || '').trim();
@@ -4560,7 +4518,7 @@ function initializeTeamChat() {
     });
 
     connectButton.addEventListener('click', () => {
-        if (chatConnected) {
+        if (chatConnected || isChatConnecting) {
             disconnectFromChat();
         } else {
             connectToChat();
