@@ -6,12 +6,12 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover">
     <title>Carte de Navigation</title>
     <link rel="stylesheet" href="leaflet.css">
-    <link rel="stylesheet" href="style.css?appv=v2026.13">
+    <link rel="stylesheet" href="style.css?appv=v2026.11-fuel1">
     <link rel="manifest" href="manifest.json">
     <meta name="apple-mobile-web-app-capable" content="no">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <script>
-        const APP_VERSION = 'v10.72';
+        const APP_VERSION = 'v10.73';
         const APP_VERSION_STORAGE_KEY = 'appVersion';
         const SW_CONTROLLER_RELOAD_GUARD_KEY = 'swControllerReloadGuard';
         window.APP_VERSION = APP_VERSION;
@@ -161,8 +161,34 @@
     <script src="leaflet.min.js"></script>
     <script src="suncalc.js"></script>
     <script src="jszip.min.js"></script>
-    <script src="script.js?appv=v2026.14"></script>
+    <script src="script.js?appv=v2026.11-fuel1"></script>
     
+
+    <div id="fuel-split-modal" class="fuel-split-modal" style="display: none;">
+        <div class="fuel-split-modal-content">
+            <button id="fuel-split-close-btn" class="fuel-split-close-btn" type="button" title="Fermer">&times;</button>
+            <h3>Saisie carburant</h3>
+            <div class="fuel-split-tanks-row">
+                <label class="fuel-split-field">
+                    <span>G</span>
+                    <input type="text" id="fuel-split-left" inputmode="numeric" autocomplete="off">
+                </label>
+                <label class="fuel-split-field">
+                    <span>D</span>
+                    <input type="text" id="fuel-split-right" inputmode="numeric" autocomplete="off">
+                </label>
+            </div>
+            <label class="fuel-split-total-field">
+                <span>TOTAL</span>
+                <input type="text" id="fuel-split-total" inputmode="numeric" autocomplete="off">
+            </label>
+            <div class="fuel-split-actions">
+                <button type="button" id="fuel-split-clear-btn">Effacer</button>
+                <button type="button" id="fuel-split-cancel-btn">Annuler</button>
+                <button type="button" id="fuel-split-validate-btn">Valider</button>
+            </div>
+        </div>
+    </div>
     <div id="calculator-modal" style="display: none;">
         <div class="main-container">
             <button id="close-calculator-btn">&times;</button>
@@ -176,7 +202,7 @@
                 <div class="onglet-panneau active" id="bloc-fuel">
                     <div class="header-section">
                         <div class="header-item"><label id="bloc-depart-label">BLOC DÉPART</label><div id="bloc-depart" class="input-wrapper time-input-wrapper"><input type="text" class="display-input" readonly placeholder="--:--"><span class="clear-btn">&times;</span><span class="clock-icon">🕒</span><input type="time" class="engine-input"></div></div>
-                        <div class="header-item"><label>FUEL Départ</label><div id="fuel-depart" class="input-wrapper numeric-input-wrapper" data-unit="kg"><input type="text" class="display-input" inputmode="numeric" placeholder="[valeur]"><span class="clear-btn">&times;</span></div></div>
+                        <div class="header-item"><label>FUEL Départ</label><div id="fuel-depart" class="input-wrapper numeric-input-wrapper fuel-split-input-wrapper" data-unit="kg"><input type="text" class="display-input" inputmode="numeric" placeholder="[valeur]"><span class="clear-btn">&times;</span></div></div>
                         <div class="header-item"><label id="cs-base-label">CS BASE (LFTW)</label><div class="input-wrapper"><input type="text" id="cs-lftw-display" class="display-input" readonly></div></div>
                         <div class="header-item"><label>TMD</label><div id="tmd" class="input-wrapper time-input-wrapper"><input type="text" class="display-input" readonly><span class="clear-btn">&times;</span><span class="clock-icon">🕒</span><input type="time" class="engine-input"></div></div>
                         <div class="header-item"><label>LIMITE HDV</label><div id="limite-hdv" class="input-wrapper time-input-wrapper"><input type="text" class="display-input" readonly><span class="clear-btn">&times;</span><span class="clock-icon">🕒</span><input type="time" class="engine-input"></div></div>
@@ -266,7 +292,7 @@
                             <div class="bingo-group"><div class="result-line"><span class="label">BINGO PELIC</span><span class="value" id="derout-bingo-pelic">-- kg</span></div></div><hr class="analyse-separator">
                             <div class="rotations-group">
                                  <h3 class="analyse-col-title" style="visibility: hidden;">&nbsp;</h3>
-                                <div class="result-line"><span class="label">Fuel actuel :</span><div id="deroutement-fuel-wrapper" class="input-wrapper numeric-input-wrapper" data-unit="kg"><input type="text" class="display-input manual-input" inputmode="numeric"><span class="clear-btn">&times;</span></div></div>
+                                <div class="result-line"><span class="label">Fuel actuel :</span><div id="deroutement-fuel-wrapper" class="input-wrapper numeric-input-wrapper fuel-split-input-wrapper" data-unit="kg"><input type="text" class="display-input manual-input" inputmode="numeric"><span class="clear-btn">&times;</span></div></div>
                                 <div class="result-line"><span class="label">Heure actuelle :</span><div id="deroutement-heure-wrapper" class="input-wrapper time-input-wrapper"><input type="text" class="display-input" readonly><span class="clear-btn">&times;</span><span class="clock-icon">🕒</span><input type="time" class="engine-input"></div></div>
                                 <div class="result-line"><span class="label">Heure sur Feu :<span id="derout-heure-sur-feu-help" class="formula-help-icon">?</span></span><span class="value" id="derout-heure-sur-feu">--:--</span></div>
                                 <div class="result-line"><span class="label">CS sur Feu :</span><span class="value" id="derout-cs-sur-feu">--:--</span></div>
