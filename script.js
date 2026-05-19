@@ -2043,7 +2043,7 @@ function buildOwnGpsIcon(altitudeLabel = '--- ft') {
                 <div style="background:#ffffff;border:1px solid #7c3aed;border-radius:8px;padding:3px 6px;font-size:11px;line-height:1.15;font-weight:700;color:#111;box-shadow:0 1px 5px rgba(0,0,0,.25);white-space:nowrap;text-align:center;min-width:42px;">${safeAltitude}</div>
             </div>`,
         iconSize: [82, 28],
-        iconAnchor: [12, 14]
+        iconAnchor: [10, 14]
     });
 }
 
@@ -4972,12 +4972,163 @@ function initializeCalculator() {
         }
     }
 
+    let activeFuelSplitInput = null;
+
+    function getFuelSplitModalElements() {
+        return {
+            modal: document.getElementById('fuel-split-modal'),
+            leftInput: document.getElementById('fuel-split-left'),
+            rightInput: document.getElementById('fuel-split-right'),
+            totalInput: document.getElementById('fuel-split-total'),
+            validateBtn: document.getElementById('fuel-split-validate-btn'),
+            cancelBtn: document.getElementById('fuel-split-cancel-btn'),
+            clearBtn: document.getElementById('fuel-split-clear-btn'),
+            closeBtn: document.getElementById('fuel-split-close-btn')
+        };
+    }
+
+    function cleanFuelDigits(value) {
+        return String(value || '').replace(/[^0-9]/g, '');
+    }
+
+    function formatFuelKg(value) {
+        const digits = cleanFuelDigits(value);
+        return digits ? `${parseInt(digits, 10)} kg` : '';
+    }
+
+    function closeFuelSplitModal() {
+        const { modal } = getFuelSplitModalElements();
+        if (modal) modal.style.display = 'none';
+        activeFuelSplitInput = null;
+    }
+
+    function updateFuelSplitTotalFromTanks() {
+        const { leftInput, rightInput, totalInput } = getFuelSplitModalElements();
+        if (!leftInput || !rightInput || !totalInput) return;
+
+        leftInput.value = cleanFuelDigits(leftInput.value);
+        rightInput.value = cleanFuelDigits(rightInput.value);
+
+        const left = leftInput.value ? parseInt(leftInput.value, 10) : 0;
+        const right = rightInput.value ? parseInt(rightInput.value, 10) : 0;
+        totalInput.value = (leftInput.value || rightInput.value) ? String(left + right) : '';
+    }
+
+    function setupFuelSplitModalOnce() {
+        const { modal, leftInput, rightInput, totalInput, validateBtn, cancelBtn, clearBtn, closeBtn } = getFuelSplitModalElements();
+        if (!modal || modal.dataset.bound === '1') return;
+        modal.dataset.bound = '1';
+
+        [leftInput, rightInput].forEach((input) => {
+            if (!input) return;
+            input.addEventListener('input', updateFuelSplitTotalFromTanks);
+            input.addEventListener('keydown', (event) => {
+                if (event.key === 'Enter') {
+                    event.preventDefault();
+                    if (input === leftInput && rightInput) rightInput.focus();
+                    else if (totalInput) totalInput.focus();
+                }
+            });
+        });
+
+        if (totalInput) {
+            totalInput.addEventListener('input', () => {
+                totalInput.value = cleanFuelDigits(totalInput.value);
+            });
+            totalInput.addEventListener('keydown', (event) => {
+                if (event.key === 'Enter') {
+                    event.preventDefault();
+                    validateBtn?.click();
+                }
+                if (event.key === 'Escape') {
+                    event.preventDefault();
+                    closeFuelSplitModal();
+                }
+            });
+        }
+
+        if (validateBtn) {
+            validateBtn.addEventListener('click', () => {
+                if (!activeFuelSplitInput) {
+                    closeFuelSplitModal();
+                    return;
+                }
+                const total = cleanFuelDigits(totalInput?.value || '');
+                activeFuelSplitInput.value = total ? `${parseInt(total, 10)} kg` : '';
+                masterRecalculate();
+                saveCalculatorState();
+                closeFuelSplitModal();
+            });
+        }
+
+        if (clearBtn) {
+            clearBtn.addEventListener('click', () => {
+                if (leftInput) leftInput.value = '';
+                if (rightInput) rightInput.value = '';
+                if (totalInput) {
+                    totalInput.value = '';
+                    totalInput.focus();
+                }
+            });
+        }
+
+        if (cancelBtn) cancelBtn.addEventListener('click', closeFuelSplitModal);
+        if (closeBtn) closeBtn.addEventListener('click', closeFuelSplitModal);
+        modal.addEventListener('click', (event) => {
+            if (event.target === modal) closeFuelSplitModal();
+        });
+    }
+
+    function openFuelSplitModal(displayInput) {
+        const { modal, leftInput, rightInput, totalInput } = getFuelSplitModalElements();
+        if (!modal || !totalInput) return;
+
+        setupFuelSplitModalOnce();
+        activeFuelSplitInput = displayInput;
+        if (leftInput) leftInput.value = '';
+        if (rightInput) rightInput.value = '';
+        totalInput.value = cleanFuelDigits(displayInput?.value || '');
+        modal.style.display = 'flex';
+        setTimeout(() => {
+            if (totalInput) {
+                totalInput.focus();
+                totalInput.select();
+            }
+        }, 50);
+    }
+
     function initializeNumericInput(wrapper, initialValue = '') {
         const displayInput = wrapper.querySelector('.display-input');
         const clearBtn = wrapper.querySelector('.clear-btn');
         const unit = wrapper.dataset.unit || '';
         let shouldClearOnNextInput = false;
         displayInput.value = initialValue;
+
+        if (wrapper.classList.contains('fuel-split-input-wrapper')) {
+            setupFuelSplitModalOnce();
+            displayInput.readOnly = true;
+            displayInput.setAttribute('readonly', 'readonly');
+            displayInput.addEventListener('click', (event) => {
+                event.preventDefault();
+                event.stopPropagation();
+                openFuelSplitModal(displayInput);
+            });
+            wrapper.addEventListener('click', (event) => {
+                if (event.target === clearBtn) return;
+                openFuelSplitModal(displayInput);
+            });
+            if (clearBtn) {
+                clearBtn.addEventListener('click', (event) => {
+                    event.preventDefault();
+                    event.stopPropagation();
+                    displayInput.value = '';
+                    masterRecalculate();
+                    saveCalculatorState();
+                });
+            }
+            return;
+        }
+
         displayInput.addEventListener('focus', () => { if (displayInput.readOnly) return; if (displayInput.value) { shouldClearOnNextInput = true; } displayInput.value = displayInput.value.replace(/[^0-9]/g, ''); });
         displayInput.addEventListener('blur', () => { if (displayInput.readOnly) return; shouldClearOnNextInput = false; let v = displayInput.value.replace(/[^0-9]/g, ''); if (v) { displayInput.value = `${v} ${unit}`; } else { displayInput.value = ''; } masterRecalculate(); saveCalculatorState(); });
         displayInput.addEventListener('input', (e) => { if (displayInput.readOnly) return; if (shouldClearOnNextInput && e.data) { displayInput.value = e.data.replace(/[^0-9]/g, ''); shouldClearOnNextInput = false; } else { displayInput.value = displayInput.value.replace(/[^0-9]/g, ''); } masterRecalculate(); });
@@ -4987,7 +5138,7 @@ function initializeCalculator() {
 
     const addNewRow = (tableBody, data, isLastRow = false) => {
         const row = document.createElement('tr');
-        row.innerHTML = `<td><div class="input-wrapper time-input-wrapper"><input type="text" class="display-input" readonly placeholder="--:--"><span class="clear-btn">&times;</span><span class="clock-icon">🕒</span><input type="time" class="engine-input"></div></td><td><div class="input-wrapper numeric-input-wrapper" data-unit="kg"><input type="text" class="display-input" inputmode="numeric" placeholder="[valeur]"><span class="clear-btn">&times;</span></div></td><td class="airport-oaci-cell">--</td><td class="duree-rotation-cell"></td><td class="fuel-rotation-cell"></td><td class="tps-vol-cell"></td><td class="tps-vol-restant-cell"></td>`;
+        row.innerHTML = `<td><div class="input-wrapper time-input-wrapper"><input type="text" class="display-input" readonly placeholder="--:--"><span class="clear-btn">&times;</span><span class="clock-icon">🕒</span><input type="time" class="engine-input"></div></td><td><div class="input-wrapper numeric-input-wrapper fuel-split-input-wrapper" data-unit="kg"><input type="text" class="display-input" inputmode="numeric" placeholder="[valeur]"><span class="clear-btn">&times;</span></div></td><td class="airport-oaci-cell">--</td><td class="duree-rotation-cell"></td><td class="fuel-rotation-cell"></td><td class="tps-vol-cell"></td><td class="tps-vol-restant-cell"></td>`;
         tableBody.appendChild(row);
 
         const timeWrapper = row.querySelector('.time-input-wrapper');
