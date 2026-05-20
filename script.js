@@ -2043,7 +2043,7 @@ function buildOwnGpsIcon(altitudeLabel = '--- ft') {
                 <div style="background:#ffffff;border:1px solid #7c3aed;border-radius:8px;padding:3px 6px;font-size:11px;line-height:1.15;font-weight:700;color:#111;box-shadow:0 1px 5px rgba(0,0,0,.25);white-space:nowrap;text-align:center;min-width:42px;">${safeAltitude}</div>
             </div>`,
         iconSize: [82, 28],
-        iconAnchor: [10, 14]
+        iconAnchor: [12, 14]
     });
 }
 
@@ -3518,6 +3518,7 @@ function initializeTeamChat() {
     const myClientId = getOrCreateClientId();
     const CHAT_LOCATION_SHARING_KEY = 'teamChatLocationSharing';
     const CHAT_LOCATION_PUBLISH_INTERVAL_MS = 10000;
+    const CHAT_LOCATION_DISPLAY_MAX_AGE_MS = 30000; // Ignore les positions retenues trop anciennes au démarrage.
     const CHAT_LOCATION_STALE_MS = 60000;
     const CHAT_LOCATION_REMOVE_MS = 300000;
     const CHAT_ALTITUDE_STALE_MS = 30000;
@@ -3954,6 +3955,12 @@ function initializeTeamChat() {
         const user = String(payload.user || 'inconnu').trim().slice(0, 24) || 'inconnu';
         const timeMs = Date.parse(payload.time || '');
         const safeTimeMs = Number.isFinite(timeMs) ? timeMs : Date.now();
+
+        if ((Date.now() - safeTimeMs) > CHAT_LOCATION_DISPLAY_MAX_AGE_MS) {
+            removeRemoteLocation(payload.senderClientId);
+            return;
+        }
+
         const position = [lat, lon];
         const existing = remoteLocationMarkers.get(payload.senderClientId);
 
@@ -4336,6 +4343,20 @@ function initializeTeamChat() {
                 if (!parsed || !parsed.type) return;
 
                 if (parsed.type === 'location' && parsed.senderClientId) {
+                    const locationTimeMs = Date.parse(parsed.time || '');
+                    const locationAgeMs = Number.isFinite(locationTimeMs) ? (Date.now() - locationTimeMs) : Infinity;
+
+                    if (locationAgeMs > CHAT_LOCATION_DISPLAY_MAX_AGE_MS) {
+                        removeRemoteLocation(parsed.senderClientId);
+
+                        // Nettoie aussi la position conservée sur le broker MQTT pour éviter
+                        // qu'elle revienne brièvement à chaque ouverture de l'application.
+                        if (chatClient && isCurrentLocationTopic && receivedTopic) {
+                            chatClient.publish(receivedTopic, '', { qos: 1, retain: true });
+                        }
+                        return;
+                    }
+
                     updateRemoteLocationMarker(parsed);
                     return;
                 }
@@ -4972,234 +4993,12 @@ function initializeCalculator() {
         }
     }
 
-    let activeFuelSplitInput = null;
-
-    function getFuelSplitModalElements() {
-        return {
-            modal: document.getElementById('fuel-split-modal'),
-            leftInput: document.getElementById('fuel-split-left'),
-            rightInput: document.getElementById('fuel-split-right'),
-            totalInput: document.getElementById('fuel-split-total'),
-            validateBtn: document.getElementById('fuel-split-validate-btn'),
-            cancelBtn: document.getElementById('fuel-split-cancel-btn'),
-            clearBtn: document.getElementById('fuel-split-clear-btn'),
-            closeBtn: document.getElementById('fuel-split-close-btn')
-        };
-    }
-
-    function cleanFuelDigits(value) {
-        return String(value || '').replace(/[^0-9]/g, '');
-    }
-
-    function formatFuelKg(value) {
-        const digits = cleanFuelDigits(value);
-        return digits ? `${parseInt(digits, 10)} kg` : '';
-    }
-
-    function resetFuelSplitKeyboardOffset() {
-        const { modal } = getFuelSplitModalElements();
-        if (!modal) return;
-
-        const content = modal.querySelector('.fuel-split-modal-content');
-        modal.style.alignItems = '';
-        modal.style.paddingTop = '';
-        modal.style.paddingBottom = '';
-        if (content) content.style.transform = '';
-    }
-
-    function applyFuelSplitKeyboardOffset() {
-        const { modal } = getFuelSplitModalElements();
-        if (!modal || modal.style.display === 'none') return;
-
-        const content = modal.querySelector('.fuel-split-modal-content');
-        if (!content) return;
-
-        const visualViewport = window.visualViewport;
-        if (!visualViewport) {
-            content.style.transform = '';
-            return;
-        }
-
-        const keyboardOffset = Math.max(
-            0,
-            Math.round(window.innerHeight - visualViewport.height - visualViewport.offsetTop)
-        );
-
-        if (keyboardOffset > 40 && modal.contains(document.activeElement)) {
-            modal.style.alignItems = 'center';
-            modal.style.paddingBottom = `${keyboardOffset + 12}px`;
-            content.style.transform = `translateY(-${Math.min(220, Math.round(keyboardOffset * 0.45))}px)`;
-        } else {
-            resetFuelSplitKeyboardOffset();
-        }
-    }
-
-    function closeFuelSplitModal() {
-        const { modal } = getFuelSplitModalElements();
-        if (modal) modal.style.display = 'none';
-        resetFuelSplitKeyboardOffset();
-        activeFuelSplitInput = null;
-    }
-
-    function updateFuelSplitTotalFromTanks() {
-        const { leftInput, rightInput, totalInput } = getFuelSplitModalElements();
-        if (!leftInput || !rightInput || !totalInput) return;
-
-        leftInput.value = cleanFuelDigits(leftInput.value);
-        rightInput.value = cleanFuelDigits(rightInput.value);
-
-        const left = leftInput.value ? parseInt(leftInput.value, 10) : 0;
-        const right = rightInput.value ? parseInt(rightInput.value, 10) : 0;
-        totalInput.value = (leftInput.value || rightInput.value) ? String(left + right) : '';
-    }
-
-    function setupFuelSplitModalOnce() {
-        const { modal, leftInput, rightInput, totalInput, validateBtn, cancelBtn, clearBtn, closeBtn } = getFuelSplitModalElements();
-        if (!modal || modal.dataset.bound === '1') return;
-        modal.dataset.bound = '1';
-
-        if (window.visualViewport && modal.dataset.keyboardOffsetBound !== '1') {
-            modal.dataset.keyboardOffsetBound = '1';
-            window.visualViewport.addEventListener('resize', applyFuelSplitKeyboardOffset);
-            window.visualViewport.addEventListener('scroll', applyFuelSplitKeyboardOffset);
-        }
-
-        [leftInput, rightInput].forEach((input) => {
-            if (!input) return;
-            input.addEventListener('input', updateFuelSplitTotalFromTanks);
-            input.addEventListener('keydown', (event) => {
-                if (event.key === 'Enter') {
-                    event.preventDefault();
-                    if (input === leftInput && rightInput) rightInput.focus();
-                    else if (totalInput) totalInput.focus();
-                }
-            });
-        });
-
-        if (totalInput) {
-            totalInput.addEventListener('input', () => {
-                totalInput.value = cleanFuelDigits(totalInput.value);
-            });
-            totalInput.addEventListener('keydown', (event) => {
-                if (event.key === 'Enter') {
-                    event.preventDefault();
-                    validateBtn?.click();
-                }
-                if (event.key === 'Escape') {
-                    event.preventDefault();
-                    closeFuelSplitModal();
-                }
-            });
-        }
-
-        [leftInput, rightInput, totalInput].forEach((input) => {
-            if (!input) return;
-            input.addEventListener('focus', () => {
-                setTimeout(applyFuelSplitKeyboardOffset, 0);
-                setTimeout(applyFuelSplitKeyboardOffset, 250);
-            });
-            input.addEventListener('blur', () => {
-                setTimeout(applyFuelSplitKeyboardOffset, 80);
-            });
-        });
-
-        if (validateBtn) {
-            validateBtn.addEventListener('click', () => {
-                if (!activeFuelSplitInput) {
-                    closeFuelSplitModal();
-                    return;
-                }
-                const total = cleanFuelDigits(totalInput?.value || '');
-                activeFuelSplitInput.value = total ? `${parseInt(total, 10)} kg` : '';
-                masterRecalculate();
-                saveCalculatorState();
-                closeFuelSplitModal();
-            });
-        }
-
-        if (clearBtn) {
-            clearBtn.addEventListener('click', () => {
-                if (leftInput) leftInput.value = '';
-                if (rightInput) rightInput.value = '';
-                if (totalInput) {
-                    totalInput.value = '';
-                    totalInput.focus();
-                }
-            });
-        }
-
-        if (cancelBtn) cancelBtn.addEventListener('click', closeFuelSplitModal);
-        if (closeBtn) closeBtn.addEventListener('click', closeFuelSplitModal);
-        modal.addEventListener('click', (event) => {
-            if (event.target === modal) closeFuelSplitModal();
-        });
-    }
-
-    function openFuelSplitModal(displayInput) {
-        const { modal, leftInput, rightInput, totalInput } = getFuelSplitModalElements();
-        if (!modal || !totalInput) return;
-
-        setupFuelSplitModalOnce();
-        activeFuelSplitInput = displayInput;
-        if (leftInput) leftInput.value = '';
-        if (rightInput) rightInput.value = '';
-        totalInput.value = cleanFuelDigits(displayInput?.value || '');
-        resetFuelSplitKeyboardOffset();
-        modal.style.display = 'flex';
-
-        /*
-         * Focus immédiat : indispensable sur iPad/iPhone pour ouvrir le clavier
-         * quand la fenêtre est déclenchée par le bouton AUTO -> MANUEL.
-         */
-        totalInput.focus({ preventScroll: false });
-        totalInput.select();
-        applyFuelSplitKeyboardOffset();
-
-        requestAnimationFrame(() => {
-            totalInput.focus({ preventScroll: false });
-            totalInput.select();
-            applyFuelSplitKeyboardOffset();
-        });
-
-        setTimeout(() => {
-            totalInput.focus({ preventScroll: false });
-            totalInput.select();
-            applyFuelSplitKeyboardOffset();
-        }, 250);
-    }
-
     function initializeNumericInput(wrapper, initialValue = '') {
         const displayInput = wrapper.querySelector('.display-input');
         const clearBtn = wrapper.querySelector('.clear-btn');
         const unit = wrapper.dataset.unit || '';
         let shouldClearOnNextInput = false;
         displayInput.value = initialValue;
-
-        if (wrapper.classList.contains('fuel-split-input-wrapper')) {
-            setupFuelSplitModalOnce();
-            displayInput.readOnly = true;
-            displayInput.setAttribute('readonly', 'readonly');
-            displayInput.addEventListener('click', (event) => {
-                event.preventDefault();
-                event.stopPropagation();
-                openFuelSplitModal(displayInput);
-            });
-            wrapper.addEventListener('click', (event) => {
-                if (event.target === clearBtn) return;
-                openFuelSplitModal(displayInput);
-            });
-            if (clearBtn) {
-                clearBtn.addEventListener('click', (event) => {
-                    event.preventDefault();
-                    event.stopPropagation();
-                    displayInput.value = '';
-                    masterRecalculate();
-                    saveCalculatorState();
-                });
-            }
-            return;
-        }
-
         displayInput.addEventListener('focus', () => { if (displayInput.readOnly) return; if (displayInput.value) { shouldClearOnNextInput = true; } displayInput.value = displayInput.value.replace(/[^0-9]/g, ''); });
         displayInput.addEventListener('blur', () => { if (displayInput.readOnly) return; shouldClearOnNextInput = false; let v = displayInput.value.replace(/[^0-9]/g, ''); if (v) { displayInput.value = `${v} ${unit}`; } else { displayInput.value = ''; } masterRecalculate(); saveCalculatorState(); });
         displayInput.addEventListener('input', (e) => { if (displayInput.readOnly) return; if (shouldClearOnNextInput && e.data) { displayInput.value = e.data.replace(/[^0-9]/g, ''); shouldClearOnNextInput = false; } else { displayInput.value = displayInput.value.replace(/[^0-9]/g, ''); } masterRecalculate(); });
@@ -5209,7 +5008,7 @@ function initializeCalculator() {
 
     const addNewRow = (tableBody, data, isLastRow = false) => {
         const row = document.createElement('tr');
-        row.innerHTML = `<td><div class="input-wrapper time-input-wrapper"><input type="text" class="display-input" readonly placeholder="--:--"><span class="clear-btn">&times;</span><span class="clock-icon">🕒</span><input type="time" class="engine-input"></div></td><td><div class="input-wrapper numeric-input-wrapper fuel-split-input-wrapper" data-unit="kg"><input type="text" class="display-input" inputmode="numeric" placeholder="[valeur]"><span class="clear-btn">&times;</span></div></td><td class="airport-oaci-cell">--</td><td class="duree-rotation-cell"></td><td class="fuel-rotation-cell"></td><td class="tps-vol-cell"></td><td class="tps-vol-restant-cell"></td>`;
+        row.innerHTML = `<td><div class="input-wrapper time-input-wrapper"><input type="text" class="display-input" readonly placeholder="--:--"><span class="clear-btn">&times;</span><span class="clock-icon">🕒</span><input type="time" class="engine-input"></div></td><td><div class="input-wrapper numeric-input-wrapper" data-unit="kg"><input type="text" class="display-input" inputmode="numeric" placeholder="[valeur]"><span class="clear-btn">&times;</span></div></td><td class="airport-oaci-cell">--</td><td class="duree-rotation-cell"></td><td class="fuel-rotation-cell"></td><td class="tps-vol-cell"></td><td class="tps-vol-restant-cell"></td>`;
         tableBody.appendChild(row);
 
         const timeWrapper = row.querySelector('.time-input-wrapper');
@@ -5272,57 +5071,12 @@ function initializeCalculator() {
     refreshBlocFuelAirportOaciCells();
 
     function setupManualButton(btnId, wrapperId, flagSetter) {
-        const btn = document.getElementById(btnId);
-        const wrapper = document.getElementById(wrapperId);
-        const input = wrapper?.querySelector('.display-input');
-        if (!btn || !wrapper || !input) return;
-
-        btn.addEventListener('click', () => {
-            const isManual = flagSetter();
-            const isFuelManualField = wrapper.classList.contains('numeric-input-wrapper') && (wrapper.dataset.unit || '') === 'kg';
-
-            if (isManual) {
-                btn.textContent = 'MANUEL';
-                btn.classList.add('active');
-
-                if (isFuelManualField) {
-                    input.readOnly = true;
-                    input.setAttribute('readonly', 'readonly');
-                    openFuelSplitModal(input);
-                } else {
-                    input.readOnly = false;
-                    input.removeAttribute('readonly');
-                }
-            } else {
-                btn.textContent = 'AUTO';
-                btn.classList.remove('active');
-                input.readOnly = true;
-                input.setAttribute('readonly', 'readonly');
-            }
-
-            masterRecalculate();
-        });
+        const btn = document.getElementById(btnId); const input = document.getElementById(wrapperId).querySelector('.display-input');
+        btn.addEventListener('click', () => { const isManual = flagSetter(); if (isManual) { btn.textContent = 'MANUEL'; btn.classList.add('active'); input.readOnly = false; } else { btn.textContent = 'AUTO'; btn.classList.remove('active'); input.readOnly = true; } masterRecalculate(); });
     }
     setupManualButton('fuel-sur-feu-manual-btn', 'fuel-sur-feu-wrapper', () => isFuelSurFeuManual = !isFuelSurFeuManual);
     setupManualButton('suivi-conso-rotation-manual-btn', 'suivi-conso-rotation-wrapper', () => isSuiviConsoManual = !isSuiviConsoManual);
     setupManualButton('suivi-duree-rotation-manual-btn', 'suivi-duree-rotation-wrapper', () => isSuiviDureeManual = !isSuiviDureeManual);
-
-    ['fuel-sur-feu-wrapper', 'suivi-conso-rotation-wrapper'].forEach((wrapperId) => {
-        const wrapper = document.getElementById(wrapperId);
-        const input = wrapper?.querySelector('.display-input');
-        if (!wrapper || !input || wrapper.dataset.fuelSplitManualBound === '1') return;
-        wrapper.dataset.fuelSplitManualBound = '1';
-        wrapper.addEventListener('click', (event) => {
-            if (event.target && event.target.classList && event.target.classList.contains('clear-btn')) return;
-            const isManualWrapper = (wrapperId === 'fuel-sur-feu-wrapper' && isFuelSurFeuManual)
-                || (wrapperId === 'suivi-conso-rotation-wrapper' && isSuiviConsoManual);
-            if (isManualWrapper) {
-                event.preventDefault();
-                event.stopPropagation();
-                openFuelSplitModal(input);
-            }
-        });
-    });
 
     resetButton.addEventListener('click', () => {
         if (confirm("Voulez-vous vraiment remettre tout le tableau à zéro ?")) {
