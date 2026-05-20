@@ -271,10 +271,7 @@ function clearFireHistory() {
         localStorage.removeItem(FIRE_HISTORY_STORAGE_KEY);
     } catch (_) {}
 
-    const searchInput = document.getElementById('search-input');
-    if (searchInput && !searchInput.value.trim()) {
-        displayFireHistory();
-    }
+    displayFireHistory();
 }
 
 function displayFireHistory() {
@@ -903,17 +900,13 @@ function setupEventListeners() {
         displayResults(scoredResults.slice(0, 10));
     });
 
-    searchInput.addEventListener('focus', () => {
-        if (!searchInput.value.trim()) {
-            displayFireHistory();
-        }
-    });
+    const showFireHistoryFromSearch = () => {
+        displayFireHistory();
+    };
 
-    searchInput.addEventListener('click', () => {
-        if (!searchInput.value.trim()) {
-            displayFireHistory();
-        }
-    });
+    searchInput.addEventListener('focus', showFireHistoryFromSearch);
+    searchInput.addEventListener('click', showFireHistoryFromSearch);
+    searchInput.addEventListener('pointerdown', showFireHistoryFromSearch);
 
     clearSearchBtn.addEventListener('click', () => {
         clearCurrentSelection();
