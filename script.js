@@ -285,7 +285,9 @@ function displayFireHistory() {
     historyItems.forEach((item) => {
         const li = document.createElement('li');
         li.className = 'fire-history-item';
-        const dep = item.dep_code ? ` (${item.dep_code})` : '';
+        const dep = item.dep_code
+            ? ` (${item.dep_nom ? `${item.dep_nom} - ` : ''}${item.dep_code})`
+            : '';
         li.textContent = `${item.nom_standard}${dep}`;
         li.addEventListener('click', () => {
             currentCommune = item;
