@@ -1429,3 +1429,56 @@ html, body {
 .fuel-split-input-wrapper .display-input {
     cursor: pointer;
 }
+
+
+/* --- Historique des derniers feux / communes --- */
+#results-list li.fire-history-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    cursor: default;
+    background: #f8fafc;
+    color: var(--light-text-color);
+    font-weight: 700;
+    font-size: 13px;
+    padding: 10px 12px;
+}
+
+#results-list li.fire-history-header:hover {
+    background: #f8fafc;
+}
+
+.fire-history-clear-btn {
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    background: #ffffff;
+    color: var(--secondary-color);
+    font-weight: 700;
+    padding: 6px 10px;
+    cursor: pointer;
+}
+
+#results-list li.fire-history-item {
+    font-weight: 700;
+    color: var(--text-color);
+}
+
+#results-list li.fire-history-item::before {
+    content: "🔥 ";
+}
+
+/* --- Tooltips routes : offsets échelonnés pour limiter les superpositions --- */
+.leaflet-tooltip.route-tooltip.route-tooltip-staggered {
+    white-space: nowrap;
+    z-index: 1200;
+}
+
+.leaflet-tooltip.route-tooltip-base {
+    border-color: var(--success-color);
+}
+
+.leaflet-tooltip.route-tooltip-user {
+    border-color: var(--secondary-color);
+}
+
