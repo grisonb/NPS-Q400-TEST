@@ -46,6 +46,8 @@ const OFFLINE_TILES_MAX_ZOOM_KEY = 'offlineTilesMaxZoom';
 const OFFLINE_TILES_MIN_ZOOM_KEY = 'offlineTilesMinZoom';
 const OFFLINE_ACTIVE_PACKS_KEY = 'offlineActivePacks';
 const COMMUNES_CACHE_KEY = 'communesDataCacheV1';
+const FIRE_HISTORY_STORAGE_KEY = 'fireHistoryV1';
+const FIRE_HISTORY_MAX_ITEMS = 20;
 const FORCE_DISPLAY_MODE = new URLSearchParams(window.location.search).get('force_display') === '1';
 const SHOW_DEPARTMENTS_LAYER_KEY = 'showDepartmentsLayer';
 const SHOW_COMMUNES_LAYER_KEY = 'showCommunesLayer';
@@ -182,6 +184,154 @@ async function refreshOfflineTilesRendering() {
         setupBaseTileLayer();
     }
 }
+
+function normalizeHistoryCommune(commune) {
+    if (!commune || typeof commune !== 'object') return null;
+    const lat = Number(commune.latitude_mairie);
+    const lon = Number(commune.longitude_mairie);
+    if (!Number.isFinite(lat) || !Number.isFinite(lon)) return null;
+
+    const name = String(commune.nom_standard || commune.name || 'Feu').trim();
+    if (!name) return null;
+
+    return {
+        nom_standard: name,
+        dep_code: commune.dep_code || null,
+        dep_nom: commune.dep_nom || null,
+        latitude_mairie: lat,
+        longitude_mairie: lon,
+        isManual: !!commune.isManual,
+        savedAt: Date.now()
+    };
+}
+
+function getFireHistory() {
+    try {
+        const rawHistory = localStorage.getItem(FIRE_HISTORY_STORAGE_KEY);
+        const parsed = JSON.parse(rawHistory || '[]');
+        if (!Array.isArray(parsed)) return [];
+        return parsed
+            .map(normalizeHistoryCommune)
+            .filter(Boolean)
+            .slice(0, FIRE_HISTORY_MAX_ITEMS);
+    } catch (_) {
+        return [];
+    }
+}
+
+function saveFireHistory(commune) {
+    const normalized = normalizeHistoryCommune(commune);
+    if (!normalized) return;
+
+    const keyFor = (item) => [
+        simplifyString(item.nom_standard || ''),
+        item.dep_code || '',
+        Number(item.latitude_mairie).toFixed(5),
+        Number(item.longitude_mairie).toFixed(5)
+    ].join('|');
+
+    const currentHistory = getFireHistory();
+    const normalizedKey = keyFor(normalized);
+    const nextHistory = [
+        normalized,
+        ...currentHistory.filter(item => keyFor(item) !== normalizedKey)
+    ].slice(0, FIRE_HISTORY_MAX_ITEMS);
+
+    try {
+        localStorage.setItem(FIRE_HISTORY_STORAGE_KEY, JSON.stringify(nextHistory));
+    } catch (error) {
+        console.warn('Impossible de mémoriser le feu:', error);
+    }
+}
+
+function clearFireHistory() {
+    try {
+        localStorage.removeItem(FIRE_HISTORY_STORAGE_KEY);
+    } catch (_) {}
+
+    const searchInput = document.getElementById('search-input');
+    if (searchInput && !searchInput.value.trim()) {
+        displayFireHistory();
+    }
+}
+
+function displayFireHistory() {
+    const resultsList = document.getElementById('results-list');
+    if (!resultsList) return;
+
+    const historyItems = getFireHistory();
+    resultsList.innerHTML = '';
+
+    if (!historyItems.length) {
+        resultsList.style.display = 'none';
+        return;
+    }
+
+    const header = document.createElement('li');
+    header.className = 'fire-history-header';
+    header.innerHTML = '<span>Derniers feux</span><button type="button" class="fire-history-clear-btn">Effacer mémoire</button>';
+    const clearButton = header.querySelector('.fire-history-clear-btn');
+    if (clearButton) {
+        clearButton.addEventListener('click', (event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            if (confirm('Effacer la mémoire des derniers feux ?')) {
+                clearFireHistory();
+            }
+        });
+    }
+    resultsList.appendChild(header);
+
+    historyItems.forEach((item) => {
+        const li = document.createElement('li');
+        li.className = 'fire-history-item';
+        const dep = item.dep_code ? ` (${item.dep_code})` : '';
+        li.textContent = `${item.nom_standard}${dep}`;
+        li.addEventListener('click', () => {
+            currentCommune = item;
+            localStorage.setItem('currentCommune', JSON.stringify(item));
+            displayCommuneDetails(item);
+        });
+        resultsList.appendChild(li);
+    });
+
+    resultsList.style.display = 'block';
+}
+
+function getRouteTooltipLatLng(startLatLng, endLatLng, ratio = 0.5) {
+    const startLat = Number(startLatLng[0]);
+    const startLon = Number(startLatLng[1]);
+    const endLat = Number(endLatLng[0]);
+    const endLon = Number(endLatLng[1]);
+    return [
+        startLat + ((endLat - startLat) * ratio),
+        startLon + ((endLon - startLon) * ratio)
+    ];
+}
+
+function getRouteTooltipOffset(kind = 'default') {
+    if (!window.__routeTooltipOffsetCounter) {
+        window.__routeTooltipOffsetCounter = { default: 0, pelic: 0, base: 0, user: 0 };
+    }
+
+    const offsetsByKind = {
+        pelic: [[12, -24], [12, 22], [-80, -24], [-80, 22], [32, -46], [32, 44]],
+        base: [[18, -34], [-95, -34], [18, 34], [-95, 34]],
+        user: [[0, -36], [0, 36], [-80, -36], [80, 36]],
+        default: [[10, -24], [10, 24], [-70, -24], [-70, 24]]
+    };
+
+    const safeKind = offsetsByKind[kind] ? kind : 'default';
+    const offsets = offsetsByKind[safeKind];
+    const index = window.__routeTooltipOffsetCounter[safeKind] % offsets.length;
+    window.__routeTooltipOffsetCounter[safeKind] += 1;
+    return offsets[index];
+}
+
+function resetRouteTooltipOffsets() {
+    window.__routeTooltipOffsetCounter = { default: 0, pelic: 0, base: 0, user: 0 };
+}
+
 const calculateDestinationPoint = (lat, lon, bearing, distanceNm) => {
     const R = 3440.065; // Rayon de la Terre en milles nautiques
     const latRad = toRad(lat);
@@ -696,7 +846,11 @@ function setupEventListeners() {
         }
         const simplifiedSearch = simplifyString(searchTerm);
         if (simplifiedSearch.length < 2) {
-            document.getElementById('results-list').style.display = 'none';
+            if (rawSearch.trim().length === 0) {
+                displayFireHistory();
+            } else {
+                document.getElementById('results-list').style.display = 'none';
+            }
             return;
         }
         const searchWords = simplifiedSearch.split(' ').filter(Boolean);
@@ -727,7 +881,22 @@ function setupEventListeners() {
         displayResults(scoredResults.slice(0, 10));
     });
 
-    clearSearchBtn.addEventListener('click', clearCurrentSelection);
+    searchInput.addEventListener('focus', () => {
+        if (!searchInput.value.trim()) {
+            displayFireHistory();
+        }
+    });
+
+    searchInput.addEventListener('click', () => {
+        if (!searchInput.value.trim()) {
+            displayFireHistory();
+        }
+    });
+
+    clearSearchBtn.addEventListener('click', () => {
+        clearCurrentSelection();
+        displayFireHistory();
+    });
 
     airportCountInput.addEventListener('change', () => {
         if (currentCommune) {
@@ -888,7 +1057,11 @@ function displayResults(results) {
             resultsList.appendChild(li);
         });
     } else {
-        resultsList.style.display = 'none';
+        if (!document.getElementById('search-input')?.value.trim()) {
+            displayFireHistory();
+        } else {
+            resultsList.style.display = 'none';
+        }
     }
 }
 
@@ -1049,8 +1222,10 @@ function updateMapBingoDisplay() {
 }
 
 function displayCommuneDetails(commune, shouldFitBounds = true) {
+    saveFireHistory(commune);
     routesLayer.clearLayers();
     lftwRouteLayer.clearLayers();
+    resetRouteTooltipOffsets();
     drawPermanentAirportMarkers();
 
     updateCommuneDisplay(commune);
@@ -1122,26 +1297,60 @@ function drawRoute(startLatLng, endLatLng, options = {}) {
     } else if (oaci) {
         const isSelected = selectedPelicanOACI === oaci;
         color = isSelected ? 'var(--success-color)' : 'var(--primary-color)';
-        let tooltipClass = isSelected ? 'route-tooltip route-tooltip-selected' : 'route-tooltip';
+        const tooltipClass = isSelected ? 'route-tooltip route-tooltip-selected route-tooltip-staggered' : 'route-tooltip route-tooltip-staggered';
         labelText = `<b>${oaci}</b><br>${Math.round(distance)} Nm`;
+
         L.polyline([startLatLng, endLatLng], { color, weight: 3, opacity: 0.8 }).addTo(layer);
+
         const hitbox = L.polyline([startLatLng, endLatLng], { color: 'transparent', weight: 20, opacity: 0 }).addTo(layer);
         hitbox.on('click', () => {
             selectedPelicanOACI = oaci;
             displayCommuneDetails(currentCommune, false);
         });
-        L.tooltip({ permanent: true, direction: 'right', offset: [10, 0], className: tooltipClass }).setLatLng(endLatLng).setContent(labelText).addTo(layer);
+
+        const tooltipRatio = isSelected ? 0.72 : 0.82;
+        const tooltipLatLng = getRouteTooltipLatLng(startLatLng, endLatLng, tooltipRatio);
+        const tooltipOffset = getRouteTooltipOffset('pelic');
+
+        L.tooltip({
+            permanent: true,
+            direction: 'right',
+            offset: tooltipOffset,
+            className: tooltipClass
+        }).setLatLng(tooltipLatLng).setContent(labelText).addTo(layer);
         return;
     } else {
         labelText = `${Math.round(distance)} Nm`;
     }
 
-    const polyline = L.polyline([startLatLng, endLatLng], { color, weight: 3, opacity: 0.8, dashArray }).addTo(layer);
+    L.polyline([startLatLng, endLatLng], { color, weight: 3, opacity: 0.8, dashArray }).addTo(layer);
 
     if (isUser) {
-        polyline.bindTooltip(labelText, { permanent: true, direction: 'center', className: 'route-tooltip route-tooltip-user', sticky: true });
-    } else if (oaci || isLftwRoute) {
-        L.tooltip({ permanent: true, direction: 'right', offset: [10, 0], className: 'route-tooltip' }).setLatLng(endLatLng).setContent(labelText).addTo(layer);
+        const tooltipLatLng = getRouteTooltipLatLng(startLatLng, endLatLng, 0.55);
+        const tooltipOffset = getRouteTooltipOffset('user');
+        L.tooltip({
+            permanent: true,
+            direction: 'center',
+            offset: tooltipOffset,
+            className: 'route-tooltip route-tooltip-user route-tooltip-staggered'
+        }).setLatLng(tooltipLatLng).setContent(labelText).addTo(layer);
+    } else if (isLftwRoute) {
+        const tooltipLatLng = getRouteTooltipLatLng(startLatLng, endLatLng, 0.45);
+        const tooltipOffset = getRouteTooltipOffset('base');
+        L.tooltip({
+            permanent: true,
+            direction: 'right',
+            offset: tooltipOffset,
+            className: 'route-tooltip route-tooltip-base route-tooltip-staggered'
+        }).setLatLng(tooltipLatLng).setContent(labelText).addTo(layer);
+    } else if (oaci) {
+        const tooltipLatLng = getRouteTooltipLatLng(startLatLng, endLatLng, 0.75);
+        L.tooltip({
+            permanent: true,
+            direction: 'right',
+            offset: getRouteTooltipOffset('default'),
+            className: 'route-tooltip route-tooltip-staggered'
+        }).setLatLng(tooltipLatLng).setContent(labelText).addTo(layer);
     }
 }
 
