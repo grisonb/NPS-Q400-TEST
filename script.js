@@ -191,17 +191,39 @@ function normalizeHistoryCommune(commune) {
     const lon = Number(commune.longitude_mairie);
     if (!Number.isFinite(lat) || !Number.isFinite(lon)) return null;
 
-    const name = String(commune.nom_standard || commune.name || 'Feu').trim();
+    let name = String(commune.nom_standard || commune.name || 'Feu').trim();
     if (!name) return null;
+
+    /*
+     * Historique feux : correction robuste.
+     * Certains feux déjà mémorisés n'avaient pas dep_code/dep_nom.
+     * On ré-enrichit donc l'entrée avec la commune la plus proche si possible.
+     */
+    const closestCommune = (!commune.dep_code && typeof findClosestCommune === 'function')
+        ? findClosestCommune(lat, lon, 27)
+        : null;
+
+    let depCode = commune.dep_code || closestCommune?.dep_code || null;
+    let depNom = commune.dep_nom || closestCommune?.dep_nom || null;
+
+    /*
+     * Si le nom contient déjà un suffixe "(12)", on récupère ce code
+     * et on nettoie le nom pour éviter "Prades-d'Aubrac (12) (12)".
+     */
+    const depInNameMatch = name.match(/\s*\((\d{1,3}|2A|2B)\)\s*$/i);
+    if (depInNameMatch) {
+        if (!depCode) depCode = depInNameMatch[1].toUpperCase().padStart(2, '0');
+        name = name.replace(/\s*\((\d{1,3}|2A|2B)\)\s*$/i, '').trim();
+    }
 
     return {
         nom_standard: name,
-        dep_code: commune.dep_code || null,
-        dep_nom: commune.dep_nom || null,
+        dep_code: depCode,
+        dep_nom: depNom,
         latitude_mairie: lat,
         longitude_mairie: lon,
         isManual: !!commune.isManual,
-        savedAt: Date.now()
+        savedAt: commune.savedAt || Date.now()
     };
 }
 
@@ -285,9 +307,7 @@ function displayFireHistory() {
     historyItems.forEach((item) => {
         const li = document.createElement('li');
         li.className = 'fire-history-item';
-        const dep = item.dep_code
-            ? ` (${item.dep_nom ? `${item.dep_nom} - ` : ''}${item.dep_code})`
-            : '';
+        const dep = item.dep_code ? ` (${item.dep_code})` : '';
         li.textContent = `${item.nom_standard}${dep}`;
         li.addEventListener('click', () => {
             currentCommune = item;
