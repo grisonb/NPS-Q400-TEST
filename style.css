@@ -1555,29 +1555,3 @@ html, body {
 .leaflet-tooltip.route-tooltip-user {
     border-color: var(--secondary-color);
 }
-
-/* =========================================================================
-   Ajustement fenêtre carburant avec clavier iPad/mobile
-   Objectif : éviter que la fenêtre remonte trop haut quand le clavier apparaît.
-   Le script ajoute un padding-bottom inline ; ce bloc le limite côté CSS.
-   ========================================================================= */
-.fuel-split-modal[style*="padding-bottom"] {
-    align-items: center !important;
-    justify-content: center !important;
-    padding-top: 0 !important;
-    padding-bottom: 190px !important;
-}
-
-.fuel-split-modal[style*="padding-bottom"] .fuel-split-modal-content {
-    transform: translateY(14px) !important;
-}
-
-@media (max-height: 720px) {
-    .fuel-split-modal[style*="padding-bottom"] {
-        padding-bottom: 150px !important;
-    }
-
-    .fuel-split-modal[style*="padding-bottom"] .fuel-split-modal-content {
-        transform: translateY(8px) !important;
-    }
-}
