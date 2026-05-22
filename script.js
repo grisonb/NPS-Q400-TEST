@@ -5270,75 +5270,76 @@ function initializeCalculator() {
     }
 
     function resetFuelSplitKeyboardOffset() {
-    const { modal } = getFuelSplitModalElements();
-    if (!modal) return;
+        const { modal } = getFuelSplitModalElements();
+        if (!modal) return;
 
-    const content = modal.querySelector('.fuel-split-modal-content');
+        const content = modal.querySelector('.fuel-split-modal-content');
 
-    modal.style.alignItems = '';
-    modal.style.justifyContent = '';
-    modal.style.paddingTop = '';
-    modal.style.paddingBottom = '';
+        modal.style.alignItems = '';
+        modal.style.justifyContent = '';
+        modal.style.paddingTop = '';
+        modal.style.paddingBottom = '';
 
-    if (content) {
-        content.style.position = '';
-        content.style.left = '';
-        content.style.top = '';
-        content.style.transform = '';
-        content.style.maxHeight = '';
-        content.style.overflowY = '';
-    }
-}
-
-function applyFuelSplitKeyboardOffset() {
-    const { modal } = getFuelSplitModalElements();
-    if (!modal || modal.style.display === 'none') return;
-
-    const content = modal.querySelector('.fuel-split-modal-content');
-    if (!content) return;
-
-    const visualViewport = window.visualViewport;
-    if (!visualViewport || !modal.contains(document.activeElement)) {
-        resetFuelSplitKeyboardOffset();
-        return;
+        if (content) {
+            content.style.position = '';
+            content.style.left = '';
+            content.style.top = '';
+            content.style.bottom = '';
+            content.style.transform = '';
+            content.style.maxHeight = '';
+            content.style.overflowY = '';
+        }
     }
 
-    const keyboardOffset = Math.max(
-        0,
-        Math.round(window.innerHeight - visualViewport.height - visualViewport.offsetTop)
-    );
+    function applyFuelSplitKeyboardOffset() {
+        const { modal } = getFuelSplitModalElements();
+        if (!modal || modal.style.display === 'none') return;
 
-    if (keyboardOffset <= 40) {
-        resetFuelSplitKeyboardOffset();
-        return;
-    }
+        const content = modal.querySelector('.fuel-split-modal-content');
+        if (!content) return;
 
-    /*
-     * Positionnement iPad robuste :
-     * on place la fenêtre dans la zone réellement visible,
-     * juste au-dessus du clavier, au lieu d'utiliser un gros paddingBottom.
-     */
-    const margin = 18;
-    const viewportTop = visualViewport.offsetTop || 0;
-    const viewportHeight = visualViewport.height || window.innerHeight;
-    const contentHeight = content.offsetHeight || 360;
+        const visualViewport = window.visualViewport;
 
-    const maxTop = viewportTop + viewportHeight - contentHeight - margin;
-    const minTop = viewportTop + margin;
-    const targetTop = Math.max(minTop, maxTop);
+        if (!visualViewport || !modal.contains(document.activeElement)) {
+            resetFuelSplitKeyboardOffset();
+            return;
+        }
 
-    modal.style.alignItems = 'initial';
-    modal.style.justifyContent = 'initial';
-    modal.style.paddingTop = '0px';
-    modal.style.paddingBottom = '0px';
+        const keyboardOffset = Math.max(
+            0,
+            Math.round(window.innerHeight - visualViewport.height - visualViewport.offsetTop)
+        );
 
-    content.style.position = 'fixed';
-    content.style.left = '50%';
-    content.style.top = `${Math.round(targetTop)}px`;
-    content.style.transform = 'translateX(-50%)';
-    content.style.maxHeight = `${Math.max(260, Math.round(viewportHeight - (margin * 2)))}px`;
-    content.style.overflowY = 'auto';
-}
+        if (keyboardOffset <= 40) {
+            resetFuelSplitKeyboardOffset();
+            return;
+        }
+
+        /*
+         * iPad : positionne la fenêtre le plus bas possible dans la zone visible,
+         * juste au-dessus du clavier. Pas de paddingBottom proportionnel au clavier :
+         * c'est ce qui faisait remonter la fenêtre trop haut.
+         */
+        const viewportTop = visualViewport.offsetTop || 0;
+        const viewportHeight = visualViewport.height || window.innerHeight;
+        const contentHeight = content.offsetHeight || 420;
+        const bottomMargin = 8;
+        const minTop = viewportTop + 28;
+        const lowestVisibleTop = viewportTop + viewportHeight - contentHeight - bottomMargin;
+        const targetTop = Math.max(minTop, lowestVisibleTop);
+
+        modal.style.alignItems = 'initial';
+        modal.style.justifyContent = 'initial';
+        modal.style.paddingTop = '0px';
+        modal.style.paddingBottom = '0px';
+
+        content.style.position = 'fixed';
+        content.style.left = '50%';
+        content.style.top = `${Math.round(targetTop)}px`;
+        content.style.bottom = 'auto';
+        content.style.transform = 'translateX(-50%)';
+        content.style.maxHeight = `${Math.max(260, Math.round(viewportHeight - 16))}px`;
+        content.style.overflowY = 'auto';
     }
 
     function closeFuelSplitModal() {
