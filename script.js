@@ -5270,45 +5270,74 @@ function initializeCalculator() {
     }
 
     function resetFuelSplitKeyboardOffset() {
-        const { modal } = getFuelSplitModalElements();
-        if (!modal) return;
+    const { modal } = getFuelSplitModalElements();
+    if (!modal) return;
 
-        const content = modal.querySelector('.fuel-split-modal-content');
-        modal.style.alignItems = '';
-        modal.style.paddingTop = '';
-        modal.style.paddingBottom = '';
-        if (content) content.style.transform = '';
+    const content = modal.querySelector('.fuel-split-modal-content');
+
+    modal.style.alignItems = '';
+    modal.style.justifyContent = '';
+    modal.style.paddingTop = '';
+    modal.style.paddingBottom = '';
+
+    if (content) {
+        content.style.position = '';
+        content.style.left = '';
+        content.style.top = '';
+        content.style.transform = '';
+        content.style.maxHeight = '';
+        content.style.overflowY = '';
+    }
+}
+
+function applyFuelSplitKeyboardOffset() {
+    const { modal } = getFuelSplitModalElements();
+    if (!modal || modal.style.display === 'none') return;
+
+    const content = modal.querySelector('.fuel-split-modal-content');
+    if (!content) return;
+
+    const visualViewport = window.visualViewport;
+    if (!visualViewport || !modal.contains(document.activeElement)) {
+        resetFuelSplitKeyboardOffset();
+        return;
     }
 
-    function applyFuelSplitKeyboardOffset() {
-        const { modal } = getFuelSplitModalElements();
-        if (!modal || modal.style.display === 'none') return;
+    const keyboardOffset = Math.max(
+        0,
+        Math.round(window.innerHeight - visualViewport.height - visualViewport.offsetTop)
+    );
 
-        const content = modal.querySelector('.fuel-split-modal-content');
-        if (!content) return;
+    if (keyboardOffset <= 40) {
+        resetFuelSplitKeyboardOffset();
+        return;
+    }
 
-        const visualViewport = window.visualViewport;
-        if (!visualViewport) {
-            content.style.transform = '';
-            return;
-        }
-
-        const keyboardOffset = Math.max(
-            0,
-            Math.round(window.innerHeight - visualViewport.height - visualViewport.offsetTop)
-        );
-
-        if (keyboardOffset > 40 && modal.contains(document.activeElement)) {
     /*
-     * iPad : le clavier réduit déjà fortement la zone visible.
-     * On évite donc un gros paddingBottom qui remonte la fenêtre trop haut.
+     * Positionnement iPad robuste :
+     * on place la fenêtre dans la zone réellement visible,
+     * juste au-dessus du clavier, au lieu d'utiliser un gros paddingBottom.
      */
-    modal.style.alignItems = 'center';
+    const margin = 18;
+    const viewportTop = visualViewport.offsetTop || 0;
+    const viewportHeight = visualViewport.height || window.innerHeight;
+    const contentHeight = content.offsetHeight || 360;
+
+    const maxTop = viewportTop + viewportHeight - contentHeight - margin;
+    const minTop = viewportTop + margin;
+    const targetTop = Math.max(minTop, maxTop);
+
+    modal.style.alignItems = 'initial';
+    modal.style.justifyContent = 'initial';
     modal.style.paddingTop = '0px';
-    modal.style.paddingBottom = '20px';
-    content.style.transform = 'translateY(24px)';
-} else {
-    resetFuelSplitKeyboardOffset();
+    modal.style.paddingBottom = '0px';
+
+    content.style.position = 'fixed';
+    content.style.left = '50%';
+    content.style.top = `${Math.round(targetTop)}px`;
+    content.style.transform = 'translateX(-50%)';
+    content.style.maxHeight = `${Math.max(260, Math.round(viewportHeight - (margin * 2)))}px`;
+    content.style.overflowY = 'auto';
 }
     }
 
