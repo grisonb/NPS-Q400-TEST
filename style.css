@@ -127,13 +127,13 @@ html, body {
     justify-content: center;
     flex-shrink: 0;
     margin-left: 2px;
-    padding: 3px 8px;
+    padding: 4px 10px;
     border-radius: 999px;
     background: #eef6ff;
     border: 1px solid #b9d8f0;
     color: var(--primary-color);
-    font-size: 15px;
-    font-weight: 800;
+    font-size: 18px;
+    font-weight: 900;
     white-space: nowrap;
 }
 
@@ -145,8 +145,8 @@ html, body {
 
 @media (max-width: 720px) {
     #commune-info-display .gps-feu-route-info {
-        font-size: 13px;
-        padding: 3px 6px;
+        font-size: 16px;
+        padding: 3px 7px;
     }
 }
 .clear-commune-btn {
