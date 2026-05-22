@@ -5299,12 +5299,17 @@ function initializeCalculator() {
         );
 
         if (keyboardOffset > 40 && modal.contains(document.activeElement)) {
-            modal.style.alignItems = 'center';
-            modal.style.paddingBottom = `${keyboardOffset + 12}px`;
-            content.style.transform = `translateY(-${Math.min(220, Math.round(keyboardOffset * 0.45))}px)`;
-        } else {
-            resetFuelSplitKeyboardOffset();
-        }
+    /*
+     * iPad : le clavier réduit déjà fortement la zone visible.
+     * On évite donc un gros paddingBottom qui remonte la fenêtre trop haut.
+     */
+    modal.style.alignItems = 'center';
+    modal.style.paddingTop = '0px';
+    modal.style.paddingBottom = '20px';
+    content.style.transform = 'translateY(24px)';
+} else {
+    resetFuelSplitKeyboardOffset();
+}
     }
 
     function closeFuelSplitModal() {
