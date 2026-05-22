@@ -122,6 +122,12 @@ const toRad = deg => deg * Math.PI / 180, toDeg = rad => rad * 180 / Math.PI;
 const simplifyString = str => typeof str !== 'string' ? '' : str.toLowerCase().replace(/\bst\b/g, 'saint').normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9\s]/g, ' ').trim().replace(/\s+/g, ' ');
 const calculateDistanceInNm = (lat1, lon1, lat2, lon2) => { const R = 6371, dLat = toRad(lat2 - lat1), dLon = toRad(lon2 - lon1), a = Math.sin(dLat / 2) * Math.sin(dLat / 2) + Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon / 2) * Math.sin(dLon / 2), c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a)); return (R * c) / 1.852; };
 const calculateBearing = (lat1, lon1, lat2, lon2) => { const lat1Rad = toRad(lat1), lon1Rad = toRad(lon1), lat2Rad = toRad(lat2), lon2Rad = toRad(lon2), dLon = lon2Rad - lon1Rad, y = Math.sin(dLon) * Math.cos(lat2Rad), x = Math.cos(lat1Rad) * Math.sin(lat2Rad) - Math.sin(lat1Rad) * Math.cos(lat2Rad) * Math.cos(dLon); let bearingRad = Math.atan2(y, x), bearingDeg = toDeg(bearingRad); return (bearingDeg + 360) % 360; };
+const formatRouteDegrees = (bearing) => {
+    const roundedBearing = Math.round(Number(bearing));
+    if (!Number.isFinite(roundedBearing)) return '---°';
+    const normalizedBearing = ((roundedBearing % 360) + 360) % 360;
+    return `${String(normalizedBearing).padStart(3, '0')}°`;
+};
 const convertToDMM = (deg, type) => { if (deg === null || isNaN(deg)) return 'N/A'; const absDeg = Math.abs(deg), degrees = Math.floor(absDeg), minutesTotal = (absDeg - degrees) * 60, minutesFormatted = minutesTotal.toFixed(2).padStart(5, '0'); let direction = type === 'lat' ? (deg >= 0 ? 'N' : 'S') : (deg >= 0 ? 'E' : 'W'); return `${degrees}° ${minutesFormatted}' ${direction}`; };
 const levenshteinDistance = (a, b) => { const matrix = Array(b.length + 1).fill(null).map(() => Array(a.length + 1).fill(null)); for (let i = 0; i <= a.length; i += 1) matrix[0][i] = i; for (let j = 0; j <= b.length; j += 1) matrix[j][0] = j; for (let j = 1; j <= b.length; j += 1) for (let i = 1; i <= a.length; i += 1) { const indicator = a[i - 1] === b[j - 1] ? 0 : 1; matrix[j][i] = Math.min(matrix[j][i - 1] + 1, matrix[j - 1][i] + 1, matrix[j - 1][i - 1] + indicator); } return matrix[b.length][a.length]; };
 const withTimeout = (promise, timeoutMs, timeoutMessage) => new Promise((resolve, reject) => {
@@ -1236,7 +1242,7 @@ function updateCommuneGpsRouteDisplay() {
     const trueBearingToTarget = calculateBearing(userLatLng.lat, userLatLng.lng, targetLat, targetLon);
     const magneticBearing = (trueBearingToTarget - MAGNETIC_DECLINATION + 360) % 360;
 
-    routeInfo.textContent = `${Math.round(magneticBearing)}° / ${Math.round(distance)} Nm`;
+    routeInfo.textContent = `${formatRouteDegrees(magneticBearing)} / ${Math.round(distance)} Nm`;
     routeInfo.classList.remove('gps-feu-route-info-empty');
 }
 
@@ -1329,12 +1335,12 @@ function drawRoute(startLatLng, endLatLng, options = {}) {
     let labelText, color = 'var(--primary-color)', dashArray = '', layer = routesLayer;
 
     if (isUser) {
-        labelText = `${Math.round(magneticBearing)}° / ${Math.round(distance)} Nm`;
+        labelText = `${formatRouteDegrees(magneticBearing)} / ${Math.round(distance)} Nm`;
         color = 'var(--secondary-color)';
         dashArray = '5, 10';
         layer = userToTargetLayer;
     } else if (isLftwRoute) {
-        labelText = `BASE ${selectedBaseOACI}: ${Math.round(magneticBearing)}° / ${Math.round(distance)} Nm`;
+        labelText = `BASE ${selectedBaseOACI}: ${formatRouteDegrees(magneticBearing)} / ${Math.round(distance)} Nm`;
         color = 'var(--success-color)';
         dashArray = '5, 10';
         layer = lftwRouteLayer;
