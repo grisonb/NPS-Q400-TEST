@@ -117,6 +117,38 @@ html, body {
 #commune-info-display { position: absolute; top: calc(var(--safe-area-top) + 75px); /* Poussé encore plus bas */ left: 50%; transform: translateX(-50%); z-index: 1000; background-color: white; display: none; align-items: center; box-shadow: 0 1px 5px rgba(0,0,0,0.4); border-radius: var(--border-radius); border: 1px solid rgba(0,0,0,0.2); height: 52px; padding: 0 10px 0 18px; font-size: 18px; font-weight: 500; white-space: nowrap; max-width: calc(100vw - 130px); overflow: hidden; color: var(--text-color); gap: 12px; }
 #commune-info-display > .commune-name { overflow: hidden; text-overflow: ellipsis; }
 #commune-info-display .sunset-info { display: flex; align-items: center; font-size: 15px; color: var(--light-text-color); margin-left: auto; white-space: nowrap; }
+
+/* ==========================================================================
+   BANDEAU COMMUNE - ROUTE/DISTANCE GPS -> FEU
+   ========================================================================== */
+#commune-info-display .gps-feu-route-info {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    margin-left: 2px;
+    padding: 3px 8px;
+    border-radius: 999px;
+    background: #eef6ff;
+    border: 1px solid #b9d8f0;
+    color: var(--primary-color);
+    font-size: 15px;
+    font-weight: 800;
+    white-space: nowrap;
+}
+
+#commune-info-display .gps-feu-route-info-empty {
+    color: var(--light-text-color);
+    background: #f5f7fa;
+    border-color: #d7dee8;
+}
+
+@media (max-width: 720px) {
+    #commune-info-display .gps-feu-route-info {
+        font-size: 13px;
+        padding: 3px 6px;
+    }
+}
 .clear-commune-btn {
     font-size: 30px;
     color: #999;
@@ -1305,168 +1337,124 @@ html, body {
     }
 }
 
-/* =========================================================================
-   FENÊTRE CARBURANT G / D / TOTAL — STYLE AMÉLIORÉ
-   ========================================================================= */
+/* --- Fenêtre saisie carburant G / D / TOTAL --- */
 .fuel-split-modal {
     position: fixed;
     inset: 0;
     z-index: 2500;
-    background: rgba(10, 25, 45, 0.35);
+    background: rgba(0, 0, 0, 0.32);
     align-items: center;
     justify-content: center;
-    padding: 18px;
-    box-sizing: border-box;
-    backdrop-filter: blur(5px);
-    -webkit-backdrop-filter: blur(5px);
+    padding: 16px;
 }
 
 .fuel-split-modal-content {
     position: relative;
-    width: min(540px, calc(100vw - 32px));
-    background: linear-gradient(180deg, #ffffff 0%, #f2f7fc 100%);
-    border: 2px solid #d8e4f0;
-    border-radius: 24px;
-    box-shadow: 0 18px 45px rgba(0, 0, 0, 0.32);
-    padding: 24px 22px 20px;
-    box-sizing: border-box;
-    color: #1f2d3d;
+    width: min(520px, calc(100vw - 32px));
+    background: #ffffff;
+    border-radius: 16px;
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.28);
+    padding: 22px 22px 18px;
+    color: var(--text-color);
 }
 
 .fuel-split-modal-content h3 {
-    margin: 0 38px 20px;
+    margin: 0 0 20px;
     text-align: center;
     color: var(--primary-color);
-    font-size: 25px;
-    font-weight: 900;
-    letter-spacing: 0.04em;
-    text-transform: uppercase;
+    font-size: 24px;
+    font-weight: 800;
+    letter-spacing: 0.02em;
 }
 
 .fuel-split-close-btn {
     position: absolute;
-    top: 10px;
+    top: 8px;
     right: 12px;
-    width: 38px;
-    height: 38px;
-    border: 1px solid #d6dde8;
-    border-radius: 999px;
-    background: #ffffff;
-    color: #6b7280;
-    font-size: 28px;
-    font-weight: 900;
+    width: 34px;
+    height: 34px;
+    border: none;
+    background: transparent;
+    color: #6c757d;
+    font-size: 30px;
+    font-weight: 700;
     line-height: 1;
     cursor: pointer;
-    box-shadow: 0 2px 7px rgba(0,0,0,0.12);
 }
 
 .fuel-split-tanks-row {
     display: grid;
     grid-template-columns: 1fr 1fr;
-    gap: 14px;
+    gap: 28px;
     align-items: end;
-    margin-bottom: 18px;
+    margin-bottom: 16px;
 }
 
 .fuel-split-field,
 .fuel-split-total-field {
     display: flex;
     flex-direction: column;
-    align-items: stretch;
-    gap: 7px;
-    font-weight: 900;
-    color: #34495e;
+    align-items: center;
+    gap: 6px;
+    font-weight: 800;
+    color: #333333;
 }
 
 .fuel-split-field span,
 .fuel-split-total-field span {
-    text-align: center;
-    font-size: 15px;
-    letter-spacing: 0.08em;
-    text-transform: uppercase;
+    font-size: 14px;
+    letter-spacing: 0.04em;
 }
 
 .fuel-split-field input,
 .fuel-split-total-field input {
     width: 100%;
-    height: 62px;
+    height: 56px;
     box-sizing: border-box;
-    border: 2px solid #cfdce9;
-    border-radius: 16px;
+    border: 3px solid #111111;
+    border-radius: 0;
     background: #ffffff;
     text-align: center;
-    font-size: 28px;
-    font-weight: 900;
-    color: #111827;
-    outline: none;
+    font-size: 24px;
+    font-weight: 800;
+    color: #111111;
     -webkit-appearance: none;
-    box-shadow: inset 0 1px 3px rgba(0,0,0,0.08), 0 3px 10px rgba(0,0,0,0.06);
-}
-
-.fuel-split-field input:focus,
-.fuel-split-total-field input:focus {
-    border-color: var(--primary-color);
-    box-shadow: 0 0 0 4px rgba(0, 90, 156, 0.16), inset 0 1px 3px rgba(0,0,0,0.08);
 }
 
 .fuel-split-total-field {
-    width: min(360px, 100%);
-    margin: 0 auto 20px;
-    padding: 14px;
-    border-radius: 20px;
-    background: linear-gradient(180deg, #eaf6ff 0%, #ffffff 100%);
-    border: 2px solid var(--primary-color);
-    box-shadow: 0 8px 18px rgba(0, 90, 156, 0.18);
-}
-
-.fuel-split-total-field span {
-    color: var(--primary-color);
-    margin-bottom: 2px;
-}
-
-.fuel-split-total-field input {
-    height: 68px;
-    border-color: #b8d7ee;
-    font-size: 32px;
-}
-
-.fuel-split-total-field input:focus {
-    border-color: var(--secondary-color);
-    box-shadow: 0 0 0 4px rgba(227, 0, 27, 0.14), inset 0 1px 3px rgba(0,0,0,0.08);
+    width: min(220px, 70%);
+    margin: 0 auto 18px;
 }
 
 .fuel-split-actions {
-    display: grid;
-    grid-template-columns: 1fr 1fr 1fr;
+    display: flex;
+    justify-content: center;
     gap: 10px;
-    margin-top: 18px;
+    flex-wrap: wrap;
 }
 
 .fuel-split-actions button {
-    min-width: 0;
-    height: 50px;
+    min-width: 110px;
+    height: 44px;
     border: none;
-    border-radius: 14px;
+    border-radius: 10px;
     font-size: 16px;
-    font-weight: 900;
+    font-weight: 800;
     cursor: pointer;
-    box-shadow: 0 4px 10px rgba(0,0,0,0.16);
 }
 
 #fuel-split-clear-btn {
-    background: #ffffff;
-    color: var(--secondary-color);
-    border: 2px solid var(--secondary-color);
+    background: #e9ecef;
+    color: #495057;
 }
 
 #fuel-split-cancel-btn {
-    background: #eef2f7;
-    color: #374151;
-    border: 2px solid #d1d8e0;
+    background: #dee2e6;
+    color: #343a40;
 }
 
 #fuel-split-validate-btn {
-    background: var(--success-color);
+    background: var(--primary-color);
     color: #ffffff;
 }
 
@@ -1474,46 +1462,6 @@ html, body {
     cursor: pointer;
 }
 
-/* Remonte la fenêtre quand le clavier iPad/mobile est ouvert */
-body.fuel-keyboard-open .fuel-split-modal {
-    align-items: flex-start;
-    padding-top: max(18px, calc(var(--safe-area-top) + 14px));
-}
-
-body.fuel-keyboard-open .fuel-split-modal-content {
-    transform: translateY(-8px);
-}
-
-@media (max-height: 560px) {
-    .fuel-split-modal-content {
-        padding: 16px;
-    }
-
-    .fuel-split-modal-content h3 {
-        font-size: 20px;
-        margin-bottom: 12px;
-    }
-
-    .fuel-split-field input {
-        height: 52px;
-        font-size: 24px;
-    }
-
-    .fuel-split-total-field {
-        padding: 10px;
-        margin-bottom: 12px;
-    }
-
-    .fuel-split-total-field input {
-        height: 56px;
-        font-size: 28px;
-    }
-
-    .fuel-split-actions button {
-        height: 42px;
-        font-size: 14px;
-    }
-}
 
 /* --- Historique des derniers feux / communes --- */
 #results-list li.fire-history-header {
