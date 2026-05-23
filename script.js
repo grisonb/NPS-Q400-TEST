@@ -2966,6 +2966,11 @@ async function handleZipImport(file) {
     }
 }
 
+function isPlausibleTileZoom(value) {
+    const zoom = Number(value);
+    return Number.isInteger(zoom) && zoom >= GLOBAL_MIN_ZOOM && zoom <= GLOBAL_MAX_ZOOM;
+}
+
 function parseTilePathFromName(name) {
     const normalizedName = String(name || '').replace(/\\/g, '/');
     const xyzMatch = normalizedName.match(/(?:^|\/)(\d+)\/(\d+)\/(\d+)\.(png|jpg|jpeg)$/i);
