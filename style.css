@@ -1621,3 +1621,61 @@ body.fuel-keyboard-open .fuel-split-close-btn {
 .leaflet-tooltip.route-tooltip-user {
     border-color: var(--secondary-color);
 }
+
+/* Correctif fort iPad : fenêtre carburant compacte quand clavier ouvert */
+body.fuel-keyboard-open .fuel-split-modal-content {
+    padding: 10px 14px 12px !important;
+    border-radius: 18px !important;
+    box-sizing: border-box !important;
+}
+
+body.fuel-keyboard-open .fuel-split-title {
+    font-size: 17px !important;
+    margin: 0 0 6px !important;
+}
+
+body.fuel-keyboard-open .fuel-split-grid {
+    gap: 8px !important;
+}
+
+body.fuel-keyboard-open .fuel-split-field label {
+    font-size: 12px !important;
+}
+
+body.fuel-keyboard-open .fuel-split-field input {
+    height: 40px !important;
+    font-size: 21px !important;
+}
+
+body.fuel-keyboard-open .fuel-split-total-row {
+    margin-top: 8px !important;
+}
+
+body.fuel-keyboard-open .fuel-split-total-card {
+    padding: 7px 10px !important;
+    border-radius: 14px !important;
+}
+
+body.fuel-keyboard-open .fuel-split-total-card label {
+    font-size: 12px !important;
+    margin-bottom: 4px !important;
+}
+
+body.fuel-keyboard-open .fuel-split-total-card input {
+    height: 42px !important;
+    font-size: 23px !important;
+}
+
+body.fuel-keyboard-open .fuel-split-actions {
+    margin-top: 10px !important;
+    gap: 7px !important;
+}
+
+body.fuel-keyboard-open .fuel-split-actions button {
+    height: 38px !important;
+    font-size: 13px !important;
+}
+
+body.fuel-keyboard-open .fuel-split-hint {
+    display: none !important;
+}
