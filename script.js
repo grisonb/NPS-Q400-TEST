@@ -5297,11 +5297,7 @@ function initializeCalculator() {
         const { modal } = getFuelSplitModalElements();
         if (!modal || modal.style.display === 'none') return;
 
-        const content = modal.querySelector('.fuel-split-modal-content');
-        if (!content) return;
-
         const visualViewport = window.visualViewport;
-
         if (!visualViewport || !modal.contains(document.activeElement)) {
             resetFuelSplitKeyboardOffset();
             return;
@@ -5312,29 +5308,16 @@ function initializeCalculator() {
             Math.round(window.innerHeight - visualViewport.height - visualViewport.offsetTop)
         );
 
-        if (keyboardOffset <= 40) {
+        if (keyboardOffset > 40) {
+            /*
+             * La fenêtre carburant est maintenant compacte par défaut.
+             * On ne force plus de position fixe ni de gros décalage au clavier :
+             * ces styles inline étaient responsables du décalage vers le haut/droite sur iPad.
+             */
+            document.body.classList.add('fuel-keyboard-open');
+        } else {
             resetFuelSplitKeyboardOffset();
-            return;
         }
-
-        document.body.classList.add('fuel-keyboard-open');
-
-        /*
-         * Correctif iPad : la fenêtre carburant reste dans la zone visible.
-         * On la rend compacte et scrollable au lieu de la pousser vers le haut.
-         */
-        modal.style.alignItems = 'flex-start';
-        modal.style.justifyContent = 'center';
-        modal.style.paddingTop = '8px';
-        modal.style.paddingBottom = '8px';
-
-        content.style.position = 'fixed';
-        content.style.left = '50%';
-        content.style.top = `${Math.round((visualViewport.offsetTop || 0) + 8)}px`;
-        content.style.bottom = 'auto';
-        content.style.transform = 'translateX(-50%)';
-        content.style.maxHeight = `${Math.max(260, Math.round(visualViewport.height - 16))}px`;
-        content.style.overflowY = 'auto';
     }
     function closeFuelSplitModal() {
         const { modal } = getFuelSplitModalElements();
