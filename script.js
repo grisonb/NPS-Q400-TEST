@@ -2819,85 +2819,128 @@ async function handleZipImport(file) {
     isZipImportRunning = true;
 
     try {
-        if (file.size > 300 * 1024 * 1024) {
-            statusMessage.textContent = `Fichier volumineux (${Math.round(file.size / (1024 * 1024))} Mo) : import optimisé mémoire...`;
+        const isLargeZip = file.size > 300 * 1024 * 1024;
+        if (isLargeZip) {
+            statusMessage.textContent = `Fichier volumineux (${Math.round(file.size / (1024 * 1024))} Mo) : import progressif sans liste intermédiaire...`;
             await new Promise((resolve) => setTimeout(resolve, 0));
         }
+
         const zip = await JSZip.loadAsync(file);
         const zipEntries = Object.values(zip.files);
-        const validEntries = [];
+        let totalFiles = 0;
         let importedMaxZoom = 0;
         let importedMinZoom = Number.POSITIVE_INFINITY;
 
+        /*
+         * IMPORTANT iPad/Safari : ancienne méthode supprimée.
+         * On ne crée plus validEntries = [] avec toutes les tuiles du ZIP.
+         * Pour un ZIP de 900 Mo, cette liste intermédiaire pouvait faire exploser
+         * la mémoire pendant "Préparation des tuiles" et provoquer page blanche.
+         * Ici, on fait une première passe légère de comptage, puis l'import direct.
+         */
         for (let i = 0; i < zipEntries.length; i += 1) {
             const fileEntry = zipEntries[i];
-            if (fileEntry.dir) continue;
-            const parsedTiles = parseTilePathFromName(fileEntry.name);
-            if (!parsedTiles.length) continue;
-            parsedTiles.forEach((parsedTile) => {
-                validEntries.push({ fileEntry, tilePath: parsedTile.tilePath });
-                importedMaxZoom = Math.max(importedMaxZoom, parsedTile.zoom);
-                importedMinZoom = Math.min(importedMinZoom, parsedTile.zoom);
-            });
+            if (!fileEntry.dir) {
+                const parsedTiles = parseTilePathFromName(fileEntry.name);
+                if (parsedTiles.length) {
+                    totalFiles += parsedTiles.length;
+                    parsedTiles.forEach((parsedTile) => {
+                        importedMaxZoom = Math.max(importedMaxZoom, parsedTile.zoom);
+                        importedMinZoom = Math.min(importedMinZoom, parsedTile.zoom);
+                    });
+                }
+            }
 
             if (i % 1000 === 0) {
                 statusMessage.textContent = `Préparation des tuiles... ${i} / ${zipEntries.length}`;
+                progressBar.style.width = `${Math.min(12, (i / Math.max(1, zipEntries.length)) * 12)}%`;
                 await new Promise((resolve) => setTimeout(resolve, 0));
             }
         }
-
-        const totalFiles = validEntries.length;
 
         if (totalFiles === 0) {
             throw new Error("Aucune tuile valide trouvée dans le ZIP. Formats acceptés : z/x/y.png (avec sous-dossiers possibles) ou z_x_y.png (z-y-x aussi accepté).");
         }
 
         statusMessage.textContent = `Préparation terminée. Importation de ${totalFiles} tuiles...`;
+        progressBar.style.width = '12%';
 
-        const batchSize = file.size > 300 * 1024 * 1024 ? 16 : 48;
+        const batchSize = isLargeZip ? 10 : 48;
         let processedFiles = 0;
+        let pendingBatch = [];
+        let cacheBatchCounter = 0;
 
-        for (let i = 0; i < validEntries.length; i += batchSize) {
-            const batchEntries = validEntries.slice(i, i + batchSize);
-            const batch = await Promise.all(batchEntries.map(async ({ fileEntry, tilePath }) => {
-                const blob = await fileEntry.async('blob');
-                const tileUrl = `https://a.tile.openstreetmap.org/${tilePath}`;
-                return {
-                    url: buildStoredTileKey(tileUrl, packName),
-                    tileUrl,
-                    tile: blob,
-                    packName: packName
-                };
-            }));
+        const commitBatch = async () => {
+            if (!pendingBatch.length) return;
+
+            const batch = pendingBatch;
+            pendingBatch = [];
+
             const transaction = db.transaction('tiles', 'readwrite');
             const store = transaction.objectStore('tiles');
             batch.forEach((tileData) => store.put(tileData));
 
             await new Promise((resolve, reject) => {
-                transaction.oncomplete = () => {
-                    processedFiles += batchEntries.length;
-                    statusMessage.textContent = `Importation... ${processedFiles} / ${totalFiles} tuiles`;
-                    progressBar.style.width = `${(processedFiles / totalFiles) * 100}%`;
-                    resolve();
-                };
+                transaction.oncomplete = () => resolve();
                 transaction.onerror = () => reject(transaction.error);
+                transaction.onabort = () => reject(transaction.error || new Error('Transaction IndexedDB interrompue'));
             });
 
-            const batchIndex = Math.floor(i / batchSize);
-            const shouldPersistCacheBatch = (batchIndex % 6 === 0) || (i + batchSize >= validEntries.length);
+            processedFiles += batch.length;
+            const progress = 12 + ((processedFiles / totalFiles) * 88);
+            statusMessage.textContent = `Importation... ${processedFiles} / ${totalFiles} tuiles`;
+            progressBar.style.width = `${Math.min(100, progress)}%`;
+
+            /*
+             * Cache Storage non bloquant et très espacé sur gros ZIP.
+             * IndexedDB reste la source principale. Cette persistance ne doit jamais
+             * bloquer ni faire planter l'import.
+             */
+            cacheBatchCounter += 1;
+            const shouldPersistCacheBatch = !isLargeZip
+                ? (cacheBatchCounter % 6 === 0 || processedFiles >= totalFiles)
+                : (cacheBatchCounter % 30 === 0 || processedFiles >= totalFiles);
+
             if (shouldPersistCacheBatch) {
                 void withTimeout(
                     persistTilesBatchToCache(batch),
-                    2500,
+                    2000,
                     'Persistance cache trop longue'
                 ).catch((cacheError) => {
                     console.warn('Persistance Cache Storage non bloquante ignorée:', cacheError);
                 });
             }
+
             await new Promise((resolve) => setTimeout(resolve, 0));
+        };
+
+        for (let i = 0; i < zipEntries.length; i += 1) {
+            const fileEntry = zipEntries[i];
+            if (fileEntry.dir) continue;
+
+            const parsedTiles = parseTilePathFromName(fileEntry.name);
+            if (!parsedTiles.length) continue;
+
+            const blob = await fileEntry.async('blob');
+            parsedTiles.forEach((parsedTile) => {
+                const tileUrl = `https://a.tile.openstreetmap.org/${parsedTile.tilePath}`;
+                pendingBatch.push({
+                    url: buildStoredTileKey(tileUrl, packName),
+                    tileUrl,
+                    tile: blob,
+                    packName: packName
+                });
+            });
+
+            if (pendingBatch.length >= batchSize) {
+                await commitBatch();
+            }
         }
 
+        await commitBatch();
+
         statusMessage.textContent = `Importation de ${packName} terminée !`;
+        progressBar.style.width = '100%';
 
         const installedPacks = JSON.parse(localStorage.getItem('installedMapPacks') || '[]');
         if (!installedPacks.find(p => p.name === packName)) {
@@ -2921,10 +2964,6 @@ async function handleZipImport(file) {
         isZipImportRunning = false;
         setTimeout(() => { progressSection.style.display = 'none'; }, 5000);
     }
-}
-
-function isPlausibleTileZoom(value) {
-    return Number.isFinite(value) && value >= 0 && value <= 22;
 }
 
 function parseTilePathFromName(name) {
