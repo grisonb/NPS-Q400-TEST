@@ -5274,6 +5274,7 @@ function initializeCalculator() {
         if (!modal) return;
 
         const content = modal.querySelector('.fuel-split-modal-content');
+        document.body.classList.remove('fuel-keyboard-open');
 
         modal.style.alignItems = '';
         modal.style.justifyContent = '';
@@ -5299,7 +5300,6 @@ function initializeCalculator() {
         if (!content) return;
 
         const visualViewport = window.visualViewport;
-
         if (!visualViewport || !modal.contains(document.activeElement)) {
             resetFuelSplitKeyboardOffset();
             return;
@@ -5316,30 +5316,24 @@ function initializeCalculator() {
         }
 
         /*
-         * iPad : positionne la fenêtre le plus bas possible dans la zone visible,
-         * juste au-dessus du clavier. Pas de paddingBottom proportionnel au clavier :
-         * c'est ce qui faisait remonter la fenêtre trop haut.
+         * iPad : ne plus calculer une position fixe en JavaScript.
+         * On laisse le CSS passer la fenêtre en mode compact et la descendre.
+         * Cela évite les effets de sur-remontée provoqués par visualViewport.
          */
-        const viewportTop = visualViewport.offsetTop || 0;
-        const viewportHeight = visualViewport.height || window.innerHeight;
-        const contentHeight = content.offsetHeight || 420;
-        const bottomMargin = 8;
-        const minTop = viewportTop + 28;
-        const lowestVisibleTop = viewportTop + viewportHeight - contentHeight - bottomMargin;
-        const targetTop = Math.max(minTop, lowestVisibleTop);
+        document.body.classList.add('fuel-keyboard-open');
 
-        modal.style.alignItems = 'initial';
-        modal.style.justifyContent = 'initial';
-        modal.style.paddingTop = '0px';
-        modal.style.paddingBottom = '0px';
+        modal.style.alignItems = '';
+        modal.style.justifyContent = '';
+        modal.style.paddingTop = '';
+        modal.style.paddingBottom = '';
 
-        content.style.position = 'fixed';
-        content.style.left = '50%';
-        content.style.top = `${Math.round(targetTop)}px`;
-        content.style.bottom = 'auto';
-        content.style.transform = 'translateX(-50%)';
-        content.style.maxHeight = `${Math.max(260, Math.round(viewportHeight - 16))}px`;
-        content.style.overflowY = 'auto';
+        content.style.position = '';
+        content.style.left = '';
+        content.style.top = '';
+        content.style.bottom = '';
+        content.style.transform = '';
+        content.style.maxHeight = '';
+        content.style.overflowY = '';
     }
 
     function closeFuelSplitModal() {
