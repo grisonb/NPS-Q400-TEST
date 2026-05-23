@@ -5274,6 +5274,7 @@ function initializeCalculator() {
         if (!modal) return;
 
         const content = modal.querySelector('.fuel-split-modal-content');
+
         document.body.classList.remove('fuel-keyboard-open');
 
         modal.style.alignItems = '';
@@ -5300,6 +5301,7 @@ function initializeCalculator() {
         if (!content) return;
 
         const visualViewport = window.visualViewport;
+
         if (!visualViewport || !modal.contains(document.activeElement)) {
             resetFuelSplitKeyboardOffset();
             return;
@@ -5315,27 +5317,25 @@ function initializeCalculator() {
             return;
         }
 
-        /*
-         * iPad : ne plus calculer une position fixe en JavaScript.
-         * On laisse le CSS passer la fenêtre en mode compact et la descendre.
-         * Cela évite les effets de sur-remontée provoqués par visualViewport.
-         */
         document.body.classList.add('fuel-keyboard-open');
 
-        modal.style.alignItems = '';
-        modal.style.justifyContent = '';
-        modal.style.paddingTop = '';
-        modal.style.paddingBottom = '';
+        /*
+         * Correctif iPad : la fenêtre carburant reste dans la zone visible.
+         * On la rend compacte et scrollable au lieu de la pousser vers le haut.
+         */
+        modal.style.alignItems = 'flex-start';
+        modal.style.justifyContent = 'center';
+        modal.style.paddingTop = '8px';
+        modal.style.paddingBottom = '8px';
 
-        content.style.position = '';
-        content.style.left = '';
-        content.style.top = '';
-        content.style.bottom = '';
-        content.style.transform = '';
-        content.style.maxHeight = '';
-        content.style.overflowY = '';
+        content.style.position = 'fixed';
+        content.style.left = '50%';
+        content.style.top = `${Math.round((visualViewport.offsetTop || 0) + 8)}px`;
+        content.style.bottom = 'auto';
+        content.style.transform = 'translateX(-50%)';
+        content.style.maxHeight = `${Math.max(260, Math.round(visualViewport.height - 16))}px`;
+        content.style.overflowY = 'auto';
     }
-
     function closeFuelSplitModal() {
         const { modal } = getFuelSplitModalElements();
         if (modal) modal.style.display = 'none';
