@@ -1738,3 +1738,85 @@ body.fuel-keyboard-open .fuel-split-hint {
     color: var(--secondary-color);
     border: 1px solid var(--secondary-color);
 }
+
+/* =========================================================================
+   CORRECTIF SCROLL MENU CARTES / PDF AÉRODROMES
+   Objectif : permettre le défilement complet sur iPad, sans toucher au moteur cartes.
+   ========================================================================= */
+#offline-map-modal {
+    position: fixed !important;
+    inset: 0 !important;
+    width: 100vw !important;
+    height: 100dvh !important;
+    max-height: 100dvh !important;
+    overflow: hidden !important;
+    align-items: center !important;
+    justify-content: center !important;
+    padding: max(10px, env(safe-area-inset-top)) 10px max(10px, env(safe-area-inset-bottom)) !important;
+    box-sizing: border-box !important;
+}
+
+#offline-map-modal .main-container {
+    width: min(640px, calc(100vw - 20px)) !important;
+    height: calc(100dvh - max(20px, env(safe-area-inset-top)) - max(20px, env(safe-area-inset-bottom))) !important;
+    max-height: calc(100dvh - max(20px, env(safe-area-inset-top)) - max(20px, env(safe-area-inset-bottom))) !important;
+    min-height: 0 !important;
+    display: flex !important;
+    flex-direction: column !important;
+    overflow: hidden !important;
+    box-sizing: border-box !important;
+    padding: 16px 18px !important;
+}
+
+#offline-map-modal h2 {
+    flex: 0 0 auto !important;
+    margin: 4px 54px 12px 0 !important;
+    line-height: 1.15 !important;
+}
+
+#offline-map-modal .modal-content {
+    flex: 1 1 auto !important;
+    min-height: 0 !important;
+    max-height: none !important;
+    overflow-y: auto !important;
+    overflow-x: hidden !important;
+    -webkit-overflow-scrolling: touch !important;
+    touch-action: pan-y !important;
+    overscroll-behavior: contain !important;
+    padding: 0 6px 40px 0 !important;
+    gap: 18px !important;
+}
+
+#offline-map-modal .import-section,
+#offline-map-modal #import-progress-section,
+#offline-map-modal .installed-maps-section,
+#offline-map-modal .airport-pdf-section {
+    flex: 0 0 auto !important;
+}
+
+#offline-map-modal #close-offline-map-btn {
+    z-index: 3 !important;
+}
+
+#installed-maps-list,
+#installed-airport-pdfs-list {
+    max-height: none !important;
+    overflow: visible !important;
+}
+
+.airport-pdf-section {
+    margin-bottom: 48px !important;
+}
+
+@supports not (height: 100dvh) {
+    #offline-map-modal {
+        height: 100vh !important;
+        max-height: 100vh !important;
+    }
+
+    #offline-map-modal .main-container {
+        height: calc(100vh - 24px) !important;
+        max-height: calc(100vh - 24px) !important;
+    }
+}
+
