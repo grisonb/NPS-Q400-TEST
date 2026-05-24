@@ -11,7 +11,7 @@
     <meta name="apple-mobile-web-app-capable" content="no">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <script>
-        const APP_VERSION = 'v11.04';
+        const APP_VERSION = 'v11.05';
         const APP_VERSION_STORAGE_KEY = 'appVersion';
         const SW_CONTROLLER_RELOAD_GUARD_KEY = 'swControllerReloadGuard';
         window.APP_VERSION = APP_VERSION;
@@ -342,6 +342,15 @@
                     <ul id="installed-maps-list">
                         <!-- Les packs installés seront listés ici par le JavaScript -->
                         <li class="no-maps-placeholder">Aucun pack de cartes installé.</li>
+                    </ul>
+                </div>
+                <div class="airport-pdf-section">
+                    <h3>PDF aérodromes offline</h3>
+                    <p>Importe un ou plusieurs PDF nommés avec leur code OACI, par exemple <b>LFTW.pdf</b>, <b>LFKJ.pdf</b> ou <b>LFAQ.pdf</b>. Ils seront stockés sur l’iPad pour ouverture hors ligne depuis le bouton PDF des pélicandromes.</p>
+                    <label for="airport-pdf-importer-input" class="import-button pdf-import-button">Télécharger PDF aérodromes</label>
+                    <input type="file" id="airport-pdf-importer-input" accept="application/pdf,.pdf" multiple style="display: none;">
+                    <ul id="installed-airport-pdfs-list">
+                        <li class="no-pdfs-placeholder">Aucun PDF aérodrome stocké.</li>
                     </ul>
                 </div>
             </div>
