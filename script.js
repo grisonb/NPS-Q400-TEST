@@ -1402,7 +1402,7 @@ function drawRoute(startLatLng, endLatLng, options = {}) {
         dashArray = '5, 10';
         layer = userToTargetLayer;
     } else if (isLftwRoute) {
-        labelText = `BASE ${selectedBaseOACI}: ${formatRouteDegrees(magneticBearing)} / ${Math.round(distance)} Nm`;
+        labelText = `<b>BASE ${selectedBaseOACI}</b><br>${formatRouteDegrees(magneticBearing)} / ${Math.round(distance)} Nm`;
         color = 'var(--success-color)';
         dashArray = '5, 10';
         layer = lftwRouteLayer;
