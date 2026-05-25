@@ -394,7 +394,7 @@ function getRouteLabelNearAirportOptions(fireLatLng, airportLatLng, kind = 'defa
         return fallback;
     }
 
-    const distanceFromIcon = kind === 'base' ? 46 : 42;
+    const distanceFromIcon = kind === 'base' ? 54 : 42;
     let offsetX = Math.round((-dx / length) * distanceFromIcon);
     let offsetY = Math.round((-dy / length) * distanceFromIcon);
 
@@ -1402,7 +1402,7 @@ function drawRoute(startLatLng, endLatLng, options = {}) {
         dashArray = '5, 10';
         layer = userToTargetLayer;
     } else if (isLftwRoute) {
-        labelText = `<b>BASE ${selectedBaseOACI}</b><br>${formatRouteDegrees(magneticBearing)} / ${Math.round(distance)} Nm`;
+        labelText = `<b>BASE ${selectedBaseOACI}</b><span class="route-label-sub">${formatRouteDegrees(magneticBearing)} / ${Math.round(distance)} Nm</span>`;
         color = 'var(--success-color)';
         dashArray = '5, 10';
         layer = lftwRouteLayer;
