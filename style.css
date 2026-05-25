@@ -1883,3 +1883,12 @@ body.fuel-keyboard-open .fuel-split-hint {
     color: #ffffff !important;
     border-color: #1a7431 !important;
 }
+
+
+/* ==========================================================================
+   v11.11 — Étiquettes routes ancrées sur les icônes aéroport/base
+   ========================================================================== */
+.leaflet-tooltip.route-tooltip.route-tooltip-near-icon {
+    white-space: nowrap !important;
+    z-index: 1350 !important;
+}
