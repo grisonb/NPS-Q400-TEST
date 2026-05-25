@@ -394,15 +394,15 @@ function getRouteLabelNearAirportOptions(fireLatLng, airportLatLng, kind = 'defa
         return fallback;
     }
 
-    const distanceFromIcon = kind === 'base' ? 70 : 60;
+    const distanceFromIcon = kind === 'base' ? 38 : 34;
     let offsetX = Math.round((-dx / length) * distanceFromIcon);
     let offsetY = Math.round((-dy / length) * distanceFromIcon);
 
     /*
      * Sécurité : évite que l'étiquette reste collée à l'icône sur les axes quasi purs.
      */
-    if (Math.abs(offsetX) < 18) offsetX = offsetX < 0 ? -18 : 18;
-    if (Math.abs(offsetY) < 18) offsetY = offsetY < 0 ? -18 : 18;
+    if (Math.abs(offsetX) < 10) offsetX = offsetX < 0 ? -10 : 10;
+    if (Math.abs(offsetY) < 10) offsetY = offsetY < 0 ? -10 : 10;
 
     return {
         latLng: airportLatLng,
