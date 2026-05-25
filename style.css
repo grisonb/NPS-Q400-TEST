@@ -164,22 +164,21 @@ html, body {
 }
 #nearest-commune-display {
     position: absolute;
-    bottom: 24px; /* 16 x 1,5 */
-    right: 24px;  /* 16 x 1,5 */
+    bottom: 16px;
+    right: 16px;
     z-index: 1000;
     background-color: rgba(255, 255, 255, 0.95);
-    border: 1.5px solid rgba(0, 0, 0, 0.2);
-    border-radius: 18px; /* 12 x 1,5 */
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4);
-    padding: 15px 21px; /* 10/14 x 1,5 */
-    font-size: 27px;    /* 18 x 1,5 */
+    border: 1px solid rgba(0, 0, 0, 0.2);
+    border-radius: var(--border-radius);
+    box-shadow: 0 1px 5px rgba(0, 0, 0, 0.4);
+    padding: 10px 14px;
+    font-size: 18px;
     color: var(--text-color);
-    max-width: min(540px, calc(100vw - 48px)); /* 360 x 1,5 */
+    max-width: min(360px, calc(100vw - 32px));
 }
 
 #nearest-commune-display b {
     color: var(--primary-color);
-    font-size: 1em;
 }
 
 #live-gps-button { flex-shrink: 0; width: 48px; height: 48px; padding: 0; border: 1px solid var(--border-color); border-radius: var(--border-radius); background-color: var(--card-background-color); color: var(--primary-color); font-size: 24px; cursor: pointer; display: flex; align-items: center; justify-content: center; line-height: 1; transition: background-color 0.2s, color 0.2s; }
@@ -1819,4 +1818,31 @@ body.fuel-keyboard-open .fuel-split-hint {
         height: calc(100vh - 24px) !important;
         max-height: calc(100vh - 24px) !important;
     }
+}
+
+
+/* ==========================================================================
+   AGRANDISSEMENT x1,5 BULLE "Commune: ..."
+   À laisser tout à la fin du fichier pour écraser les anciens réglages.
+   ========================================================================== */
+#nearest-commune-display {
+    bottom: 24px !important;
+    right: 24px !important;
+    padding: 15px 21px !important;
+    font-size: 27px !important;
+    line-height: 1.25 !important;
+    border-radius: 18px !important;
+    max-width: min(540px, calc(100vw - 48px)) !important;
+    gap: 12px !important;
+}
+
+#nearest-commune-display b {
+    font-size: 27px !important;
+    font-weight: 900 !important;
+}
+
+/* Sécurité : si le texte est généré avec spans/divs internes */
+#nearest-commune-display span,
+#nearest-commune-display div {
+    font-size: inherit !important;
 }
