@@ -1908,3 +1908,18 @@ body.fuel-keyboard-open .fuel-split-hint {
 .leaflet-tooltip.route-tooltip.route-tooltip-near-icon {
     margin: 0 !important;
 }
+
+
+/* ==========================================================================
+   v11.14 — Étiquette BASE sur 2 lignes
+   ========================================================================== */
+.leaflet-tooltip.route-tooltip-base.route-tooltip-near-icon {
+    text-align: center !important;
+    line-height: 1.2 !important;
+    padding: 4px 8px !important;
+}
+
+.leaflet-tooltip.route-tooltip-base.route-tooltip-near-icon b {
+    display: block !important;
+    font-weight: 900 !important;
+}
