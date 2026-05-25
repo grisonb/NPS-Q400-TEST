@@ -1954,3 +1954,11 @@ body.fuel-keyboard-open .fuel-split-hint {
     margin: 0 !important;
     padding: 0 !important;
 }
+
+
+/* ==========================================================================
+   v11.16 — Seul "BASE LFTW" reste en gras dans l'étiquette base
+   ========================================================================== */
+.leaflet-tooltip.route-tooltip-base.route-tooltip-near-icon .route-label-sub {
+    font-weight: 500 !important;
+}
