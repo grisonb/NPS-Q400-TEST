@@ -361,42 +361,51 @@ function resetRouteTooltipOffsets() {
     window.__routeTooltipOffsetCounter = { default: 0, pelic: 0, base: 0, user: 0 };
 }
 
-function getRouteLabelNearStartOptions(startLatLng, endLatLng, kind = 'default') {
+function getRouteLabelNearAirportOptions(fireLatLng, airportLatLng, kind = 'default') {
     /*
      * Étiquettes routes :
-     * - placées à côté de l'icône de départ de route (pélicandrome ou base) ;
-     * - positionnées à l'opposé du trait pour ne pas masquer la route.
+     * - ancrées sur l'icône de l'aéroport / base ;
+     * - décalées à l'opposé du trait par rapport à cette icône.
+     *
+     * Exemple : si le trait arrive par le haut de l'icône, l'étiquette part vers le bas.
      */
     const fallback = {
-        latLng: Array.isArray(startLatLng) ? startLatLng : [startLatLng.lat, startLatLng.lng],
-        offset: [0, 44],
+        latLng: Array.isArray(airportLatLng) ? airportLatLng : [airportLatLng.lat, airportLatLng.lng],
+        offset: [0, 52],
         direction: 'center'
     };
 
-    if (!map || !map.latLngToLayerPoint || !Array.isArray(startLatLng) || !Array.isArray(endLatLng)) {
+    if (!map || !map.latLngToLayerPoint || !Array.isArray(fireLatLng) || !Array.isArray(airportLatLng)) {
         return fallback;
     }
 
-    const startPoint = map.latLngToLayerPoint(L.latLng(startLatLng[0], startLatLng[1]));
-    const endPoint = map.latLngToLayerPoint(L.latLng(endLatLng[0], endLatLng[1]));
+    const firePoint = map.latLngToLayerPoint(L.latLng(fireLatLng[0], fireLatLng[1]));
+    const airportPoint = map.latLngToLayerPoint(L.latLng(airportLatLng[0], airportLatLng[1]));
 
-    const dx = endPoint.x - startPoint.x;
-    const dy = endPoint.y - startPoint.y;
+    /*
+     * Vecteur depuis l'icône vers le feu = direction du trait côté icône.
+     * L'étiquette est placée dans le sens opposé.
+     */
+    const dx = firePoint.x - airportPoint.x;
+    const dy = firePoint.y - airportPoint.y;
     const length = Math.sqrt((dx * dx) + (dy * dy));
 
     if (!Number.isFinite(length) || length < 1) {
         return fallback;
     }
 
-    const distanceFromIcon = kind === 'base' ? 58 : 52;
+    const distanceFromIcon = kind === 'base' ? 70 : 60;
     let offsetX = Math.round((-dx / length) * distanceFromIcon);
     let offsetY = Math.round((-dy / length) * distanceFromIcon);
 
-    if (Math.abs(offsetX) < 16) offsetX = offsetX < 0 ? -16 : 16;
-    if (Math.abs(offsetY) < 16) offsetY = offsetY < 0 ? -16 : 16;
+    /*
+     * Sécurité : évite que l'étiquette reste collée à l'icône sur les axes quasi purs.
+     */
+    if (Math.abs(offsetX) < 18) offsetX = offsetX < 0 ? -18 : 18;
+    if (Math.abs(offsetY) < 18) offsetY = offsetY < 0 ? -18 : 18;
 
     return {
-        latLng: startLatLng,
+        latLng: airportLatLng,
         offset: [offsetX, offsetY],
         direction: 'center'
     };
@@ -1411,7 +1420,7 @@ function drawRoute(startLatLng, endLatLng, options = {}) {
             displayCommuneDetails(currentCommune, false);
         });
 
-        const tooltipOptions = getRouteLabelNearStartOptions(startLatLng, endLatLng, 'pelic');
+        const tooltipOptions = getRouteLabelNearAirportOptions(startLatLng, endLatLng, 'pelic');
 
         L.tooltip({
             permanent: true,
@@ -1430,7 +1439,7 @@ function drawRoute(startLatLng, endLatLng, options = {}) {
         // Pas d'étiquette sur la route rouge GPS -> Feu : l'information est affichée dans le bandeau commune.
         return;
     } else if (isLftwRoute) {
-        const tooltipOptions = getRouteLabelNearStartOptions(startLatLng, endLatLng, 'base');
+        const tooltipOptions = getRouteLabelNearAirportOptions(startLatLng, endLatLng, 'base');
         L.tooltip({
             permanent: true,
             direction: tooltipOptions.direction,
@@ -1438,7 +1447,7 @@ function drawRoute(startLatLng, endLatLng, options = {}) {
             className: 'route-tooltip route-tooltip-base route-tooltip-near-icon'
         }).setLatLng(tooltipOptions.latLng).setContent(labelText).addTo(layer);
     } else if (oaci) {
-        const tooltipOptions = getRouteLabelNearStartOptions(startLatLng, endLatLng, 'default');
+        const tooltipOptions = getRouteLabelNearAirportOptions(startLatLng, endLatLng, 'default');
         L.tooltip({
             permanent: true,
             direction: tooltipOptions.direction,
