@@ -361,6 +361,47 @@ function resetRouteTooltipOffsets() {
     window.__routeTooltipOffsetCounter = { default: 0, pelic: 0, base: 0, user: 0 };
 }
 
+function getRouteLabelNearStartOptions(startLatLng, endLatLng, kind = 'default') {
+    /*
+     * Étiquettes routes :
+     * - placées à côté de l'icône de départ de route (pélicandrome ou base) ;
+     * - positionnées à l'opposé du trait pour ne pas masquer la route.
+     */
+    const fallback = {
+        latLng: Array.isArray(startLatLng) ? startLatLng : [startLatLng.lat, startLatLng.lng],
+        offset: [0, 44],
+        direction: 'center'
+    };
+
+    if (!map || !map.latLngToLayerPoint || !Array.isArray(startLatLng) || !Array.isArray(endLatLng)) {
+        return fallback;
+    }
+
+    const startPoint = map.latLngToLayerPoint(L.latLng(startLatLng[0], startLatLng[1]));
+    const endPoint = map.latLngToLayerPoint(L.latLng(endLatLng[0], endLatLng[1]));
+
+    const dx = endPoint.x - startPoint.x;
+    const dy = endPoint.y - startPoint.y;
+    const length = Math.sqrt((dx * dx) + (dy * dy));
+
+    if (!Number.isFinite(length) || length < 1) {
+        return fallback;
+    }
+
+    const distanceFromIcon = kind === 'base' ? 58 : 52;
+    let offsetX = Math.round((-dx / length) * distanceFromIcon);
+    let offsetY = Math.round((-dy / length) * distanceFromIcon);
+
+    if (Math.abs(offsetX) < 16) offsetX = offsetX < 0 ? -16 : 16;
+    if (Math.abs(offsetY) < 16) offsetY = offsetY < 0 ? -16 : 16;
+
+    return {
+        latLng: startLatLng,
+        offset: [offsetX, offsetY],
+        direction: 'center'
+    };
+}
+
 const calculateDestinationPoint = (lat, lon, bearing, distanceNm) => {
     const R = 3440.065; // Rayon de la Terre en milles nautiques
     const latRad = toRad(lat);
@@ -1359,7 +1400,7 @@ function drawRoute(startLatLng, endLatLng, options = {}) {
     } else if (oaci) {
         const isSelected = selectedPelicanOACI === oaci;
         color = isSelected ? 'var(--success-color)' : 'var(--primary-color)';
-        const tooltipClass = isSelected ? 'route-tooltip route-tooltip-selected route-tooltip-staggered' : 'route-tooltip route-tooltip-staggered';
+        const tooltipClass = isSelected ? 'route-tooltip route-tooltip-selected route-tooltip-near-icon' : 'route-tooltip route-tooltip-near-icon';
         labelText = `<b>${oaci}</b><br>${Math.round(distance)} Nm`;
 
         L.polyline([startLatLng, endLatLng], { color, weight: 3, opacity: 0.8 }).addTo(layer);
@@ -1370,16 +1411,14 @@ function drawRoute(startLatLng, endLatLng, options = {}) {
             displayCommuneDetails(currentCommune, false);
         });
 
-        const tooltipRatio = isSelected ? 0.72 : 0.82;
-        const tooltipLatLng = getRouteTooltipLatLng(startLatLng, endLatLng, tooltipRatio);
-        const tooltipOffset = getRouteTooltipOffset('pelic');
+        const tooltipOptions = getRouteLabelNearStartOptions(startLatLng, endLatLng, 'pelic');
 
         L.tooltip({
             permanent: true,
-            direction: 'right',
-            offset: tooltipOffset,
+            direction: tooltipOptions.direction,
+            offset: tooltipOptions.offset,
             className: tooltipClass
-        }).setLatLng(tooltipLatLng).setContent(labelText).addTo(layer);
+        }).setLatLng(tooltipOptions.latLng).setContent(labelText).addTo(layer);
         return;
     } else {
         labelText = `${Math.round(distance)} Nm`;
@@ -1391,24 +1430,24 @@ function drawRoute(startLatLng, endLatLng, options = {}) {
         // Pas d'étiquette sur la route rouge GPS -> Feu : l'information est affichée dans le bandeau commune.
         return;
     } else if (isLftwRoute) {
-        const tooltipLatLng = getRouteTooltipLatLng(startLatLng, endLatLng, 0.45);
-        const tooltipOffset = getRouteTooltipOffset('base');
+        const tooltipOptions = getRouteLabelNearStartOptions(startLatLng, endLatLng, 'base');
         L.tooltip({
             permanent: true,
-            direction: 'right',
-            offset: tooltipOffset,
-            className: 'route-tooltip route-tooltip-base route-tooltip-staggered'
-        }).setLatLng(tooltipLatLng).setContent(labelText).addTo(layer);
+            direction: tooltipOptions.direction,
+            offset: tooltipOptions.offset,
+            className: 'route-tooltip route-tooltip-base route-tooltip-near-icon'
+        }).setLatLng(tooltipOptions.latLng).setContent(labelText).addTo(layer);
     } else if (oaci) {
-        const tooltipLatLng = getRouteTooltipLatLng(startLatLng, endLatLng, 0.75);
+        const tooltipOptions = getRouteLabelNearStartOptions(startLatLng, endLatLng, 'default');
         L.tooltip({
             permanent: true,
-            direction: 'right',
-            offset: getRouteTooltipOffset('default'),
-            className: 'route-tooltip route-tooltip-staggered'
-        }).setLatLng(tooltipLatLng).setContent(labelText).addTo(layer);
+            direction: tooltipOptions.direction,
+            offset: tooltipOptions.offset,
+            className: 'route-tooltip route-tooltip-near-icon'
+        }).setLatLng(tooltipOptions.latLng).setContent(labelText).addTo(layer);
     }
 }
+
 
 function getClosestAirports(lat, lon, count) { const customPelican = otherAirports.filter(ap => customPelicanAirports.has(ap.oaci)); return [...pelicanAirports, ...customPelican].filter(ap => !disabledAirports.has(ap.oaci)).map(ap => ({ ...ap, distance: calculateDistanceInNm(lat, lon, ap.lat, ap.lon) })).sort((a, b) => a.distance - b.distance).slice(0, count); }
 function getAirportByOaci(oaci) {
