@@ -1923,3 +1923,34 @@ body.fuel-keyboard-open .fuel-split-hint {
     display: block !important;
     font-weight: 900 !important;
 }
+
+
+/* ==========================================================================
+   v11.15 — Étiquette BASE compacte et légèrement décollée de l'icône
+   ========================================================================== */
+.leaflet-tooltip.route-tooltip-base.route-tooltip-near-icon {
+    display: flex !important;
+    flex-direction: column !important;
+    align-items: center !important;
+    justify-content: center !important;
+    gap: 1px !important;
+    text-align: center !important;
+    line-height: 1.02 !important;
+    padding: 3px 7px !important;
+}
+
+.leaflet-tooltip.route-tooltip-base.route-tooltip-near-icon b {
+    display: block !important;
+    font-weight: 900 !important;
+    line-height: 1.02 !important;
+    margin: 0 !important;
+    padding: 0 !important;
+}
+
+.leaflet-tooltip.route-tooltip-base.route-tooltip-near-icon .route-label-sub {
+    display: block !important;
+    font-weight: 800 !important;
+    line-height: 1.02 !important;
+    margin: 0 !important;
+    padding: 0 !important;
+}
