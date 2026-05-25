@@ -1863,3 +1863,23 @@ body.fuel-keyboard-open .fuel-split-hint {
         font-size: 27px !important;
     }
 }
+
+
+/* ==========================================================================
+   ÉTIQUETTES ROUTES — à côté des icônes, à l'opposé des traits
+   ========================================================================== */
+.leaflet-tooltip.route-tooltip.route-tooltip-near-icon {
+    white-space: nowrap !important;
+    z-index: 1300 !important;
+    pointer-events: auto !important;
+}
+
+.leaflet-tooltip.route-tooltip-base.route-tooltip-near-icon {
+    border-color: var(--success-color) !important;
+}
+
+.leaflet-tooltip.route-tooltip-selected.route-tooltip-near-icon {
+    background-color: var(--success-color) !important;
+    color: #ffffff !important;
+    border-color: #1a7431 !important;
+}
