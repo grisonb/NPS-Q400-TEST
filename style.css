@@ -1820,10 +1820,9 @@ body.fuel-keyboard-open .fuel-split-hint {
     }
 }
 
-
 /* ==========================================================================
-   AGRANDISSEMENT x1,5 BULLE "Commune: ..."
-   À laisser tout à la fin du fichier pour écraser les anciens réglages.
+   BULLE COMMUNE x1.5 — override final iPad/PC
+   Ce bloc doit rester tout à la fin du fichier.
    ========================================================================== */
 #nearest-commune-display {
     bottom: 24px !important;
@@ -1833,16 +1832,34 @@ body.fuel-keyboard-open .fuel-split-hint {
     line-height: 1.25 !important;
     border-radius: 18px !important;
     max-width: min(540px, calc(100vw - 48px)) !important;
-    gap: 12px !important;
+    min-height: 48px !important;
+    box-sizing: border-box !important;
+}
+
+#nearest-commune-display,
+#nearest-commune-display * {
+    font-size: 27px !important;
 }
 
 #nearest-commune-display b {
-    font-size: 27px !important;
     font-weight: 900 !important;
+    color: var(--primary-color) !important;
 }
 
-/* Sécurité : si le texte est généré avec spans/divs internes */
-#nearest-commune-display span,
-#nearest-commune-display div {
-    font-size: inherit !important;
+/* iPad / Safari : renforce la règle même en contexte tactile */
+@media (hover: none) and (pointer: coarse) {
+    #nearest-commune-display {
+        bottom: 24px !important;
+        right: 24px !important;
+        padding: 15px 21px !important;
+        font-size: 27px !important;
+        line-height: 1.25 !important;
+        border-radius: 18px !important;
+        max-width: min(540px, calc(100vw - 48px)) !important;
+    }
+
+    #nearest-commune-display,
+    #nearest-commune-display * {
+        font-size: 27px !important;
+    }
 }
