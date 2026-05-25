@@ -1900,3 +1900,11 @@ body.fuel-keyboard-open .fuel-split-hint {
 .leaflet-tooltip.route-tooltip.route-tooltip-near-icon {
     margin: 0 !important;
 }
+
+
+/* ==========================================================================
+   v11.13 — Étiquettes routes légèrement décollées des icônes
+   ========================================================================== */
+.leaflet-tooltip.route-tooltip.route-tooltip-near-icon {
+    margin: 0 !important;
+}
