@@ -1892,3 +1892,11 @@ body.fuel-keyboard-open .fuel-split-hint {
     white-space: nowrap !important;
     z-index: 1350 !important;
 }
+
+
+/* ==========================================================================
+   v11.12 — Étiquettes routes rapprochées des icônes
+   ========================================================================== */
+.leaflet-tooltip.route-tooltip.route-tooltip-near-icon {
+    margin: 0 !important;
+}
