@@ -749,6 +749,43 @@ function enforceOfflineZoomLimit() {
     }
 }
 
+
+function normalizeOfflineTileHostPrefix(packName) {
+    /*
+     * v11.36 — affichage OACI rapide.
+     *
+     * Le service worker recherche les tuiles via l'index tileUrl.
+     * Si OpenStreet et OACI utilisent tous les deux https://a.tile.../z/x/y.png,
+     * l'index contient plusieurs enregistrements pour le même tileUrl et Safari
+     * peut parcourir lentement les tuiles OpenStreet avant de trouver OACI.
+     *
+     * Solution : les petits packs comme OACI utilisent un sous-domaine fictif
+     * mais toujours intercepté par le service worker :
+     * https://oaci.tile.openstreetmap.org/z/x/y.png
+     *
+     * OpenStreet garde https://a.tile... car c'est la combinaison qui importe
+     * correctement les 900 Mo.
+     */
+    const raw = String(packName || '').trim();
+    const simplified = raw.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, '');
+
+    if (!raw || /open\s*street|openstreet|osm/.test(simplified)) {
+        return 'a';
+    }
+
+    if (/oaci|carte\s*oaci/.test(simplified)) {
+        return 'oaci';
+    }
+
+    const compact = simplified.replace(/[^a-z0-9]+/g, '').slice(0, 20);
+    return compact || 'pack';
+}
+
+function buildOfflineTileUrlForPack(tilePath, packName, isLargeZip = false) {
+    const hostPrefix = isLargeZip ? 'a' : normalizeOfflineTileHostPrefix(packName);
+    return `https://${hostPrefix}.tile.openstreetmap.org/${tilePath}`;
+}
+
 function setupBaseTileLayer() {
     if (!map) return;
     if (baseTileLayer) {
@@ -788,7 +825,11 @@ function setupBaseTileLayer() {
         map.setView(map.getCenter(), effectiveMaxZoom, { animate: false });
     }
 
-    baseTileLayer = L.tileLayer('https://a.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    const activeTilePackName = Array.isArray(activeOfflinePacks) && activeOfflinePacks.length ? activeOfflinePacks[0] : '';
+    const tileHostPrefix = offlineTilesMode ? normalizeOfflineTileHostPrefix(activeTilePackName) : 'a';
+    const tileLayerUrl = `https://${tileHostPrefix}.tile.openstreetmap.org/{z}/{x}/{y}.png`;
+
+    baseTileLayer = L.tileLayer(tileLayerUrl, {
         minNativeZoom: effectiveMinZoom,
         maxNativeZoom: effectiveMaxZoom,
         minZoom: effectiveMinZoom,
@@ -3165,6 +3206,11 @@ async function handleZipImport(file) {
         const isLargeZip = file.size > 300 * 1024 * 1024;
         const batchSize = isLargeZip ? 100 : 150;
         const usePackScopedKey = !isLargeZip;
+        /*
+         * v11.36 : les petits packs utilisent aussi un host dédié dans tileUrl.
+         * L'index tileUrl du service worker tombe donc directement sur le bon pack
+         * et l'affichage OACI redevient rapide.
+         */
 
         let batch = [];
         let processedFiles = 0;
@@ -3187,7 +3233,7 @@ async function handleZipImport(file) {
         for (let i = 0; i < tileFiles.length; i += 1) {
             const tileFile = tileFiles[i];
             const blob = await tileFile.async('blob');
-            const tileUrl = `https://a.tile.openstreetmap.org/${tileFile.name}`;
+            const tileUrl = buildOfflineTileUrlForPack(tileFile.name, packName, isLargeZip);
 
             batch.push({
                 url: usePackScopedKey ? buildStoredTileKey(tileUrl, packName) : tileUrl,
