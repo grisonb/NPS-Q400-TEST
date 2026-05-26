@@ -3224,27 +3224,15 @@ async function handleZipImport(file) {
         }
         localStorage.setItem('installedMapPacks', JSON.stringify(installedPacks));
 
-        activeOfflinePacks = [packName];
-        localStorage.setItem(OFFLINE_ACTIVE_PACKS_KEY, JSON.stringify(activeOfflinePacks));
+        await persistSimpleActiveOfflinePacks([packName]);
 
         if (isLargeZip) {
-            statusMessage.textContent = `Importation de ${packName} terminée. Rechargement mémoire...`;
-            try {
-                if (db) db.close();
-            } catch (_) {}
-            db = null;
-
-            setTimeout(() => {
-                const refreshUrl = new URL(window.location.href);
-                refreshUrl.searchParams.set('appv', APP_VERSION);
-                refreshUrl.searchParams.set('ts', Date.now().toString());
-                window.location.replace(refreshUrl.toString());
-            }, 300);
+            reloadAfterOfflinePackChange(`Importation de ${packName} terminée. Rechargement mémoire...`);
             return;
         }
 
-        notifyServiceWorkerActivePacks(activeOfflinePacks);
-        displayInstalledMaps();
+        reloadAfterOfflinePackChange(`Importation de ${packName} terminée. Rechargement de la carte...`);
+        return;
 
     } catch (error) {
         statusMessage.textContent = `Erreur: ${error.message}`;
@@ -3289,6 +3277,65 @@ function parseTilePathFromName(name) {
     return candidates;
 }
 
+
+async function persistSimpleActiveOfflinePacks(packs) {
+    /*
+     * v11.35 — affichage carte propre.
+     * Le pack actif est écrit à la fois dans localStorage et dans IndexedDB/settings,
+     * car le service worker relit périodiquement IndexedDB. Sans cela, il peut
+     * continuer à servir l'ancien pack et mélanger OACI / OpenStreet.
+     */
+    activeOfflinePacks = Array.isArray(packs) ? packs.filter(Boolean) : [];
+    localStorage.setItem(OFFLINE_ACTIVE_PACKS_KEY, JSON.stringify(activeOfflinePacks));
+
+    if (!db) {
+        try {
+            await initDB();
+        } catch (_) {}
+    }
+
+    if (db) {
+        try {
+            await new Promise((resolve, reject) => {
+                const tx = db.transaction('settings', 'readwrite');
+                const store = tx.objectStore('settings');
+                store.put({ key: OFFLINE_ACTIVE_PACKS_KEY, value: activeOfflinePacks });
+                tx.oncomplete = resolve;
+                tx.onerror = () => reject(tx.error);
+                tx.onabort = () => reject(tx.error || new Error('Transaction settings annulée'));
+            });
+        } catch (error) {
+            console.warn('[Offline] Impossible de persister le pack actif dans IndexedDB:', error);
+        }
+    }
+
+    notifyServiceWorkerActivePacks(activeOfflinePacks);
+}
+
+function reloadAfterOfflinePackChange(message = 'Rechargement de la carte...') {
+    const statusMessage = document.getElementById('import-status-message');
+    if (statusMessage) statusMessage.textContent = message;
+
+    try {
+        if (map && baseTileLayer) {
+            map.removeLayer(baseTileLayer);
+            baseTileLayer = null;
+        }
+    } catch (_) {}
+
+    try {
+        if (db) db.close();
+    } catch (_) {}
+    db = null;
+
+    setTimeout(() => {
+        const refreshUrl = new URL(window.location.href);
+        refreshUrl.searchParams.set('appv', APP_VERSION);
+        refreshUrl.searchParams.set('ts', Date.now().toString());
+        window.location.replace(refreshUrl.toString());
+    }, 300);
+}
+
 function displayInstalledMaps() {
     /*
      * v11.27 — affichage simple comme l'ancien module.
@@ -3321,12 +3368,9 @@ function displayInstalledMaps() {
     updateOfflineStatus();
 }
 
-window.selectSimpleMapPack = function(packName) {
-    activeOfflinePacks = [packName];
-    localStorage.setItem(OFFLINE_ACTIVE_PACKS_KEY, JSON.stringify(activeOfflinePacks));
-    notifyServiceWorkerActivePacks(activeOfflinePacks);
-    displayInstalledMaps();
-    updateOfflineStatus();
+window.selectSimpleMapPack = async function(packName) {
+    await persistSimpleActiveOfflinePacks([packName]);
+    reloadAfterOfflinePackChange(`Carte ${packName} sélectionnée. Rechargement...`);
 };
 
 window.deleteMapPack = async function(packName) {
@@ -3363,9 +3407,9 @@ window.deleteMapPack = async function(packName) {
         localStorage.setItem('installedMapPacks', JSON.stringify(installedPacks));
 
         if (Array.isArray(activeOfflinePacks) && activeOfflinePacks.includes(packName)) {
-            activeOfflinePacks = [];
-            localStorage.setItem(OFFLINE_ACTIVE_PACKS_KEY, JSON.stringify(activeOfflinePacks));
-            notifyServiceWorkerActivePacks(activeOfflinePacks);
+            await persistSimpleActiveOfflinePacks([]);
+            reloadAfterOfflinePackChange(`Pack ${packName} supprimé. Rechargement...`);
+            return;
         }
 
         displayInstalledMaps();
