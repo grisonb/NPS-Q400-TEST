@@ -3106,72 +3106,109 @@ async function handleZipImport(file) {
 
     progressSection.style.display = 'block';
     progressBar.style.width = '0%';
-    statusMessage.textContent = `Analyse du fichier ${packName}...`;
+    statusMessage.textContent = `Ouverture du ZIP ${packName}...`;
     isZipImportRunning = true;
+
+    const idle = (delay = 0) => new Promise((resolve) => setTimeout(resolve, delay));
+
+    const putTileBatch = (batch) => new Promise((resolve, reject) => {
+        if (!batch.length) {
+            resolve();
+            return;
+        }
+
+        const transaction = db.transaction('tiles', 'readwrite');
+        const store = transaction.objectStore('tiles');
+
+        batch.forEach(tileData => {
+            store.put(tileData);
+        });
+
+        transaction.oncomplete = resolve;
+        transaction.onerror = () => reject(transaction.error);
+        transaction.onabort = () => reject(transaction.error || new Error('Transaction IndexedDB annulée'));
+    });
 
     try {
         /*
-         * v11.27 — vraie logique ancienne de téléchargement/import.
+         * v11.28 — ancien module offline, mais préparation allégée.
          *
-         * On revient au schéma qui fonctionnait avant :
-         * - filtre direct des fichiers /z/x/y.png dans le ZIP ;
-         * - création d'une liste de tuiles en mémoire ;
-         * - écriture IndexedDB par lots de 100 ;
-         * - pas de reprise/checkpoint ;
-         * - pas de packs actifs ;
-         * - pas de scan de zoom ;
-         * - pas de purge avancée ;
-         * - pas de Cache Storage.
+         * La v11.27 revenait vraiment à l'ancienne logique, mais elle recréait
+         * aussi une grosse liste allTilesData avec tous les blobs en mémoire.
+         * Si ça plante à "préparation des tuiles", le problème est là.
+         *
+         * Ici :
+         * - on garde le module offline simple de v11.27 ;
+         * - on ne crée plus allTilesData ;
+         * - on décompresse une tuile, on la met dans un petit lot, puis on écrit ;
+         * - on ne garde jamais tous les blobs en mémoire ;
+         * - pas de scan zoom, pas de checkpoint, pas de PDF, pas de Cache Storage.
          */
+        await idle(80);
         const zip = await JSZip.loadAsync(file);
+
         const tileFiles = Object.values(zip.files || {}).filter(f => {
             return !f.dir && /\d+\/\d+\/\d+\.(png|jpg|jpeg)$/i.test(f.name);
         });
-        const totalFiles = tileFiles.length;
 
+        const totalFiles = tileFiles.length;
         if (totalFiles === 0) {
             throw new Error("Aucune tuile valide trouvée dans le ZIP. La structure doit être /zoom/colonne/ligne.png");
         }
 
-        statusMessage.textContent = `Préparation de ${totalFiles} tuiles pour l'importation...`;
+        statusMessage.textContent = `Préparation terminée. Importation de ${totalFiles} tuiles...`;
+        progressBar.style.width = '1%';
+        await idle(100);
 
-        const allTilesData = [];
-        for (const tileFile of tileFiles) {
+        const batchSize = 25;
+        let batch = [];
+        let processedFiles = 0;
+        let lastUiUpdate = Date.now();
+
+        const flushBatch = async () => {
+            if (!batch.length) return;
+            const toWrite = batch;
+            batch = [];
+            await putTileBatch(toWrite);
+            processedFiles += toWrite.length;
+
+            const percent = Math.min(100, Math.round((processedFiles / totalFiles) * 100));
+            progressBar.style.width = `${percent}%`;
+            statusMessage.textContent = `Importation... ${processedFiles} / ${totalFiles} tuiles`;
+
+            await idle(0);
+        };
+
+        for (let i = 0; i < tileFiles.length; i += 1) {
+            const tileFile = tileFiles[i];
             const blob = await tileFile.async('blob');
             const tileUrl = `https://a.tile.openstreetmap.org/${tileFile.name}`;
-            allTilesData.push({
+
+            batch.push({
                 url: tileUrl,
                 tileUrl,
                 tile: blob,
                 packName
             });
+
+            if (batch.length >= batchSize) {
+                await flushBatch();
+            }
+
+            const now = Date.now();
+            if (now - lastUiUpdate > 500) {
+                lastUiUpdate = now;
+                const percent = Math.min(99, Math.round((Math.max(processedFiles, i) / totalFiles) * 100));
+                progressBar.style.width = `${percent}%`;
+                statusMessage.textContent = `Importation... ${processedFiles} / ${totalFiles} tuiles`;
+                await idle(0);
+            }
         }
 
-        const batchSize = 100;
-        let processedFiles = 0;
-
-        for (let i = 0; i < allTilesData.length; i += batchSize) {
-            const batch = allTilesData.slice(i, i + batchSize);
-            const transaction = db.transaction('tiles', 'readwrite');
-            const store = transaction.objectStore('tiles');
-
-            batch.forEach(tileData => {
-                store.put(tileData);
-            });
-
-            await new Promise((resolve, reject) => {
-                transaction.oncomplete = () => {
-                    processedFiles += batch.length;
-                    statusMessage.textContent = `Importation... ${processedFiles} / ${totalFiles} tuiles`;
-                    progressBar.style.width = `${(processedFiles / totalFiles) * 100}%`;
-                    resolve();
-                };
-                transaction.onerror = () => reject(transaction.error);
-                transaction.onabort = () => reject(transaction.error || new Error('Transaction IndexedDB annulée'));
-            });
-        }
+        await flushBatch();
 
         statusMessage.textContent = `Importation de ${packName} terminée !`;
+        progressBar.style.width = '100%';
 
         const installedPacks = JSON.parse(localStorage.getItem('installedMapPacks') || '[]');
         if (!installedPacks.find(p => p.name === packName)) {
@@ -3179,10 +3216,6 @@ async function handleZipImport(file) {
             localStorage.setItem('installedMapPacks', JSON.stringify(installedPacks));
         }
 
-        /*
-         * Compatibilité avec le service worker récent : on rend ce pack actif,
-         * mais sans lancer de scan ni de recalcul lourd.
-         */
         activeOfflinePacks = [packName];
         localStorage.setItem(OFFLINE_ACTIVE_PACKS_KEY, JSON.stringify(activeOfflinePacks));
         notifyServiceWorkerActivePacks(activeOfflinePacks);
@@ -3194,7 +3227,7 @@ async function handleZipImport(file) {
         console.error("Erreur d'importation ZIP:", error);
     } finally {
         isZipImportRunning = false;
-        setTimeout(() => { progressSection.style.display = 'none'; }, 5000);
+        setTimeout(() => { progressSection.style.display = 'none'; }, 7000);
     }
 }
 
