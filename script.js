@@ -3131,14 +3131,15 @@ async function handleZipImport(file) {
 
     try {
         /*
-         * v11.30 — module offline ancien/simple + clé de stockage par pack.
+         * v11.31 — module offline ancien/simple + clé conditionnelle.
          *
          * v11.28 fonctionne mais elle écrivait par lots de 25 : sûr, mais trop lent.
          * Ici on garde l'import progressif sans grosse liste allTilesData, mais on
          * revient à des lots proches de l'ancien fonctionnement :
          * - 100 tuiles par transaction pour gros ZIP ;
          * - 150 tuiles par transaction pour ZIP plus petits, type OACI ;
-         * - clé IndexedDB séparée par pack pour éviter qu'OACI remplace OpenStreet ;
+         * - gros ZIP type OpenStreet : clé simple v11.29 qui fonctionne ;
+         * - petits ZIP type OACI : clé pack-scopée pour éviter le remplacement des tuiles OSM ;
          * - aucune vérification tuile par tuile ;
          * - aucun scan de zoom ;
          * - aucun checkpoint ;
@@ -3160,7 +3161,16 @@ async function handleZipImport(file) {
         progressBar.style.width = '1%';
         await idle(100);
 
-        const batchSize = file.size > 300 * 1024 * 1024 ? 100 : 150;
+        const isLargeZip = file.size > 300 * 1024 * 1024;
+        const batchSize = isLargeZip ? 100 : 150;
+        /*
+         * v11.31 :
+         * - OpenStreet 900 Mo garde la clé simple de la v11.29, car c'est la seule
+         *   combinaison qui s'est chargée correctement sur iPad.
+         * - OACI, plus petit, utilise une clé séparée par pack pour éviter de
+         *   remplacer les tuiles OpenStreet déjà présentes.
+         */
+        const usePackScopedKey = !isLargeZip;
         let batch = [];
         let processedFiles = 0;
         let lastUiUpdate = Date.now();
@@ -3185,14 +3195,7 @@ async function handleZipImport(file) {
             const tileUrl = `https://a.tile.openstreetmap.org/${tileFile.name}`;
 
             batch.push({
-                /*
-                 * v11.30 : clé pack-scopée.
-                 * Avant, OACI et OpenStreet utilisaient la même clé z/x/y.
-                 * Si OpenStreet était chargé avant, l'import OACI remplaçait des
-                 * enregistrements existants dans une base énorme, ce qui devenait
-                 * très lent sur iPad/Safari.
-                 */
-                url: buildStoredTileKey(tileUrl, packName),
+                url: usePackScopedKey ? buildStoredTileKey(tileUrl, packName) : tileUrl,
                 tileUrl,
                 tile: blob,
                 packName
