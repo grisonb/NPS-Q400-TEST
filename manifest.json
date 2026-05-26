@@ -1,13 +1,13 @@
 {
-    "name": "NPS-Q400-TEST",
-    "short_name": "NPS-Q400-TEST",
+    "name": "NPF-Q400-TEST",
+    "short_name": "NPF-Q400-TEST",
     "id": "./index.html?test=1",
-    "start_url": "./index.html?appv=v11.20",
+    "start_url": "./index.html?appv=v11.21",
     "scope": "./",
     "display": "standalone",
     "background_color": "#ffffff",
     "theme_color": "#0056b3",
-    "description": "Nearest Pélicandrome Selector Q400 - version test",
+    "description": "Nearest Pélicandrome Finder Q400 - version test",
     "icons": [
         {
             "src": "icons/icon-192x192.png",
