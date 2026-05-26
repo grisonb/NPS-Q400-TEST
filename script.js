@@ -3131,13 +3131,14 @@ async function handleZipImport(file) {
 
     try {
         /*
-         * v11.29 — module offline ancien/simple + lots plus rapides.
+         * v11.30 — module offline ancien/simple + clé de stockage par pack.
          *
          * v11.28 fonctionne mais elle écrivait par lots de 25 : sûr, mais trop lent.
          * Ici on garde l'import progressif sans grosse liste allTilesData, mais on
          * revient à des lots proches de l'ancien fonctionnement :
          * - 100 tuiles par transaction pour gros ZIP ;
          * - 150 tuiles par transaction pour ZIP plus petits, type OACI ;
+         * - clé IndexedDB séparée par pack pour éviter qu'OACI remplace OpenStreet ;
          * - aucune vérification tuile par tuile ;
          * - aucun scan de zoom ;
          * - aucun checkpoint ;
@@ -3184,7 +3185,14 @@ async function handleZipImport(file) {
             const tileUrl = `https://a.tile.openstreetmap.org/${tileFile.name}`;
 
             batch.push({
-                url: tileUrl,
+                /*
+                 * v11.30 : clé pack-scopée.
+                 * Avant, OACI et OpenStreet utilisaient la même clé z/x/y.
+                 * Si OpenStreet était chargé avant, l'import OACI remplaçait des
+                 * enregistrements existants dans une base énorme, ce qui devenait
+                 * très lent sur iPad/Safari.
+                 */
+                url: buildStoredTileKey(tileUrl, packName),
                 tileUrl,
                 tile: blob,
                 packName
@@ -3215,8 +3223,8 @@ async function handleZipImport(file) {
             existingPack.date = new Date().toLocaleDateString();
         } else {
             installedPacks.push({ name: packName, date: new Date().toLocaleDateString() });
-            localStorage.setItem('installedMapPacks', JSON.stringify(installedPacks));
         }
+        localStorage.setItem('installedMapPacks', JSON.stringify(installedPacks));
 
         activeOfflinePacks = [packName];
         localStorage.setItem(OFFLINE_ACTIVE_PACKS_KEY, JSON.stringify(activeOfflinePacks));
