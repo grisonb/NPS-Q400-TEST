@@ -3131,18 +3131,17 @@ async function handleZipImport(file) {
 
     try {
         /*
-         * v11.28 — ancien module offline, mais préparation allégée.
+         * v11.29 — module offline ancien/simple + lots plus rapides.
          *
-         * La v11.27 revenait vraiment à l'ancienne logique, mais elle recréait
-         * aussi une grosse liste allTilesData avec tous les blobs en mémoire.
-         * Si ça plante à "préparation des tuiles", le problème est là.
-         *
-         * Ici :
-         * - on garde le module offline simple de v11.27 ;
-         * - on ne crée plus allTilesData ;
-         * - on décompresse une tuile, on la met dans un petit lot, puis on écrit ;
-         * - on ne garde jamais tous les blobs en mémoire ;
-         * - pas de scan zoom, pas de checkpoint, pas de PDF, pas de Cache Storage.
+         * v11.28 fonctionne mais elle écrivait par lots de 25 : sûr, mais trop lent.
+         * Ici on garde l'import progressif sans grosse liste allTilesData, mais on
+         * revient à des lots proches de l'ancien fonctionnement :
+         * - 100 tuiles par transaction pour gros ZIP ;
+         * - 150 tuiles par transaction pour ZIP plus petits, type OACI ;
+         * - aucune vérification tuile par tuile ;
+         * - aucun scan de zoom ;
+         * - aucun checkpoint ;
+         * - aucun Cache Storage.
          */
         await idle(80);
         const zip = await JSZip.loadAsync(file);
@@ -3160,7 +3159,7 @@ async function handleZipImport(file) {
         progressBar.style.width = '1%';
         await idle(100);
 
-        const batchSize = 25;
+        const batchSize = file.size > 300 * 1024 * 1024 ? 100 : 150;
         let batch = [];
         let processedFiles = 0;
         let lastUiUpdate = Date.now();
@@ -3196,7 +3195,7 @@ async function handleZipImport(file) {
             }
 
             const now = Date.now();
-            if (now - lastUiUpdate > 500) {
+            if (now - lastUiUpdate > 700) {
                 lastUiUpdate = now;
                 const percent = Math.min(99, Math.round((Math.max(processedFiles, i) / totalFiles) * 100));
                 progressBar.style.width = `${percent}%`;
@@ -3211,7 +3210,10 @@ async function handleZipImport(file) {
         progressBar.style.width = '100%';
 
         const installedPacks = JSON.parse(localStorage.getItem('installedMapPacks') || '[]');
-        if (!installedPacks.find(p => p.name === packName)) {
+        const existingPack = installedPacks.find(p => p.name === packName);
+        if (existingPack) {
+            existingPack.date = new Date().toLocaleDateString();
+        } else {
             installedPacks.push({ name: packName, date: new Date().toLocaleDateString() });
             localStorage.setItem('installedMapPacks', JSON.stringify(installedPacks));
         }
