@@ -3131,7 +3131,7 @@ async function handleZipImport(file) {
 
     try {
         /*
-         * v11.31 — module offline ancien/simple + clé conditionnelle.
+         * v11.32 — module offline ancien/simple + clé conditionnelle + reload mémoire.
          *
          * v11.28 fonctionne mais elle écrivait par lots de 25 : sûr, mais trop lent.
          * Ici on garde l'import progressif sans grosse liste allTilesData, mais on
@@ -3140,6 +3140,7 @@ async function handleZipImport(file) {
          * - 150 tuiles par transaction pour ZIP plus petits, type OACI ;
          * - gros ZIP type OpenStreet : clé simple v11.29 qui fonctionne ;
          * - petits ZIP type OACI : clé pack-scopée pour éviter le remplacement des tuiles OSM ;
+         * - après gros ZIP, reload automatique pour libérer la mémoire iPad/Safari ;
          * - aucune vérification tuile par tuile ;
          * - aucun scan de zoom ;
          * - aucun checkpoint ;
@@ -3234,6 +3235,25 @@ async function handleZipImport(file) {
         notifyServiceWorkerActivePacks(activeOfflinePacks);
 
         displayInstalledMaps();
+
+        /*
+         * v11.32 : après un gros import type OpenStreet 900 Mo, Safari/iPad garde
+         * encore beaucoup de mémoire JSZip/IndexedDB. On recharge volontairement
+         * l'application après succès pour repartir propre avant d'importer OACI.
+         */
+        if (file.size > 300 * 1024 * 1024) {
+            statusMessage.textContent = `Importation de ${packName} terminée. Rechargement mémoire dans 3 secondes...`;
+            try {
+                if (db) db.close();
+            } catch (_) {}
+            setTimeout(() => {
+                const refreshUrl = new URL(window.location.href);
+                refreshUrl.searchParams.set('appv', APP_VERSION);
+                refreshUrl.searchParams.set('ts', Date.now().toString());
+                window.location.replace(refreshUrl.toString());
+            }, 3000);
+            return;
+        }
 
     } catch (error) {
         statusMessage.textContent = `Erreur: ${error.message}`;
