@@ -3090,15 +3090,6 @@ async function handleZipImport(file) {
         return;
     }
 
-    if (!db) {
-        try {
-            await initDB();
-        } catch (error) {
-            alert(`ERREUR : Impossible d'ouvrir la base locale (${error.message || error}).`);
-            return;
-        }
-    }
-
     const packName = file.name.replace(/\.zip$/i, '');
     const progressSection = document.getElementById('import-progress-section');
     const statusMessage = document.getElementById('import-status-message');
@@ -3110,6 +3101,15 @@ async function handleZipImport(file) {
     isZipImportRunning = true;
 
     const idle = (delay = 0) => new Promise((resolve) => setTimeout(resolve, delay));
+
+    const reopenDbCleanly = async () => {
+        try {
+            if (db) db.close();
+        } catch (_) {}
+        db = null;
+        await idle(120);
+        await initDB();
+    };
 
     const putTileBatch = (batch) => new Promise((resolve, reject) => {
         if (!batch.length) {
@@ -3131,21 +3131,21 @@ async function handleZipImport(file) {
 
     try {
         /*
-         * v11.32 — module offline ancien/simple + clé conditionnelle + reload mémoire.
+         * v11.33 — évolution v11.31/v11.32.
          *
-         * v11.28 fonctionne mais elle écrivait par lots de 25 : sûr, mais trop lent.
-         * Ici on garde l'import progressif sans grosse liste allTilesData, mais on
-         * revient à des lots proches de l'ancien fonctionnement :
-         * - 100 tuiles par transaction pour gros ZIP ;
-         * - 150 tuiles par transaction pour ZIP plus petits, type OACI ;
-         * - gros ZIP type OpenStreet : clé simple v11.29 qui fonctionne ;
-         * - petits ZIP type OACI : clé pack-scopée pour éviter le remplacement des tuiles OSM ;
-         * - après gros ZIP, reload automatique pour libérer la mémoire iPad/Safari ;
-         * - aucune vérification tuile par tuile ;
-         * - aucun scan de zoom ;
-         * - aucun checkpoint ;
-         * - aucun Cache Storage.
+         * Symptôme validé :
+         * - OpenStreet 900 Mo s'installe, mais peut planter en toute fin.
+         * - OACI finit par s'installer mais démarre très lentement après OpenStreet.
+         *
+         * Correction :
+         * - avant chaque import, fermeture/réouverture IndexedDB pour repartir propre ;
+         * - OpenStreet garde la clé simple qui fonctionne ;
+         * - OACI garde la clé pack-scopée ;
+         * - après gros import, on recharge immédiatement AVANT displayInstalledMaps()
+         *   et AVANT notifyServiceWorkerActivePacks(), car le crash arrive en fin d'installation.
          */
+        await reopenDbCleanly();
+
         await idle(80);
         const zip = await JSZip.loadAsync(file);
 
@@ -3164,14 +3164,8 @@ async function handleZipImport(file) {
 
         const isLargeZip = file.size > 300 * 1024 * 1024;
         const batchSize = isLargeZip ? 100 : 150;
-        /*
-         * v11.31 :
-         * - OpenStreet 900 Mo garde la clé simple de la v11.29, car c'est la seule
-         *   combinaison qui s'est chargée correctement sur iPad.
-         * - OACI, plus petit, utilise une clé séparée par pack pour éviter de
-         *   remplacer les tuiles OpenStreet déjà présentes.
-         */
         const usePackScopedKey = !isLargeZip;
+
         let batch = [];
         let processedFiles = 0;
         let lastUiUpdate = Date.now();
@@ -3232,28 +3226,25 @@ async function handleZipImport(file) {
 
         activeOfflinePacks = [packName];
         localStorage.setItem(OFFLINE_ACTIVE_PACKS_KEY, JSON.stringify(activeOfflinePacks));
-        notifyServiceWorkerActivePacks(activeOfflinePacks);
 
-        displayInstalledMaps();
-
-        /*
-         * v11.32 : après un gros import type OpenStreet 900 Mo, Safari/iPad garde
-         * encore beaucoup de mémoire JSZip/IndexedDB. On recharge volontairement
-         * l'application après succès pour repartir propre avant d'importer OACI.
-         */
-        if (file.size > 300 * 1024 * 1024) {
-            statusMessage.textContent = `Importation de ${packName} terminée. Rechargement mémoire dans 3 secondes...`;
+        if (isLargeZip) {
+            statusMessage.textContent = `Importation de ${packName} terminée. Rechargement mémoire...`;
             try {
                 if (db) db.close();
             } catch (_) {}
+            db = null;
+
             setTimeout(() => {
                 const refreshUrl = new URL(window.location.href);
                 refreshUrl.searchParams.set('appv', APP_VERSION);
                 refreshUrl.searchParams.set('ts', Date.now().toString());
                 window.location.replace(refreshUrl.toString());
-            }, 3000);
+            }, 300);
             return;
         }
+
+        notifyServiceWorkerActivePacks(activeOfflinePacks);
+        displayInstalledMaps();
 
     } catch (error) {
         statusMessage.textContent = `Erreur: ${error.message}`;
