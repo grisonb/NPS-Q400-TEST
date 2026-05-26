@@ -962,12 +962,31 @@ function setupEventListeners() {
     });
 
     const showFireHistoryFromSearch = () => {
+        /*
+         * v11.25 — correction saisie commune après sélection d'un feu.
+         * L'historique reste accessible au clic, mais la barre de recherche
+         * garde toujours le focus et le clavier doit pouvoir s'ouvrir.
+         */
+        searchInput.disabled = false;
+        searchInput.readOnly = false;
         displayFireHistory();
+
+        if (searchInput.value && searchInput.value.trim().length > 0) {
+            setTimeout(() => {
+                try {
+                    searchInput.focus();
+                    searchInput.select();
+                } catch (_) {}
+            }, 0);
+        }
     };
 
     searchInput.addEventListener('focus', showFireHistoryFromSearch);
     searchInput.addEventListener('click', showFireHistoryFromSearch);
-    searchInput.addEventListener('pointerdown', showFireHistoryFromSearch);
+    searchInput.addEventListener('pointerdown', () => {
+        searchInput.disabled = false;
+        searchInput.readOnly = false;
+    });
 
     clearSearchBtn.addEventListener('click', () => {
         clearCurrentSelection();
@@ -1022,6 +1041,14 @@ function setupEventListeners() {
             uiOverlay.style.display = 'block';
             communeDisplay.style.display = 'none';
             toggleSearchButton.classList.add('active');
+            setTimeout(() => {
+                try {
+                    searchInput.disabled = false;
+                    searchInput.readOnly = false;
+                    searchInput.focus();
+                    if (searchInput.value) searchInput.select();
+                } catch (_) {}
+            }, 80);
         } else {
             uiOverlay.style.display = 'none';
             toggleSearchButton.classList.remove('active');
@@ -3074,9 +3101,22 @@ async function handleZipImport(file) {
     const statusMessage = document.getElementById('import-status-message');
     const progressBar = document.getElementById('import-progress-bar');
 
-    const RESUME_KEY = 'offlineZipImportResumeV3';
+    const RESUME_KEY = 'offlineZipImportResumeV4';
     const fileSignature = `${file.name}|${file.size}|${file.lastModified || 0}`;
     const isVeryLargeZip = file.size > 300 * 1024 * 1024;
+
+    /*
+     * v11.25 — Import par sessions courtes.
+     *
+     * Le problème observé n'est pas une erreur JS classique : iPadOS/Safari tue
+     * la page pendant un gros import IndexedDB. On évite donc d'aller jusqu'au crash :
+     * - on importe un petit nombre de tuiles ;
+     * - on sauvegarde un point de reprise ;
+     * - on s'arrête proprement ;
+     * - il suffit de relancer le même ZIP pour continuer.
+     */
+    const MAX_TILES_PER_RUN = isVeryLargeZip ? 750 : 2500;
+    const MAX_MS_PER_RUN = isVeryLargeZip ? 55000 : 120000;
 
     progressSection.style.display = 'block';
     progressBar.style.width = '0%';
@@ -3167,10 +3207,6 @@ async function handleZipImport(file) {
     };
 
     try {
-        /*
-         * v11.24 — Import ZIP avec point de reprise.
-         * Si Safari/iPad tue la page, le prochain essai reprend plus loin dans le ZIP.
-         */
         if (isVeryLargeZip) {
             statusMessage.textContent = `Fichier volumineux (${Math.round(file.size / (1024 * 1024))} Mo) : ouverture du ZIP...`;
             await idle(120);
@@ -3212,7 +3248,7 @@ async function handleZipImport(file) {
         let processedFiles = resume ? Math.max(0, Number(resume.processedFiles) || 0) : 0;
 
         if (resume && startIndex > 0) {
-            statusMessage.textContent = `Reprise import ${packName} à partir du fichier ${startIndex} / ${entryNames.length}...`;
+            statusMessage.textContent = `Reprise ${packName} : ${processedFiles} / ${totalFiles} tuiles déjà traitées.`;
         } else {
             statusMessage.textContent = `Préparation terminée. Importation de ${totalFiles} tuiles...`;
         }
@@ -3224,6 +3260,9 @@ async function handleZipImport(file) {
         let batch = [];
         let lastUiUpdate = Date.now();
         let lastDbReopen = Date.now();
+        let tilesThisRun = 0;
+        const runStartTime = Date.now();
+        let pausedBySafety = false;
 
         const flushBatch = async () => {
             if (!batch.length) return;
@@ -3231,9 +3270,10 @@ async function handleZipImport(file) {
             batch = [];
             await putTileBatchWithRetry(toWrite);
             processedFiles += toWrite.length;
+            tilesThisRun += toWrite.length;
             const percent = 10 + ((processedFiles / totalFiles) * 90);
             progressBar.style.width = `${Math.min(100, percent)}%`;
-            await idle(isVeryLargeZip ? 12 : 0);
+            await idle(isVeryLargeZip ? 14 : 0);
         };
 
         for (let i = startIndex; i < entryNames.length; i += 1) {
@@ -3278,17 +3318,29 @@ async function handleZipImport(file) {
             fileEntry = null;
 
             const now = Date.now();
-            if (now - lastUiUpdate > 600) {
+            if (now - lastUiUpdate > 500) {
                 lastUiUpdate = now;
-                statusMessage.textContent = `Importation... ${processedFiles} / ${totalFiles} tuiles — fichier ${i + 1} / ${entryNames.length}`;
+                statusMessage.textContent = `Importation... ${processedFiles} / ${totalFiles} tuiles — cette session : ${tilesThisRun}`;
                 await idle(0);
             }
 
-            if (isVeryLargeZip && now - lastDbReopen > 60000) {
+            if (isVeryLargeZip && now - lastDbReopen > 45000) {
                 await reopenDb();
                 lastDbReopen = Date.now();
-                await idle(120);
+                await idle(150);
             }
+
+            if ((tilesThisRun >= MAX_TILES_PER_RUN) || (Date.now() - runStartTime >= MAX_MS_PER_RUN)) {
+                pausedBySafety = true;
+                statusMessage.textContent = `Pause sécurité : ${processedFiles} / ${totalFiles} tuiles importées. Relance le même ZIP pour continuer.`;
+                progressBar.style.width = `${Math.min(99, 10 + ((processedFiles / totalFiles) * 90))}%`;
+                break;
+            }
+        }
+
+        if (pausedBySafety) {
+            displayInstalledMaps();
+            return;
         }
 
         await flushBatch();
@@ -3323,7 +3375,7 @@ async function handleZipImport(file) {
         console.error("Erreur d'importation ZIP:", error);
     } finally {
         isZipImportRunning = false;
-        setTimeout(() => { progressSection.style.display = 'none'; }, 9000);
+        setTimeout(() => { progressSection.style.display = 'none'; }, 12000);
     }
 }
 
