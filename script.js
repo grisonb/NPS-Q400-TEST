@@ -3101,67 +3101,12 @@ async function handleZipImport(file) {
     const statusMessage = document.getElementById('import-status-message');
     const progressBar = document.getElementById('import-progress-bar');
 
-    const RESUME_KEY = 'offlineZipImportResumeV4';
-    const fileSignature = `${file.name}|${file.size}|${file.lastModified || 0}`;
-    const isVeryLargeZip = file.size > 300 * 1024 * 1024;
-
-    /*
-     * v11.25 — Import par sessions courtes.
-     *
-     * Le problème observé n'est pas une erreur JS classique : iPadOS/Safari tue
-     * la page pendant un gros import IndexedDB. On évite donc d'aller jusqu'au crash :
-     * - on importe un petit nombre de tuiles ;
-     * - on sauvegarde un point de reprise ;
-     * - on s'arrête proprement ;
-     * - il suffit de relancer le même ZIP pour continuer.
-     */
-    const MAX_TILES_PER_RUN = isVeryLargeZip ? 750 : 2500;
-    const MAX_MS_PER_RUN = isVeryLargeZip ? 55000 : 120000;
-
     progressSection.style.display = 'block';
     progressBar.style.width = '0%';
     statusMessage.textContent = `Analyse du fichier ${packName}...`;
     isZipImportRunning = true;
 
     const idle = (delay = 0) => new Promise((resolve) => setTimeout(resolve, delay));
-
-    const readResumeState = () => {
-        try {
-            const state = JSON.parse(localStorage.getItem(RESUME_KEY) || 'null');
-            return state && state.signature === fileSignature ? state : null;
-        } catch (_) {
-            return null;
-        }
-    };
-
-    const saveResumeState = (entryIndex, processedFiles, totalFiles) => {
-        try {
-            localStorage.setItem(RESUME_KEY, JSON.stringify({
-                signature: fileSignature,
-                packName,
-                entryIndex,
-                processedFiles,
-                totalFiles,
-                savedAt: Date.now()
-            }));
-        } catch (_) {}
-    };
-
-    const clearResumeState = () => {
-        try {
-            const state = readResumeState();
-            if (state) localStorage.removeItem(RESUME_KEY);
-        } catch (_) {}
-    };
-
-    const reopenDb = async () => {
-        try {
-            if (db) db.close();
-        } catch (_) {}
-        db = null;
-        await idle(180);
-        await initDB();
-    };
 
     const putTileBatch = (batch) => new Promise((resolve, reject) => {
         if (!batch.length) {
@@ -3185,169 +3130,96 @@ async function handleZipImport(file) {
             reject(error || tx.error || new Error('Erreur transaction IndexedDB pendant import tuiles'));
         };
 
-        for (const tileData of batch) {
+        batch.forEach((tileData) => {
             const req = store.put(tileData);
             req.onerror = () => finishError(req.error);
-        }
+        });
 
         tx.oncomplete = finishOk;
         tx.onerror = () => finishError(tx.error);
         tx.onabort = () => finishError(tx.error || new Error('Transaction IndexedDB annulée'));
     });
 
-    const putTileBatchWithRetry = async (batch) => {
-        if (!batch.length) return;
-        try {
-            await putTileBatch(batch);
-        } catch (error) {
-            console.warn('Écriture IndexedDB échouée, réouverture puis nouvelle tentative:', error);
-            await reopenDb();
-            await putTileBatch(batch);
-        }
-    };
-
     try {
-        if (isVeryLargeZip) {
-            statusMessage.textContent = `Fichier volumineux (${Math.round(file.size / (1024 * 1024))} Mo) : ouverture du ZIP...`;
-            await idle(120);
-        }
+        /*
+         * v11.26 — retour test à une logique ancienne/simple.
+         *
+         * Objectif : comparer avec l'ancienne version qui importait correctement le ZIP.
+         * On retire les mécanismes récents :
+         * - pas de reprise par checkpoint ;
+         * - pas de pause sécurité ;
+         * - pas de vérification tuile par tuile ;
+         * - pas de réouverture périodique IndexedDB ;
+         * - pas d'écriture Cache Storage.
+         *
+         * Le comportement redevient proche de l'ancien import :
+         * - lecture du ZIP ;
+         * - extraction des tuiles valides ;
+         * - écriture IndexedDB par lots de 100.
+         */
+        statusMessage.textContent = `Ouverture du ZIP ${packName}...`;
+        await idle(80);
 
         const zip = await JSZip.loadAsync(file);
-        const entryNames = Object.keys(zip.files || {});
-
-        let totalFiles = 0;
+        const entries = Object.values(zip.files || {});
+        const allTilesData = [];
         let importedMaxZoom = 0;
         let importedMinZoom = Number.POSITIVE_INFINITY;
 
-        for (let i = 0; i < entryNames.length; i += 1) {
-            const fileEntry = zip.files[entryNames[i]];
+        for (let i = 0; i < entries.length; i += 1) {
+            const fileEntry = entries[i];
             if (!fileEntry || fileEntry.dir) continue;
 
             const parsedTiles = parseTilePathFromName(fileEntry.name);
             if (!parsedTiles.length) continue;
 
-            totalFiles += parsedTiles.length;
-            parsedTiles.forEach((parsedTile) => {
-                importedMaxZoom = Math.max(importedMaxZoom, parsedTile.zoom);
-                importedMinZoom = Math.min(importedMinZoom, parsedTile.zoom);
-            });
-
-            if (i % 500 === 0) {
-                statusMessage.textContent = `Préparation des tuiles... ${i} / ${entryNames.length}`;
-                progressBar.style.width = `${Math.min(10, (i / Math.max(1, entryNames.length)) * 10)}%`;
-                await idle(0);
-            }
-        }
-
-        if (totalFiles === 0) {
-            throw new Error("Aucune tuile valide trouvée dans le ZIP. Formats acceptés : z/x/y.png (avec sous-dossiers possibles) ou z_x_y.png.");
-        }
-
-        const resume = readResumeState();
-        const startIndex = resume ? Math.max(0, Math.min(Number(resume.entryIndex) || 0, entryNames.length - 1)) : 0;
-        let processedFiles = resume ? Math.max(0, Number(resume.processedFiles) || 0) : 0;
-
-        if (resume && startIndex > 0) {
-            statusMessage.textContent = `Reprise ${packName} : ${processedFiles} / ${totalFiles} tuiles déjà traitées.`;
-        } else {
-            statusMessage.textContent = `Préparation terminée. Importation de ${totalFiles} tuiles...`;
-        }
-
-        progressBar.style.width = `${Math.min(95, 10 + ((processedFiles / totalFiles) * 90))}%`;
-        await idle(150);
-
-        const batchSize = isVeryLargeZip ? 1 : 8;
-        let batch = [];
-        let lastUiUpdate = Date.now();
-        let lastDbReopen = Date.now();
-        let tilesThisRun = 0;
-        const runStartTime = Date.now();
-        let pausedBySafety = false;
-
-        const flushBatch = async () => {
-            if (!batch.length) return;
-            const toWrite = batch;
-            batch = [];
-            await putTileBatchWithRetry(toWrite);
-            processedFiles += toWrite.length;
-            tilesThisRun += toWrite.length;
-            const percent = 10 + ((processedFiles / totalFiles) * 90);
-            progressBar.style.width = `${Math.min(100, percent)}%`;
-            await idle(isVeryLargeZip ? 14 : 0);
-        };
-
-        for (let i = startIndex; i < entryNames.length; i += 1) {
-            const entryName = entryNames[i];
-            let fileEntry = zip.files[entryName];
-            if (!fileEntry || fileEntry.dir) {
-                saveResumeState(i + 1, processedFiles, totalFiles);
-                continue;
-            }
-
-            const parsedTiles = parseTilePathFromName(fileEntry.name);
-            if (!parsedTiles.length) {
-                saveResumeState(i + 1, processedFiles, totalFiles);
-                continue;
-            }
-
             const blob = await fileEntry.async('blob');
 
-            for (const parsedTile of parsedTiles) {
+            parsedTiles.forEach((parsedTile) => {
                 const tileUrl = `https://a.tile.openstreetmap.org/${parsedTile.tilePath}`;
-                batch.push({
+                allTilesData.push({
                     url: buildStoredTileKey(tileUrl, packName),
                     tileUrl,
                     tile: blob,
                     packName
                 });
+                importedMaxZoom = Math.max(importedMaxZoom, parsedTile.zoom);
+                importedMinZoom = Math.min(importedMinZoom, parsedTile.zoom);
+            });
 
-                if (batch.length >= batchSize) {
-                    await flushBatch();
-                }
-            }
-
-            if (batch.length) {
-                await flushBatch();
-            }
-
-            saveResumeState(i + 1, processedFiles, totalFiles);
-
-            try {
-                delete zip.files[entryName];
-            } catch (_) {}
-            fileEntry = null;
-
-            const now = Date.now();
-            if (now - lastUiUpdate > 500) {
-                lastUiUpdate = now;
-                statusMessage.textContent = `Importation... ${processedFiles} / ${totalFiles} tuiles — cette session : ${tilesThisRun}`;
+            if (i % 100 === 0) {
+                const percent = Math.min(45, Math.round((i / Math.max(1, entries.length)) * 45));
+                progressBar.style.width = `${percent}%`;
+                statusMessage.textContent = `Préparation des tuiles... ${i} / ${entries.length}`;
                 await idle(0);
             }
-
-            if (isVeryLargeZip && now - lastDbReopen > 45000) {
-                await reopenDb();
-                lastDbReopen = Date.now();
-                await idle(150);
-            }
-
-            if ((tilesThisRun >= MAX_TILES_PER_RUN) || (Date.now() - runStartTime >= MAX_MS_PER_RUN)) {
-                pausedBySafety = true;
-                statusMessage.textContent = `Pause sécurité : ${processedFiles} / ${totalFiles} tuiles importées. Relance le même ZIP pour continuer.`;
-                progressBar.style.width = `${Math.min(99, 10 + ((processedFiles / totalFiles) * 90))}%`;
-                break;
-            }
         }
 
-        if (pausedBySafety) {
-            displayInstalledMaps();
-            return;
+        if (allTilesData.length === 0) {
+            throw new Error("Aucune tuile valide trouvée dans le ZIP. Formats acceptés : z/x/y.png ou z_x_y.png.");
         }
 
-        await flushBatch();
+        statusMessage.textContent = `Préparation terminée. Importation de ${allTilesData.length} tuiles...`;
+        progressBar.style.width = '45%';
+        await idle(100);
+
+        const batchSize = 100;
+        let importedCount = 0;
+
+        for (let i = 0; i < allTilesData.length; i += batchSize) {
+            const batch = allTilesData.slice(i, i + batchSize);
+            await putTileBatch(batch);
+            importedCount += batch.length;
+
+            const percent = 45 + Math.round((importedCount / allTilesData.length) * 55);
+            progressBar.style.width = `${Math.min(100, percent)}%`;
+            statusMessage.textContent = `Importation... ${importedCount} / ${allTilesData.length} tuiles`;
+
+            await idle(0);
+        }
 
         statusMessage.textContent = `Importation de ${packName} terminée !`;
         progressBar.style.width = '100%';
-        clearResumeState();
 
         const installedPacks = JSON.parse(localStorage.getItem('installedMapPacks') || '[]');
         const existingPack = installedPacks.find(p => p.name === packName);
@@ -3375,7 +3247,7 @@ async function handleZipImport(file) {
         console.error("Erreur d'importation ZIP:", error);
     } finally {
         isZipImportRunning = false;
-        setTimeout(() => { progressSection.style.display = 'none'; }, 12000);
+        setTimeout(() => { progressSection.style.display = 'none'; }, 8000);
     }
 }
 
