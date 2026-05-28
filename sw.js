@@ -1,4 +1,4 @@
-const SW_VERSION = 'sw-v11-43-checkbox-fastwake-fireclear';
+const SW_VERSION = 'sw-v11-44-fire-history-red-buttons';
 
 const DB_NAME = 'OfflineTilesDB';
 const DB_VERSION = 3;
