@@ -3064,6 +3064,15 @@ function updateOfflineStatus() {
 }
 
 async function initializeOfflineTilePreference() {
+    /*
+     * v11.38 : si un pack est actif, l'application doit démarrer en mode OFFLINE,
+     * même après une réouverture sans réseau.
+     */
+    if (Array.isArray(activeOfflinePacks) && activeOfflinePacks.length > 0) {
+        mapSourceMode = 'offline';
+        localStorage.setItem(MAP_SOURCE_MODE_KEY, 'offline');
+    }
+
     const enabled = mapSourceMode === 'offline';
     await setOfflineTilesEnabled(enabled);
     setOfflineOnlineFallbackMode(false);
@@ -3326,12 +3335,29 @@ function parseTilePathFromName(name) {
 
 async function persistSimpleActiveOfflinePacks(packs) {
     /*
-     * v11.35 — affichage carte propre.
-     * Le pack actif est écrit à la fois dans localStorage et dans IndexedDB/settings,
-     * car le service worker relit périodiquement IndexedDB. Sans cela, il peut
-     * continuer à servir l'ancien pack et mélanger OACI / OpenStreet.
+     * v11.38 — correction ouverture / affichage sans connexion.
+     *
+     * Problème v11.37 :
+     * - l'application pouvait s'ouvrir offline grâce au cache applicatif ;
+     * - mais les tuiles OACI ne s'affichaient pas si le mode carte restait ONLINE.
+     *
+     * Correction :
+     * - sélectionner/importer un pack force le mode carte OFFLINE ;
+     * - offlineTilesEnabled est persisté dans IndexedDB/settings ;
+     * - le service worker reçoit immédiatement les bons états.
      */
     activeOfflinePacks = Array.isArray(packs) ? packs.filter(Boolean) : [];
+
+    const hasActivePack = activeOfflinePacks.length > 0;
+    if (hasActivePack) {
+        mapSourceMode = 'offline';
+        offlineTilesMode = true;
+        offlineOnlineFallbackMode = false;
+        localStorage.setItem(MAP_SOURCE_MODE_KEY, 'offline');
+        localStorage.setItem(OFFLINE_TILES_ENABLED_KEY, 'true');
+        localStorage.setItem(OFFLINE_ONLINE_FALLBACK_KEY, 'false');
+    }
+
     localStorage.setItem(OFFLINE_ACTIVE_PACKS_KEY, JSON.stringify(activeOfflinePacks));
 
     if (!db) {
@@ -3345,16 +3371,25 @@ async function persistSimpleActiveOfflinePacks(packs) {
             await new Promise((resolve, reject) => {
                 const tx = db.transaction('settings', 'readwrite');
                 const store = tx.objectStore('settings');
+
                 store.put({ key: OFFLINE_ACTIVE_PACKS_KEY, value: activeOfflinePacks });
+
+                if (hasActivePack) {
+                    store.put({ key: OFFLINE_TILES_ENABLED_KEY, value: true });
+                    store.put({ key: OFFLINE_ONLINE_FALLBACK_KEY, value: false });
+                }
+
                 tx.oncomplete = resolve;
                 tx.onerror = () => reject(tx.error);
                 tx.onabort = () => reject(tx.error || new Error('Transaction settings annulée'));
             });
         } catch (error) {
-            console.warn('[Offline] Impossible de persister le pack actif dans IndexedDB:', error);
+            console.warn('[Offline] Impossible de persister les réglages offline dans IndexedDB:', error);
         }
     }
 
+    notifyServiceWorkerOfflineTilesPreference(hasActivePack ? true : offlineTilesMode);
+    notifyServiceWorkerOfflineOnlineFallback(false);
     notifyServiceWorkerActivePacks(activeOfflinePacks);
 }
 
@@ -5874,7 +5909,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 });
 /*
- * v11.37 — reprise arrière-plan plus douce.
+ * v11.38 — reprise arrière-plan plus douce.
  * À la réouverture après arrière-plan long, on évite un rechargement complet :
  * on réveille uniquement la carte, le pack actif et la couche de tuiles.
  */
