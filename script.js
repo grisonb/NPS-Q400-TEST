@@ -786,114 +786,6 @@ function buildOfflineTileUrlForPack(tilePath, packName, isLargeZip = false) {
     return `https://${hostPrefix}.tile.openstreetmap.org/${tilePath}`;
 }
 
-
-function createTransparentTileDataUrl() {
-    return 'data:image/gif;base64,R0lGODlhAQABAAD/ACwAAAAAAQABAAACADs=';
-}
-
-function readOfflineTileBlobDirect(tileUrl, packName) {
-    /*
-     * v11.39 — affichage offline direct IndexedDB.
-     *
-     * On ne dépend plus du service worker pour l'affichage des cartes offline.
-     * Leaflet demande directement la tuile dans IndexedDB avec le pack actif.
-     * Cela évite les mélanges ou absences d'affichage liés au SW/cache.
-     */
-    return new Promise((resolve) => {
-        if (!db || !tileUrl || !packName) {
-            resolve(null);
-            return;
-        }
-
-        try {
-            const tx = db.transaction('tiles', 'readonly');
-            const store = tx.objectStore('tiles');
-
-            const finishWithRecord = (record) => {
-                if (record && record.tile) {
-                    resolve(record.tile);
-                } else {
-                    resolve(null);
-                }
-            };
-
-            if (store.indexNames.contains('tileUrl')) {
-                const index = store.index('tileUrl');
-                const req = index.openCursor(IDBKeyRange.only(tileUrl));
-
-                req.onsuccess = () => {
-                    const cursor = req.result;
-                    if (!cursor) {
-                        finishWithRecord(null);
-                        return;
-                    }
-
-                    const value = cursor.value || {};
-                    if ((value.tileUrl || getTileUrlFromStoredKey(value.url)) === tileUrl && value.packName === packName) {
-                        finishWithRecord(value);
-                        return;
-                    }
-
-                    cursor.continue();
-                };
-                req.onerror = () => resolve(null);
-            } else {
-                const key = buildStoredTileKey(tileUrl, packName);
-                const req = store.get(key);
-                req.onsuccess = () => finishWithRecord(req.result || null);
-                req.onerror = () => resolve(null);
-            }
-
-            tx.onerror = () => resolve(null);
-            tx.onabort = () => resolve(null);
-        } catch (error) {
-            console.warn('[Offline direct] Lecture tuile impossible:', error);
-            resolve(null);
-        }
-    });
-}
-
-function createDirectIndexedDbTileLayer(tileLayerUrl, options = {}) {
-    const activePackName = Array.isArray(activeOfflinePacks) && activeOfflinePacks.length ? activeOfflinePacks[0] : '';
-
-    return L.tileLayer(tileLayerUrl, {
-        ...options,
-        createTile: function(coords, done) {
-            const img = document.createElement('img');
-            img.alt = '';
-            img.setAttribute('role', 'presentation');
-
-            const url = this.getTileUrl(coords);
-
-            readOfflineTileBlobDirect(url, activePackName).then((blob) => {
-                if (!blob) {
-                    img.src = createTransparentTileDataUrl();
-                    done(null, img);
-                    return;
-                }
-
-                const objectUrl = URL.createObjectURL(blob);
-                img.onload = () => {
-                    setTimeout(() => URL.revokeObjectURL(objectUrl), 1000);
-                    done(null, img);
-                };
-                img.onerror = () => {
-                    URL.revokeObjectURL(objectUrl);
-                    img.src = createTransparentTileDataUrl();
-                    done(null, img);
-                };
-                img.src = objectUrl;
-            }).catch((error) => {
-                console.warn('[Offline direct] Erreur affichage tuile:', error);
-                img.src = createTransparentTileDataUrl();
-                done(null, img);
-            });
-
-            return img;
-        }
-    });
-}
-
 function setupBaseTileLayer() {
     if (!map) return;
     if (baseTileLayer) {
@@ -937,9 +829,7 @@ function setupBaseTileLayer() {
     const tileHostPrefix = offlineTilesMode ? normalizeOfflineTileHostPrefix(activeTilePackName) : 'a';
     const tileLayerUrl = `https://${tileHostPrefix}.tile.openstreetmap.org/{z}/{x}/{y}.png`;
 
-    const tileLayerFactory = offlineTilesMode ? createDirectIndexedDbTileLayer : L.tileLayer;
-
-    baseTileLayer = tileLayerFactory(tileLayerUrl, {
+    baseTileLayer = L.tileLayer(tileLayerUrl, {
         minNativeZoom: effectiveMinZoom,
         maxNativeZoom: effectiveMaxZoom,
         minZoom: effectiveMinZoom,
@@ -3174,15 +3064,6 @@ function updateOfflineStatus() {
 }
 
 async function initializeOfflineTilePreference() {
-    /*
-     * v11.38 : si un pack est actif, l'application doit démarrer en mode OFFLINE,
-     * même après une réouverture sans réseau.
-     */
-    if (Array.isArray(activeOfflinePacks) && activeOfflinePacks.length > 0) {
-        mapSourceMode = 'offline';
-        localStorage.setItem(MAP_SOURCE_MODE_KEY, 'offline');
-    }
-
     const enabled = mapSourceMode === 'offline';
     await setOfflineTilesEnabled(enabled);
     setOfflineOnlineFallbackMode(false);
@@ -3445,29 +3326,12 @@ function parseTilePathFromName(name) {
 
 async function persistSimpleActiveOfflinePacks(packs) {
     /*
-     * v11.38 — correction ouverture / affichage sans connexion.
-     *
-     * Problème v11.37 :
-     * - l'application pouvait s'ouvrir offline grâce au cache applicatif ;
-     * - mais les tuiles OACI ne s'affichaient pas si le mode carte restait ONLINE.
-     *
-     * Correction :
-     * - sélectionner/importer un pack force le mode carte OFFLINE ;
-     * - offlineTilesEnabled est persisté dans IndexedDB/settings ;
-     * - le service worker reçoit immédiatement les bons états.
+     * v11.35 — affichage carte propre.
+     * Le pack actif est écrit à la fois dans localStorage et dans IndexedDB/settings,
+     * car le service worker relit périodiquement IndexedDB. Sans cela, il peut
+     * continuer à servir l'ancien pack et mélanger OACI / OpenStreet.
      */
     activeOfflinePacks = Array.isArray(packs) ? packs.filter(Boolean) : [];
-
-    const hasActivePack = activeOfflinePacks.length > 0;
-    if (hasActivePack) {
-        mapSourceMode = 'offline';
-        offlineTilesMode = true;
-        offlineOnlineFallbackMode = false;
-        localStorage.setItem(MAP_SOURCE_MODE_KEY, 'offline');
-        localStorage.setItem(OFFLINE_TILES_ENABLED_KEY, 'true');
-        localStorage.setItem(OFFLINE_ONLINE_FALLBACK_KEY, 'false');
-    }
-
     localStorage.setItem(OFFLINE_ACTIVE_PACKS_KEY, JSON.stringify(activeOfflinePacks));
 
     if (!db) {
@@ -3481,25 +3345,16 @@ async function persistSimpleActiveOfflinePacks(packs) {
             await new Promise((resolve, reject) => {
                 const tx = db.transaction('settings', 'readwrite');
                 const store = tx.objectStore('settings');
-
                 store.put({ key: OFFLINE_ACTIVE_PACKS_KEY, value: activeOfflinePacks });
-
-                if (hasActivePack) {
-                    store.put({ key: OFFLINE_TILES_ENABLED_KEY, value: true });
-                    store.put({ key: OFFLINE_ONLINE_FALLBACK_KEY, value: false });
-                }
-
                 tx.oncomplete = resolve;
                 tx.onerror = () => reject(tx.error);
                 tx.onabort = () => reject(tx.error || new Error('Transaction settings annulée'));
             });
         } catch (error) {
-            console.warn('[Offline] Impossible de persister les réglages offline dans IndexedDB:', error);
+            console.warn('[Offline] Impossible de persister le pack actif dans IndexedDB:', error);
         }
     }
 
-    notifyServiceWorkerOfflineTilesPreference(hasActivePack ? true : offlineTilesMode);
-    notifyServiceWorkerOfflineOnlineFallback(false);
     notifyServiceWorkerActivePacks(activeOfflinePacks);
 }
 
@@ -3547,12 +3402,11 @@ function displayInstalledMaps() {
         const li = document.createElement('li');
         const isActive = Array.isArray(activeOfflinePacks) && activeOfflinePacks.includes(pack.name);
         li.innerHTML = `
-            <span><strong>${pack.name}</strong> (Installé le ${pack.date})${isActive ? ' — actif' : ''}</span>
+            <span class="offline-map-name-line">
+                <input type="checkbox" class="offline-map-select-checkbox" ${isActive ? 'checked' : ''} onchange="window.selectSimpleMapPack('${pack.name}', this.checked)">
+                <strong>${pack.name}</strong> (Installé le ${pack.date})${isActive ? ' — actif' : ''}
+            </span>
             <div class="offline-map-actions">
-                <label class="offline-map-select-label">
-                    <input type="checkbox" class="offline-map-select-checkbox" ${isActive ? 'checked' : ''} onchange="window.selectSimpleMapPack('${pack.name}', this.checked)">
-                    Afficher
-                </label>
                 <button class="delete-map-btn" onclick="window.deleteMapPack('${pack.name}')">Supprimer</button>
             </div>
         `;
@@ -3564,8 +3418,9 @@ function displayInstalledMaps() {
 
 window.selectSimpleMapPack = async function(packName, checked = true) {
     /*
-     * v11.39 : sélection par case à cocher.
-     * Une seule carte offline peut être affichée à la fois.
+     * v11.40 — base v2026.33 stable.
+     * Sélection par case à cocher placée à gauche du nom de la carte.
+     * Une seule carte offline peut être active à la fois.
      */
     await persistSimpleActiveOfflinePacks(checked ? [packName] : []);
     reloadAfterOfflinePackChange(checked ? `Carte ${packName} sélectionnée. Rechargement...` : 'Carte offline désactivée. Rechargement...');
@@ -6025,28 +5880,3 @@ document.addEventListener('DOMContentLoaded', () => {
         initializeCalculator();
     }
 });
-/*
- * v11.39 — reprise arrière-plan plus douce.
- * À la réouverture après arrière-plan long, on évite un rechargement complet :
- * on réveille uniquement la carte, le pack actif et la couche de tuiles.
- */
-document.addEventListener('visibilitychange', () => {
-    if (document.visibilityState !== 'visible') return;
-
-    setTimeout(() => {
-        try {
-            if (map) map.invalidateSize(false);
-        } catch (_) {}
-
-        try {
-            notifyServiceWorkerActivePacks(activeOfflinePacks);
-        } catch (_) {}
-
-        try {
-            if (baseTileLayer && typeof baseTileLayer.redraw === 'function') {
-                baseTileLayer.redraw();
-            }
-        } catch (_) {}
-    }, 250);
-});
-
