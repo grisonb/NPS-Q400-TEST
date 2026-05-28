@@ -300,7 +300,7 @@ function displayFireHistory() {
     header.className = 'fire-history-header';
     header.innerHTML = `
         <span>Derniers feux</span>
-        <button type="button" class="fire-history-clear-all" onclick="window.clearFireHistory()">Effacer tout</button>
+        <button type="button" class="fire-history-clear-all" onclick="window.clearFireHistory()">🗑️ Tout effacer</button>
     `;
     resultsList.appendChild(header);
 
@@ -312,7 +312,7 @@ function displayFireHistory() {
 
         li.innerHTML = `
             <button type="button" class="fire-history-select" title="Reprendre ce feu">${name}</button>
-            <button type="button" class="fire-history-delete" title="Supprimer ce feu">×</button>
+            <button type="button" class="fire-history-delete" title="Supprimer ce feu">✕</button>
         `;
 
         li.querySelector('.fire-history-select').addEventListener('click', () => {
