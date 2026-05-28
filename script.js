@@ -288,44 +288,70 @@ function displayFireHistory() {
     const resultsList = document.getElementById('results-list');
     if (!resultsList) return;
 
-    const historyItems = getFireHistory();
+    const history = getFireHistory();
     resultsList.innerHTML = '';
 
-    if (!historyItems.length) {
+    if (!history.length) {
         resultsList.style.display = 'none';
         return;
     }
 
     const header = document.createElement('li');
     header.className = 'fire-history-header';
-    header.innerHTML = '<span>Derniers feux</span><button type="button" class="fire-history-clear-btn">Effacer mémoire</button>';
-    const clearButton = header.querySelector('.fire-history-clear-btn');
-    if (clearButton) {
-        clearButton.addEventListener('click', (event) => {
-            event.preventDefault();
-            event.stopPropagation();
-            if (confirm('Effacer la mémoire des derniers feux ?')) {
-                clearFireHistory();
-            }
-        });
-    }
+    header.innerHTML = `
+        <span>Derniers feux</span>
+        <button type="button" class="fire-history-clear-all" onclick="window.clearFireHistory()">Effacer tout</button>
+    `;
     resultsList.appendChild(header);
 
-    historyItems.forEach((item) => {
+    history.forEach((item, index) => {
         const li = document.createElement('li');
         li.className = 'fire-history-item';
-        const dep = item.dep_code ? ` (${item.dep_code})` : '';
-        li.textContent = `${item.nom_standard}${dep}`;
-        li.addEventListener('click', () => {
+
+        const name = item.dep_code ? `${item.nom_standard || item.name || 'Feu'} (${item.dep_code})` : (item.nom_standard || item.name || 'Feu');
+
+        li.innerHTML = `
+            <button type="button" class="fire-history-select" title="Reprendre ce feu">${name}</button>
+            <button type="button" class="fire-history-delete" title="Supprimer ce feu">×</button>
+        `;
+
+        li.querySelector('.fire-history-select').addEventListener('click', () => {
             currentCommune = item;
             localStorage.setItem('currentCommune', JSON.stringify(item));
             displayCommuneDetails(item);
+            resultsList.style.display = 'none';
         });
+
+        li.querySelector('.fire-history-delete').addEventListener('click', (event) => {
+            event.stopPropagation();
+            window.deleteFireHistoryItem(index);
+        });
+
         resultsList.appendChild(li);
     });
 
     resultsList.style.display = 'block';
 }
+
+window.deleteFireHistoryItem = function(index) {
+    const history = getFireHistory();
+    if (!Number.isInteger(index) || index < 0 || index >= history.length) return;
+
+    history.splice(index, 1);
+    localStorage.setItem(FIRE_HISTORY_STORAGE_KEY, JSON.stringify(history));
+    displayFireHistory();
+};
+
+window.clearFireHistory = function() {
+    if (!confirm('Effacer tous les derniers feux mémorisés ?')) return;
+    localStorage.removeItem(FIRE_HISTORY_STORAGE_KEY);
+
+    const resultsList = document.getElementById('results-list');
+    if (resultsList) {
+        resultsList.innerHTML = '';
+        resultsList.style.display = 'none';
+    }
+};
 
 function getRouteTooltipLatLng(startLatLng, endLatLng, ratio = 0.5) {
     const startLat = Number(startLatLng[0]);
@@ -3402,9 +3428,11 @@ function displayInstalledMaps() {
         const li = document.createElement('li');
         const isActive = Array.isArray(activeOfflinePacks) && activeOfflinePacks.includes(pack.name);
         li.innerHTML = `
-            <span><strong>${pack.name}</strong> (Installé le ${pack.date})${isActive ? ' — actif' : ''}</span>
+            <span class="offline-map-name-line">
+                <input type="checkbox" class="offline-map-select-checkbox" ${isActive ? 'checked' : ''} onchange="window.selectSimpleMapPack('${pack.name}', this.checked)">
+                <strong>${pack.name}</strong> (Installé le ${pack.date})${isActive ? ' — actif' : ''}
+            </span>
             <div class="offline-map-actions">
-                <button class="select-map-btn" onclick="window.selectSimpleMapPack('${pack.name}')">Utiliser</button>
                 <button class="delete-map-btn" onclick="window.deleteMapPack('${pack.name}')">Supprimer</button>
             </div>
         `;
@@ -3414,9 +3442,13 @@ function displayInstalledMaps() {
     updateOfflineStatus();
 }
 
-window.selectSimpleMapPack = async function(packName) {
-    await persistSimpleActiveOfflinePacks([packName]);
-    reloadAfterOfflinePackChange(`Carte ${packName} sélectionnée. Rechargement...`);
+window.selectSimpleMapPack = async function(packName, checked = true) {
+    /*
+     * v11.43 — sélection carte offline par case à cocher à gauche du nom.
+     * Une seule carte offline active à la fois.
+     */
+    await persistSimpleActiveOfflinePacks(checked ? [packName] : []);
+    reloadAfterOfflinePackChange(checked ? `Carte ${packName} sélectionnée. Rechargement...` : 'Carte offline désactivée. Rechargement...');
 };
 
 window.deleteMapPack = async function(packName) {
@@ -5873,3 +5905,28 @@ document.addEventListener('DOMContentLoaded', () => {
         initializeCalculator();
     }
 });
+/*
+ * v11.43 — reprise arrière-plan plus rapide.
+ * Si iPadOS garde la page mais fige Leaflet, on évite une reconstruction lourde :
+ * on invalide la taille de la carte et on redessine la couche active.
+ */
+document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState !== 'visible') return;
+
+    setTimeout(() => {
+        try {
+            if (map) map.invalidateSize(false);
+        } catch (_) {}
+
+        try {
+            notifyServiceWorkerActivePacks(activeOfflinePacks);
+        } catch (_) {}
+
+        try {
+            if (baseTileLayer && typeof baseTileLayer.redraw === 'function') {
+                baseTileLayer.redraw();
+            }
+        } catch (_) {}
+    }, 200);
+});
+
