@@ -3402,11 +3402,9 @@ function displayInstalledMaps() {
         const li = document.createElement('li');
         const isActive = Array.isArray(activeOfflinePacks) && activeOfflinePacks.includes(pack.name);
         li.innerHTML = `
-            <span class="offline-map-name-line">
-                <input type="checkbox" class="offline-map-select-checkbox" ${isActive ? 'checked' : ''} onchange="window.selectSimpleMapPack('${pack.name}', this.checked)">
-                <strong>${pack.name}</strong> (Installé le ${pack.date})${isActive ? ' — actif' : ''}
-            </span>
+            <span><strong>${pack.name}</strong> (Installé le ${pack.date})${isActive ? ' — actif' : ''}</span>
             <div class="offline-map-actions">
+                <button class="select-map-btn" onclick="window.selectSimpleMapPack('${pack.name}')">Utiliser</button>
                 <button class="delete-map-btn" onclick="window.deleteMapPack('${pack.name}')">Supprimer</button>
             </div>
         `;
@@ -3416,14 +3414,9 @@ function displayInstalledMaps() {
     updateOfflineStatus();
 }
 
-window.selectSimpleMapPack = async function(packName, checked = true) {
-    /*
-     * v11.40 — base v2026.33 stable.
-     * Sélection par case à cocher placée à gauche du nom de la carte.
-     * Une seule carte offline peut être active à la fois.
-     */
-    await persistSimpleActiveOfflinePacks(checked ? [packName] : []);
-    reloadAfterOfflinePackChange(checked ? `Carte ${packName} sélectionnée. Rechargement...` : 'Carte offline désactivée. Rechargement...');
+window.selectSimpleMapPack = async function(packName) {
+    await persistSimpleActiveOfflinePacks([packName]);
+    reloadAfterOfflinePackChange(`Carte ${packName} sélectionnée. Rechargement...`);
 };
 
 window.deleteMapPack = async function(packName) {
