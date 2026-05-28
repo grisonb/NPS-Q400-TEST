@@ -1,4 +1,4 @@
-const SW_VERSION = 'sw-v11-38-force-offline-pack-mode';
+const SW_VERSION = 'sw-v11-39-direct-indexeddb-tiles-checkbox';
 
 const DB_NAME = 'OfflineTilesDB';
 const DB_VERSION = 3;
