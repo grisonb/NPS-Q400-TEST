@@ -1,4 +1,4 @@
-const SW_VERSION = 'sw-v11-42-app-shell-only';
+const SW_VERSION = 'sw-v11-43-checkbox-fastwake-fireclear';
 
 const DB_NAME = 'OfflineTilesDB';
 const DB_VERSION = 3;
@@ -149,14 +149,28 @@ function isAppShellRequest(request) {
 async function handleAppShellRequest(request) {
     const cached = await caches.match(request, { ignoreSearch: true });
 
+    /*
+     * v11.43 — démarrage/reprise plus rapide.
+     * Navigation : cache d'abord, mise à jour réseau en arrière-plan.
+     */
     if (request.mode === 'navigate') {
+        if (cached) {
+            fetch(request).then(async (fresh) => {
+                if (fresh && fresh.ok) {
+                    const cache = await caches.open(APP_SHELL_CACHE);
+                    await cache.put('./index.html', fresh.clone());
+                }
+            }).catch(() => {});
+            return cached;
+        }
+
         try {
             const fresh = await fetch(request);
             const cache = await caches.open(APP_SHELL_CACHE);
             await cache.put('./index.html', fresh.clone());
             return fresh;
         } catch (_) {
-            return cached || await caches.match('./index.html', { ignoreSearch: true });
+            return await caches.match('./index.html', { ignoreSearch: true });
         }
     }
 
