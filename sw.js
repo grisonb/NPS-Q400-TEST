@@ -1,4 +1,4 @@
-const SW_VERSION = 'sw-v11-37-app-shell-offline-fastwake';
+const SW_VERSION = 'sw-v11-38-force-offline-pack-mode';
 
 const DB_NAME = 'OfflineTilesDB';
 const DB_VERSION = 3;
