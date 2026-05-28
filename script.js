@@ -5873,3 +5873,28 @@ document.addEventListener('DOMContentLoaded', () => {
         initializeCalculator();
     }
 });
+/*
+ * v11.37 — reprise arrière-plan plus douce.
+ * À la réouverture après arrière-plan long, on évite un rechargement complet :
+ * on réveille uniquement la carte, le pack actif et la couche de tuiles.
+ */
+document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState !== 'visible') return;
+
+    setTimeout(() => {
+        try {
+            if (map) map.invalidateSize(false);
+        } catch (_) {}
+
+        try {
+            notifyServiceWorkerActivePacks(activeOfflinePacks);
+        } catch (_) {}
+
+        try {
+            if (baseTileLayer && typeof baseTileLayer.redraw === 'function') {
+                baseTileLayer.redraw();
+            }
+        } catch (_) {}
+    }, 250);
+});
+
