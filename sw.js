@@ -1,4 +1,4 @@
-const SW_VERSION = 'sw-offline-tiles-push-v1047-strict-transparent';
+const SW_VERSION = 'sw-v11-37-app-shell-offline-fastwake';
 
 const DB_NAME = 'OfflineTilesDB';
 const DB_VERSION = 3;
@@ -7,18 +7,9 @@ const OFFLINE_TILES_ENABLED_KEY = 'offlineTilesEnabled';
 const OFFLINE_ONLINE_FALLBACK_KEY = 'offlineOnlineFallback';
 const OFFLINE_ACTIVE_PACKS_KEY = 'offlineActivePacks';
 
-/*
- * IMPORTANT :
- * - pas de cache agressif de index.html / script.js ;
- * - pas de suppression des caches de tuiles ;
- * - service worker conservé pour Push + offline tiles ;
- * - lecture tuiles optimisée IndexedDB, sans boucle Cache Storage à chaque tuile.
- */
-
 let offlineTilesEnabled = false;
 let offlineOnlineFallback = false;
 let activeOfflinePacks = [];
-
 let dbPromise = null;
 let offlineSettingsLoadedAt = 0;
 
@@ -26,12 +17,38 @@ const SETTINGS_REFRESH_INTERVAL_MS = 5000;
 const MEMORY_TILE_CACHE_MAX = 160;
 const memoryTileCache = new Map();
 
+const APP_SHELL_CACHE = `npf-q400-app-shell-${SW_VERSION}`;
+const APP_SHELL_URLS = [
+    './',
+    './index.html',
+    './style.css',
+    './script.js',
+    './leaflet.css',
+    './leaflet.min.js',
+    './suncalc.js',
+    './jszip.min.js',
+    './manifest.json',
+    './communes.json',
+    './icons/icon-192x192.png',
+    './icons/icon-512x512.png'
+];
+
 self.addEventListener('install', event => {
-    self.skipWaiting();
+    event.waitUntil((async () => {
+        const cache = await caches.open(APP_SHELL_CACHE);
+        await cache.addAll(APP_SHELL_URLS.map(url => new Request(url, { cache: 'reload' })));
+        await self.skipWaiting();
+    })());
 });
 
 self.addEventListener('activate', event => {
     event.waitUntil((async () => {
+        const cacheNames = await caches.keys();
+        await Promise.all(
+            cacheNames
+                .filter(name => name.startsWith('npf-q400-app-shell-') && name !== APP_SHELL_CACHE)
+                .map(name => caches.delete(name))
+        );
         await refreshOfflineSettingsFromDB({ force: true });
         await self.clients.claim();
     })());
@@ -66,7 +83,6 @@ self.addEventListener('message', event => {
 
 self.addEventListener('fetch', event => {
     const request = event.request;
-
     if (request.method !== 'GET') return;
 
     if (isOpenStreetMapTileRequest(request.url)) {
@@ -74,12 +90,63 @@ self.addEventListener('fetch', event => {
         return;
     }
 
-    /*
-     * Application : réseau direct.
-     * Cela évite le retour à d'anciennes versions PWA.
-     */
-    event.respondWith(fetch(request));
+    if (isAppShellRequest(request)) {
+        event.respondWith(handleAppShellRequest(request));
+        return;
+    }
+
+    event.respondWith(fetch(request).catch(() => caches.match(request)));
 });
+
+function isAppShellRequest(request) {
+    try {
+        const parsed = new URL(request.url);
+        if (parsed.origin !== self.location.origin) return false;
+        if (request.mode === 'navigate') return true;
+
+        const path = parsed.pathname.split('/').pop() || '';
+        return [
+            '',
+            'index.html',
+            'style.css',
+            'script.js',
+            'leaflet.css',
+            'leaflet.min.js',
+            'suncalc.js',
+            'jszip.min.js',
+            'manifest.json',
+            'communes.json'
+        ].includes(path) || parsed.pathname.includes('/icons/');
+    } catch (_) {
+        return false;
+    }
+}
+
+async function handleAppShellRequest(request) {
+    const cached = await caches.match(request);
+
+    if (request.mode === 'navigate') {
+        try {
+            const fresh = await fetch(request);
+            const cache = await caches.open(APP_SHELL_CACHE);
+            cache.put('./index.html', fresh.clone());
+            return fresh;
+        } catch (_) {
+            return cached || caches.match('./index.html');
+        }
+    }
+
+    if (cached) return cached;
+
+    try {
+        const fresh = await fetch(request);
+        const cache = await caches.open(APP_SHELL_CACHE);
+        cache.put(request, fresh.clone());
+        return fresh;
+    } catch (_) {
+        return cached || new Response('', { status: 504, statusText: 'Offline asset unavailable' });
+    }
+}
 
 async function handleTileRequest(request) {
     await refreshOfflineSettingsFromDB();
@@ -88,9 +155,6 @@ async function handleTileRequest(request) {
         const offlineResponse = await findOfflineTileResponse(request.url);
         if (offlineResponse) return offlineResponse;
 
-        /*
-         * Offline strict : si la tuile n'est pas présente, on ne va pas online.
-         */
         return new Response(
             Uint8Array.from(atob('R0lGODlhAQABAAD/ACwAAAAAAQABAAACADs='), c => c.charCodeAt(0)),
             {
@@ -110,7 +174,6 @@ async function handleTileRequest(request) {
             const offlineResponse = await findOfflineTileResponse(request.url);
             if (offlineResponse) return offlineResponse;
         }
-
         throw networkError;
     }
 }
@@ -127,7 +190,6 @@ function isOpenStreetMapTileRequest(url) {
 
 async function findOfflineTileResponse(tileUrl) {
     const cacheKey = `${tileUrl}::${(activeOfflinePacks || []).join('|')}`;
-
     const cached = memoryTileCache.get(cacheKey);
     if (cached) {
         touchMemoryTile(cacheKey, cached);
@@ -137,7 +199,6 @@ async function findOfflineTileResponse(tileUrl) {
     try {
         const db = await openOfflineDB();
         const record = await findTileRecordInDB(db, tileUrl);
-
         if (!record || !record.tile) return null;
 
         const contentType = record.tile.type || guessTileContentType(tileUrl);
@@ -158,7 +219,6 @@ async function findOfflineTileResponse(tileUrl) {
 
 function rememberMemoryTile(key, response) {
     memoryTileCache.set(key, response);
-
     while (memoryTileCache.size > MEMORY_TILE_CACHE_MAX) {
         const oldestKey = memoryTileCache.keys().next().value;
         memoryTileCache.delete(oldestKey);
@@ -180,7 +240,6 @@ function openOfflineDB() {
         }
 
         const request = indexedDB.open(DB_NAME, DB_VERSION);
-
         request.onsuccess = event => resolve(event.target.result);
         request.onerror = event => reject(event.target.error || new Error('Erreur ouverture IndexedDB'));
         request.onblocked = () => reject(new Error('IndexedDB bloquée'));
@@ -200,12 +259,7 @@ function findTileRecordInDB(db, tileUrl) {
         const store = tx.objectStore('tiles');
 
         let request;
-
         if (store.indexNames.contains('tileUrl')) {
-            /*
-             * Chemin rapide : index tileUrl + curseur.
-             * On s'arrête dès qu'une tuile correspondant au pack actif est trouvée.
-             */
             request = store.index('tileUrl').openCursor(IDBKeyRange.only(tileUrl));
         } else {
             request = store.openCursor();
@@ -213,7 +267,6 @@ function findTileRecordInDB(db, tileUrl) {
 
         request.onsuccess = () => {
             const cursor = request.result;
-
             if (!cursor) {
                 resolve(null);
                 return;
@@ -251,10 +304,7 @@ function guessTileContentType(tileUrl) {
 
 async function refreshOfflineSettingsFromDB({ force = false } = {}) {
     const now = Date.now();
-
-    if (!force && (now - offlineSettingsLoadedAt) < SETTINGS_REFRESH_INTERVAL_MS) {
-        return;
-    }
+    if (!force && (now - offlineSettingsLoadedAt) < SETTINGS_REFRESH_INTERVAL_MS) return;
 
     try {
         const db = await openOfflineDB();
@@ -263,21 +313,15 @@ async function refreshOfflineSettingsFromDB({ force = false } = {}) {
         if (typeof settings[OFFLINE_TILES_ENABLED_KEY] === 'boolean') {
             offlineTilesEnabled = settings[OFFLINE_TILES_ENABLED_KEY];
         }
-
         if (typeof settings[OFFLINE_ONLINE_FALLBACK_KEY] === 'boolean') {
             offlineOnlineFallback = settings[OFFLINE_ONLINE_FALLBACK_KEY];
         }
-
         if (Array.isArray(settings[OFFLINE_ACTIVE_PACKS_KEY])) {
             activeOfflinePacks = settings[OFFLINE_ACTIVE_PACKS_KEY].filter(Boolean);
         }
 
         offlineSettingsLoadedAt = now;
-    } catch (error) {
-        /*
-         * Non bloquant : script.js envoie aussi les changements par postMessage.
-         */
-    }
+    } catch (_) {}
 }
 
 function readOfflineSettings(db) {
@@ -296,9 +340,7 @@ function readOfflineSettings(db) {
         keys.forEach(key => {
             const request = store.get(key);
             request.onsuccess = () => {
-                if (request.result) {
-                    result[key] = request.result.value;
-                }
+                if (request.result) result[key] = request.result.value;
                 pending -= 1;
                 if (pending === 0) resolve(result);
             };
@@ -315,10 +357,9 @@ function readOfflineSettings(db) {
 
 self.addEventListener('push', event => {
     let data = {};
-
     try {
         data = event.data ? event.data.json() : {};
-    } catch (error) {
+    } catch (_) {
         data = {
             title: 'Pelic Chat',
             body: event.data ? event.data.text() : 'Nouveau message'
@@ -328,40 +369,16 @@ self.addEventListener('push', event => {
     const title = data.title || 'Pelic Chat';
     const options = {
         body: data.body || data.text || 'Nouveau message',
-        tag: data.tag || `pelic-chat-${data.room || 'default'}`,
-        data: {
-            url: data.url || './index.html',
-            room: data.room || '',
-            messageId: data.messageId || '',
-            time: data.time || ''
-        },
         icon: './icons/icon-192x192.png',
-        badge: './icons/icon-192x192.png'
+        badge: './icons/icon-192x192.png',
+        tag: data.tag || 'pelic-chat',
+        data: data
     };
 
-    event.waitUntil(
-        self.registration.showNotification(title, options)
-    );
+    event.waitUntil(self.registration.showNotification(title, options));
 });
 
 self.addEventListener('notificationclick', event => {
     event.notification.close();
-
-    const targetUrl = event.notification?.data?.url || './index.html';
-
-    event.waitUntil(
-        clients.matchAll({ type: 'window', includeUncontrolled: true })
-            .then(clientList => {
-                for (const client of clientList) {
-                    if ('focus' in client) {
-                        client.focus();
-                        return;
-                    }
-                }
-
-                if (clients.openWindow) {
-                    return clients.openWindow(targetUrl);
-                }
-            })
-    );
+    event.waitUntil(self.clients.openWindow('./'));
 });
