@@ -1962,3 +1962,72 @@ body.fuel-keyboard-open .fuel-split-hint {
 .leaflet-tooltip.route-tooltip-base.route-tooltip-near-icon .route-label-sub {
     font-weight: 500 !important;
 }
+
+/* v11.44 — Derniers feux : boutons suppression rouges */
+.fire-history-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    padding: 8px 10px;
+    font-weight: 800;
+    color: #0b3d63;
+    background: #f4f9ff;
+    border-bottom: 1px solid rgba(0, 86, 179, 0.18);
+}
+
+.fire-history-clear-all {
+    border: none;
+    border-radius: 999px;
+    background: linear-gradient(135deg, #ff3b30, #c1121f);
+    color: #ffffff;
+    font-weight: 800;
+    font-size: 12px;
+    padding: 7px 11px;
+    cursor: pointer;
+    box-shadow: 0 2px 6px rgba(193, 18, 31, 0.28);
+}
+
+.fire-history-clear-all:active {
+    transform: scale(0.97);
+    box-shadow: 0 1px 3px rgba(193, 18, 31, 0.35);
+}
+
+.fire-history-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 7px 8px;
+}
+
+.fire-history-select {
+    flex: 1;
+    text-align: left;
+    border: none;
+    background: transparent;
+    color: #1f2937;
+    font-weight: 700;
+    padding: 7px 4px;
+    cursor: pointer;
+}
+
+.fire-history-delete {
+    flex: 0 0 auto;
+    width: 30px;
+    height: 30px;
+    border: none;
+    border-radius: 50%;
+    background: #ff3b30;
+    color: #ffffff;
+    font-weight: 900;
+    font-size: 17px;
+    line-height: 30px;
+    text-align: center;
+    cursor: pointer;
+    box-shadow: 0 2px 6px rgba(255, 59, 48, 0.30);
+}
+
+.fire-history-delete:active {
+    transform: scale(0.92);
+    background: #c1121f;
+}
